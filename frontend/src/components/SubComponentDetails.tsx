@@ -37,9 +37,10 @@ const LoadingBox = styled(Box)(({ theme }) => ({
   padding: theme.spacing(4),
 }))
 
-const StyledPaper = styled(Paper)(({ theme }) => ({
+const StyledPaper = styled(Paper)<{ status?: string }>(({ theme, status }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(2),
+  backgroundColor: status ? getStatusBackgroundColor(theme, status) : undefined,
 }))
 
 const StyledButton = styled(Button)(({ theme }) => ({
@@ -258,7 +259,7 @@ const SubComponentDetails: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <StyledPaper>
+      <StyledPaper status={getSubComponentStatus()}>
         <HeaderBox status={getSubComponentStatus()}>
           <Typography variant="h4">
             {componentName} / {subComponentName} - Outage History
