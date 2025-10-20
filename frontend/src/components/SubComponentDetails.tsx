@@ -1,4 +1,4 @@
-import { CheckCircle, Error } from '@mui/icons-material'
+import { CheckCircle, Error, ReportProblem } from '@mui/icons-material'
 import {
   Box,
   Typography,
@@ -16,8 +16,9 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { SeverityChip } from './StatusColors'
+import CreateOutageModal from './CreateOutageModal'
 import type { Outage } from '../types'
-import { getSubComponentOutagesEndpoint } from '../utils/endpoints'
+import { outageEndpoint } from '../utils/endpoints'
 import { relativeTime, getStatusBackgroundColor } from '../utils/helpers'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
@@ -72,8 +73,9 @@ const SubComponentDetails: React.FC = () => {
   const [outages, setOutages] = useState<Outage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
 
-  useEffect(() => {
+  const fetchOutages = () => {
     if (!componentName || !subComponentName) {
       setError('Missing component or subcomponent name')
       return
@@ -82,7 +84,7 @@ const SubComponentDetails: React.FC = () => {
     setLoading(true)
     setError(null)
 
-    fetch(getSubComponentOutagesEndpoint(componentName, subComponentName))
+    fetch(outageEndpoint(componentName, subComponentName))
       .then((response) => {
         if (!response.ok) {
           setError(`Failed to fetch outages: ${response.statusText}`)
@@ -101,6 +103,10 @@ const SubComponentDetails: React.FC = () => {
       .finally(() => {
         setLoading(false)
       })
+  }
+
+  useEffect(() => {
+    fetchOutages()
   }, [componentName, subComponentName])
 
   const formatDate = (dateString: string) => {
@@ -132,6 +138,10 @@ const SubComponentDetails: React.FC = () => {
     }
 
     return 'Suspected'
+  }
+
+  const handleOutageAction = () => {
+    fetchOutages()
   }
 
   const columns: GridColDef[] = [
@@ -264,9 +274,19 @@ const SubComponentDetails: React.FC = () => {
           <Typography variant="h4">
             {componentName} / {subComponentName} - Outage History
           </Typography>
-          <StyledButton variant="contained" onClick={() => navigate(`/${componentName}`)}>
-            {componentName} Details
-          </StyledButton>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<ReportProblem />}
+              onClick={() => setCreateOutageModalOpen(true)}
+            >
+              Report Outage
+            </Button>
+            <StyledButton variant="contained" onClick={() => navigate(`/${componentName}`)}>
+              {componentName} Details
+            </StyledButton>
+          </Box>
         </HeaderBox>
       </StyledPaper>
 
@@ -300,6 +320,14 @@ const SubComponentDetails: React.FC = () => {
           </Box>
         )}
       </StyledPaper>
+
+      <CreateOutageModal
+        open={createOutageModalOpen}
+        onClose={() => setCreateOutageModalOpen(false)}
+        onSuccess={handleOutageAction}
+        componentName={componentName || ''}
+        subComponentName={subComponentName || ''}
+      />
     </Container>
   )
 }

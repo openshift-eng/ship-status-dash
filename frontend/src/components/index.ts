@@ -1,6 +1,7 @@
 export { default as ComponentWell } from './ComponentWell'
 export { default as SubComponentCard } from './SubComponentCard'
 export { default as OutageModal } from './OutageModal'
+export { default as CreateOutageModal } from './CreateOutageModal'
 export { default as ComponentStatusList } from './ComponentStatusList'
 export { default as ComponentDetailsPage } from './ComponentDetailsPage'
 export { default as SubComponentDetails } from './SubComponentDetails'
