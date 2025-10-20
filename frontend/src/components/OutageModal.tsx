@@ -13,9 +13,11 @@ import {
   styled,
 } from '@mui/material'
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { StatusChip, SeverityChip } from './StatusColors'
-import type { SubComponent } from '../types'
+import type { SubComponent, Outage } from '../types'
+import { relativeTime } from '../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -68,6 +70,14 @@ const OutageModal: React.FC<OutageModalProps> = ({
   selectedSubComponent,
   componentName,
 }) => {
+  const navigate = useNavigate()
+
+  const handleViewAllOutages = () => {
+    if (componentName && selectedSubComponent?.name) {
+      navigate(`/${componentName}/${selectedSubComponent.name}`)
+    }
+  }
+
   return (
     <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       {selectedSubComponent && (
@@ -96,59 +106,51 @@ const OutageModal: React.FC<OutageModalProps> = ({
                   Active Outages ({selectedSubComponent.active_outages.length})
                 </Typography>
                 <List>
-                  {selectedSubComponent.active_outages.map(
-                    (
-                      outage: {
-                        id: number
-                        severity: string
-                        start_time: string
-                        description?: string
-                        discovered_by?: string
-                        triage_notes?: string
-                      },
-                      index: number,
-                    ) => (
-                      <React.Fragment key={outage.id}>
-                        <StyledListItem alignItems="flex-start">
-                          <ListItemText
-                            primary={
-                              <OutageHeaderBox>
-                                <SeverityChip
-                                  label={outage.severity}
-                                  severity={outage.severity}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                                <Typography variant="subtitle2">
-                                  {outage.description || 'No description'}
-                                </Typography>
-                              </OutageHeaderBox>
-                            }
-                            secondary={
-                              <Box>
+                  {selectedSubComponent.active_outages.map((outage: Outage, index: number) => (
+                    <React.Fragment key={outage.id}>
+                      <StyledListItem alignItems="flex-start">
+                        <ListItemText
+                          primary={
+                            <OutageHeaderBox>
+                              <SeverityChip
+                                label={outage.severity}
+                                severity={outage.severity}
+                                size="small"
+                                variant="outlined"
+                              />
+                              <Typography variant="subtitle2">
+                                {outage.description || 'No description'}
+                              </Typography>
+                            </OutageHeaderBox>
+                          }
+                          secondary={
+                            <Box>
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                title={new Date(outage.start_time).toLocaleString()}
+                              >
+                                Started: {relativeTime(new Date(outage.start_time), new Date())}
+                              </Typography>
+                              {outage.discovered_from && (
                                 <Typography variant="caption" display="block">
-                                  Started: {new Date(outage.start_time).toLocaleString()}
+                                  Discovered by: {outage.discovered_from}
                                 </Typography>
-                                {outage.discovered_by && (
-                                  <Typography variant="caption" display="block">
-                                    Discovered by: {outage.discovered_by}
-                                  </Typography>
-                                )}
-                                {outage.triage_notes && (
-                                  <TriageNotesTypography variant="caption" display="block">
-                                    Triage Notes: {outage.triage_notes}
-                                  </TriageNotesTypography>
-                                )}
-                              </Box>
-                            }
-                          />
-                        </StyledListItem>
-                        {index < (selectedSubComponent.active_outages?.length || 0) - 1 && (
-                          <Divider />
-                        )}
-                      </React.Fragment>
-                    ),
-                  )}
+                              )}
+                              {outage.triage_notes && (
+                                <TriageNotesTypography variant="caption" display="block">
+                                  Triage Notes: {outage.triage_notes}
+                                </TriageNotesTypography>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </StyledListItem>
+                      {index < (selectedSubComponent.active_outages?.length || 0) - 1 && (
+                        <Divider />
+                      )}
+                    </React.Fragment>
+                  ))}
                 </List>
               </Box>
             ) : (
@@ -163,6 +165,9 @@ const OutageModal: React.FC<OutageModalProps> = ({
             )}
           </DialogContent>
           <DialogActions>
+            <Button onClick={handleViewAllOutages} variant="outlined">
+              View All Outages
+            </Button>
             <Button onClick={onClose}>Close</Button>
           </DialogActions>
         </>

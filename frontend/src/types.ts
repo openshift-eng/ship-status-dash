@@ -2,18 +2,27 @@ export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' |
 
 export interface Outage {
   id: number
+  created_at: string
+  updated_at: string
   component_name: string
+  sub_component_name: string
   severity: string
   start_time: string
-  end_time?: string
+  end_time: {
+    Time: string
+    Valid: boolean
+  }
+  auto_resolve: boolean
   description?: string
-  discovered_by?: string
+  discovered_from?: string
   created_by?: string
   resolved_by?: string
   confirmed_by?: string
-  confirmed_at?: string
+  confirmed_at: {
+    Time: string
+    Valid: boolean
+  }
   triage_notes?: string
-  auto_resolve: boolean
 }
 
 export interface SubComponent {

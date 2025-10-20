@@ -81,7 +81,7 @@ const ComponentWellComponent: React.FC<ComponentWellProps> = ({ component }) => 
   const navigate = useNavigate()
 
   const handleDetailsClick = () => {
-    navigate(`/component/${encodeURIComponent(component.name)}`)
+    navigate(`/${encodeURIComponent(component.name)}`)
   }
 
   return (

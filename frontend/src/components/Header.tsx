@@ -1,7 +1,14 @@
 import { AppBar, Toolbar, Box } from '@mui/material'
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 
 const Header: React.FC = () => {
+  const navigate = useNavigate()
+
+  const handleLogoClick = () => {
+    navigate('/')
+  }
+
   return (
     <AppBar
       position="sticky"
@@ -16,10 +23,15 @@ const Header: React.FC = () => {
           component="img"
           src="/logo.svg"
           alt="Logo"
+          onClick={handleLogoClick}
           sx={{
             height: 40,
             width: 'auto',
             maxWidth: 200,
+            cursor: 'pointer',
+            '&:hover': {
+              opacity: 0.8,
+            },
           }}
         />
       </Toolbar>
