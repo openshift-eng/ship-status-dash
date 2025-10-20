@@ -1,6 +1,7 @@
+import { Box, CircularProgress, Alert, Container, styled, Typography } from '@mui/material'
 import React, { useState, useEffect } from 'react'
-import { Box, CircularProgress, Alert, Container, styled, Typography, Paper } from '@mui/material'
-import { Component } from '../types'
+
+import type { Component } from '../types'
 import ComponentWell from './ComponentWell'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
 
@@ -8,7 +9,7 @@ const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }))
 
-const LoadingBox = styled(Box)(({ theme }) => ({
+const LoadingBox = styled(Box)(() => ({
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
@@ -61,7 +62,7 @@ const ComponentStatusList: React.FC = () => {
       .then(([componentsData, statusesData]) => {
         // Create a map of component statuses for quick lookup
         const statusMap = new Map<string, string>()
-        statusesData.forEach((status: any) => {
+        statusesData.forEach((status: { component_name: string; status: string }) => {
           statusMap.set(status.component_name, status.status)
         })
 
@@ -105,12 +106,8 @@ const ComponentStatusList: React.FC = () => {
   return (
     <StyledContainer maxWidth="lg">
       <TitleSection>
-        <MainTitle>
-          SHIP Status Dashboard
-        </MainTitle>
-        <Subtitle>
-          Real-time monitoring of system components and availability
-        </Subtitle>
+        <MainTitle>SHIP Status Dashboard</MainTitle>
+        <Subtitle>Real-time monitoring of system components and availability</Subtitle>
       </TitleSection>
 
       <ComponentsGrid>

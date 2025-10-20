@@ -8,3 +8,6 @@ export const getOverallStatusEndpoint = () => `${getApiBaseUrl()}/api/status`
 
 export const getSubComponentStatusEndpoint = (componentName: string, subComponentName: string) =>
   `${getApiBaseUrl()}/api/status/${slugify(componentName)}/${slugify(subComponentName)}`
+
+export const getComponentStatusEndpoint = (componentName: string) =>
+  `${getApiBaseUrl()}/api/status/${slugify(componentName)}`

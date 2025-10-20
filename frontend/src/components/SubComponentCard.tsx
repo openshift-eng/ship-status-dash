@@ -1,44 +1,34 @@
-import React, { useState, useEffect } from 'react'
 import { Box, Card, CardContent, Typography, styled } from '@mui/material'
-import { StatusChip } from './StatusColors'
-import { getStatusChipColor } from '../utils/helpers'
-import { SubComponent } from '../types'
-import { getSubComponentStatusEndpoint } from '../utils/endpoints'
-import OutageModal from './OutageModal'
+import React, { useState, useEffect } from 'react'
 
-const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => {
+import { StatusChip } from './StatusColors'
+import type { SubComponent } from '../types'
+import OutageModal from './OutageModal'
+import { getSubComponentStatusEndpoint } from '../utils/endpoints'
+import { getStatusChipColor, getStatusBackgroundColor } from '../utils/helpers'
+
+const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
+  theme,
+  status,
+  useBackgroundColor = false,
+}) => {
   const color = getStatusChipColor(theme, status)
-  
-  // Create a faint version of the status color
-  const getFaintColor = (statusColor: string) => {
-    switch (statusColor) {
-      case theme.palette.success.main:
-        return theme.palette.success.light
-      case theme.palette.error.main:
-        return theme.palette.error.light
-      case theme.palette.warning.main:
-        return theme.palette.warning.light
-      case theme.palette.info.main:
-        return theme.palette.info.light
-      default:
-        return theme.palette.grey[100]
-    }
-  }
+  const backgroundColor = useBackgroundColor
+    ? getStatusBackgroundColor(theme, status)
+    : theme.palette.background.paper
 
   return {
-    border: `1px solid ${color}`,
+    border: `2px solid ${color}`,
     borderRadius: theme.spacing(1.5),
     cursor: 'pointer',
     transition: 'all 0.2s ease-in-out',
-    backgroundColor: theme.palette.background.paper,
+    backgroundColor: backgroundColor,
     minHeight: '120px',
     display: 'flex',
     flexDirection: 'column',
     '&:hover': {
       boxShadow: theme.shadows[4],
       transform: 'translateY(-1px)',
-      borderColor: color,
-      backgroundColor: getFaintColor(color),
       '& .MuiChip-root': {
         color: 'white',
         borderColor: 'white',
@@ -79,18 +69,20 @@ const SubComponentDescription = styled(Typography)(({ theme }) => ({
   flex: 1,
 }))
 
-const StatusChipBox = styled(Box)(({ theme }) => ({
+const StatusChipBox = styled(Box)(() => ({
   flexShrink: 0,
 }))
 
 interface SubComponentCardProps {
   subComponent: SubComponent
   componentName: string
+  useBackgroundColor?: boolean
 }
 
 const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
   subComponent,
   componentName,
+  useBackgroundColor = false,
 }) => {
   const [modalOpen, setModalOpen] = useState(false)
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
@@ -122,12 +114,14 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
 
   return (
     <>
-      <SubComponentCard status={subComponentWithStatus.status || 'Unknown'} onClick={handleClick}>
+      <SubComponentCard
+        status={subComponentWithStatus.status || 'Unknown'}
+        useBackgroundColor={useBackgroundColor}
+        onClick={handleClick}
+      >
         <StyledCardContent>
           <CardHeader>
-            <SubComponentTitle>
-              {subComponent.name}
-            </SubComponentTitle>
+            <SubComponentTitle>{subComponent.name}</SubComponentTitle>
             <StatusChipBox>
               <StatusChip
                 label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}
@@ -137,9 +131,7 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
               />
             </StatusChipBox>
           </CardHeader>
-          <SubComponentDescription>
-            {subComponent.description}
-          </SubComponentDescription>
+          <SubComponentDescription>{subComponent.description}</SubComponentDescription>
         </StyledCardContent>
       </SubComponentCard>
 

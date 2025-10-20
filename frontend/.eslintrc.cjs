@@ -44,18 +44,18 @@ module.exports = {
     // react-hooks rules are already included via react-app config
 
     // --- TypeScript Rules ---
-    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/explicit-function-return-type': 'off',
-    '@typescript-eslint/no-explicit-any': 'warn',
+    '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/consistent-type-imports': [
-      'warn',
+      'error',
       { prefer: 'type-imports', disallowTypeAnnotations: false },
     ],
     '@typescript-eslint/semi': ['error', 'never'],
 
     // --- Import Rules ---
     'import/order': [
-      'warn',
+      'error',
       {
         groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
         pathGroups: [
@@ -70,6 +70,7 @@ module.exports = {
       },
     ],
     'import/no-unresolved': 'off', // handled by TS
+    'import/no-unused-modules': 'error', // error about unused imports
 
     // --- Prettier Integration ---
     'prettier/prettier': [

@@ -1,14 +1,14 @@
-import React from 'react'
 import { AppBar, Toolbar, Box } from '@mui/material'
+import React from 'react'
 
 const Header: React.FC = () => {
   return (
-    <AppBar 
-      position="sticky" 
-      sx={{ 
+    <AppBar
+      position="sticky"
+      sx={{
         backgroundColor: 'white',
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        zIndex: 1000
+        zIndex: 1000,
       }}
     >
       <Toolbar>
@@ -19,7 +19,7 @@ const Header: React.FC = () => {
           sx={{
             height: 40,
             width: 'auto',
-            maxWidth: 200
+            maxWidth: 200,
           }}
         />
       </Toolbar>

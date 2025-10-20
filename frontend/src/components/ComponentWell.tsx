@@ -1,8 +1,10 @@
+import { Box, Card, CardContent, Typography, Button, styled } from '@mui/material'
 import React from 'react'
-import { Box, Card, CardContent, Typography, styled } from '@mui/material'
-import { Component, SubComponent } from '../types'
-import SubComponentCard from './SubComponentCard'
+import { useNavigate } from 'react-router-dom'
+
+import type { Component, SubComponent } from '../types'
 import { StatusChip } from './StatusColors'
+import SubComponentCard from './SubComponentCard'
 import { getStatusBackgroundColor } from '../utils/helpers'
 
 const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
@@ -36,6 +38,28 @@ const HeaderBox = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
 }))
 
+const FooterBox = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  marginTop: theme.spacing(3),
+  paddingTop: theme.spacing(2),
+  borderTop: `1px solid ${theme.palette.divider}`,
+}))
+
+const DetailsButton = styled(Button)(({ theme }) => ({
+  minWidth: 'auto',
+  padding: theme.spacing(1, 2),
+  borderRadius: theme.spacing(1),
+  textTransform: 'none',
+  fontWeight: 500,
+  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  backdropFilter: 'blur(4px)',
+  '&:hover': {
+    backgroundColor: 'rgba(255, 255, 255, 1)',
+  },
+}))
+
 const ComponentTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
   fontSize: '1.5rem',
@@ -54,13 +78,17 @@ interface ComponentWellProps {
 }
 
 const ComponentWellComponent: React.FC<ComponentWellProps> = ({ component }) => {
+  const navigate = useNavigate()
+
+  const handleDetailsClick = () => {
+    navigate(`/component/${encodeURIComponent(component.name)}`)
+  }
+
   return (
     <ComponentWell status={component.status || 'Unknown'}>
       <CardContent>
         <HeaderBox>
-          <ComponentTitle>
-            {component.name}
-          </ComponentTitle>
+          <ComponentTitle>{component.name}</ComponentTitle>
           <StatusChip
             label={component.status || 'Unknown'}
             status={component.status || 'Unknown'}
@@ -68,9 +96,7 @@ const ComponentWellComponent: React.FC<ComponentWellProps> = ({ component }) => 
           />
         </HeaderBox>
 
-        <DescriptionTypography>
-          {component.description}
-        </DescriptionTypography>
+        <DescriptionTypography>{component.description}</DescriptionTypography>
 
         <SubComponentsGrid>
           {component.sub_components.map((subComponent: SubComponent) => (
@@ -81,6 +107,12 @@ const ComponentWellComponent: React.FC<ComponentWellProps> = ({ component }) => 
             />
           ))}
         </SubComponentsGrid>
+
+        <FooterBox>
+          <DetailsButton variant="outlined" onClick={handleDetailsClick} size="small">
+            Details
+          </DetailsButton>
+        </FooterBox>
       </CardContent>
     </ComponentWell>
   )

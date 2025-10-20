@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Box,
   Typography,
@@ -13,8 +12,10 @@ import {
   Divider,
   styled,
 } from '@mui/material'
+import React from 'react'
+
 import { StatusChip, SeverityChip } from './StatusColors'
-import { SubComponent } from '../types'
+import type { SubComponent } from '../types'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -22,7 +23,7 @@ const StyledDialog = styled(Dialog)(({ theme }) => ({
   },
 }))
 
-const HeaderBox = styled(Box)(({ theme }) => ({
+const HeaderBox = styled(Box)(() => ({
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -32,7 +33,7 @@ const DescriptionTypography = styled(Typography)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }))
 
-const StyledListItem = styled(ListItem)(({ theme }) => ({
+const StyledListItem = styled(ListItem)(() => ({
   paddingLeft: 0,
   paddingRight: 0,
 }))
@@ -95,47 +96,59 @@ const OutageModal: React.FC<OutageModalProps> = ({
                   Active Outages ({selectedSubComponent.active_outages.length})
                 </Typography>
                 <List>
-                  {selectedSubComponent.active_outages.map((outage: any, index: number) => (
-                    <React.Fragment key={outage.id}>
-                      <StyledListItem alignItems="flex-start">
-                        <ListItemText
-                          primary={
-                            <OutageHeaderBox>
-                              <SeverityChip
-                                label={outage.severity}
-                                severity={outage.severity}
-                                size="small"
-                                variant="outlined"
-                              />
-                              <Typography variant="subtitle2">
-                                {outage.description || 'No description'}
-                              </Typography>
-                            </OutageHeaderBox>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="caption" display="block">
-                                Started: {new Date(outage.start_time).toLocaleString()}
-                              </Typography>
-                              {outage.discovered_by && (
-                                <Typography variant="caption" display="block">
-                                  Discovered by: {outage.discovered_by}
+                  {selectedSubComponent.active_outages.map(
+                    (
+                      outage: {
+                        id: number
+                        severity: string
+                        start_time: string
+                        description?: string
+                        discovered_by?: string
+                        triage_notes?: string
+                      },
+                      index: number,
+                    ) => (
+                      <React.Fragment key={outage.id}>
+                        <StyledListItem alignItems="flex-start">
+                          <ListItemText
+                            primary={
+                              <OutageHeaderBox>
+                                <SeverityChip
+                                  label={outage.severity}
+                                  severity={outage.severity}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                                <Typography variant="subtitle2">
+                                  {outage.description || 'No description'}
                                 </Typography>
-                              )}
-                              {outage.triage_notes && (
-                                <TriageNotesTypography variant="caption" display="block">
-                                  Triage Notes: {outage.triage_notes}
-                                </TriageNotesTypography>
-                              )}
-                            </Box>
-                          }
-                        />
-                      </StyledListItem>
-                      {index < (selectedSubComponent.active_outages?.length || 0) - 1 && (
-                        <Divider />
-                      )}
-                    </React.Fragment>
-                  ))}
+                              </OutageHeaderBox>
+                            }
+                            secondary={
+                              <Box>
+                                <Typography variant="caption" display="block">
+                                  Started: {new Date(outage.start_time).toLocaleString()}
+                                </Typography>
+                                {outage.discovered_by && (
+                                  <Typography variant="caption" display="block">
+                                    Discovered by: {outage.discovered_by}
+                                  </Typography>
+                                )}
+                                {outage.triage_notes && (
+                                  <TriageNotesTypography variant="caption" display="block">
+                                    Triage Notes: {outage.triage_notes}
+                                  </TriageNotesTypography>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </StyledListItem>
+                        {index < (selectedSubComponent.active_outages?.length || 0) - 1 && (
+                          <Divider />
+                        )}
+                      </React.Fragment>
+                    ),
+                  )}
                 </List>
               </Box>
             ) : (
