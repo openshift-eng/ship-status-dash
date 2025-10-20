@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
+	"net/http"
 	"os"
+	"os/signal"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
+	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -120,10 +125,23 @@ func main() {
 	server := NewServer(config, db, log, opts.CORSOrigin)
 
 	addr := ":" + opts.Port
-	if err := server.Start(addr); err != nil {
-		log.WithFields(logrus.Fields{
-			"address": addr,
-			"error":   err,
-		}).Fatal("Server failed to start")
+	// Run server in a goroutine
+	go func() {
+		if err := server.Start(addr); err != nil && err != http.ErrServerClosed {
+			log.WithFields(logrus.Fields{
+				"address": addr,
+				"error":   err,
+			}).Fatal("Server failed to start")
+		}
+	}()
+
+	// Handle graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Stop(ctx); err != nil {
+		log.WithField("error", err).Error("Graceful shutdown failed")
 	}
 }

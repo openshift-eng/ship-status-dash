@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"ship-status-dash/pkg/types"
 	"time"
@@ -18,6 +19,7 @@ type Server struct {
 	handlers   *Handlers
 	db         *gorm.DB
 	corsOrigin string
+	httpServer *http.Server
 }
 
 // NewServer creates a new Server instance with the provided configuration, database connection, and logger.
@@ -82,5 +84,15 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 func (s *Server) Start(addr string) error {
 	handler := s.setupRoutes()
 	s.logger.Infof("Starting dashboard server on %s", addr)
-	return http.ListenAndServe(addr, handler)
+	s.httpServer = &http.Server{Addr: addr, Handler: handler}
+	return s.httpServer.ListenAndServe()
+}
+
+// Stop gracefully shuts down the HTTP server.
+func (s *Server) Stop(ctx context.Context) error {
+	if s.httpServer == nil {
+		return nil
+	}
+	s.logger.Info("Shutting down dashboard server")
+	return s.httpServer.Shutdown(ctx)
 }

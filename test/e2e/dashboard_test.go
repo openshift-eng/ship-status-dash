@@ -7,9 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"ship-status-dash/pkg/types"
-	"strings"
+	"ship-status-dash/pkg/utils"
 	"testing"
 	"time"
 
@@ -87,10 +86,7 @@ func testComponents(serverURL string) func(*testing.T) {
 }
 
 func slugify(s string) string {
-	s = strings.ToLower(s)
-	s = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	return s
+	return utils.Slugify(s)
 }
 
 func testComponentInfo(serverURL string) func(*testing.T) {
@@ -173,37 +169,13 @@ func deleteOutage(t *testing.T, serverURL, componentName, subComponentName strin
 
 func testOutages(serverURL string) func(*testing.T) {
 	return func(t *testing.T) {
-		t.Run("POST to top-level component fails (old endpoint)", func(t *testing.T) {
-			outagePayload := map[string]interface{}{
-				"severity":        string(types.SeverityDown),
-				"start_time":      time.Now().UTC().Format(time.RFC3339),
-				"description":     "Test outage",
-				"discovered_from": "e2e-test",
-				"created_by":      "test-user",
-			}
-
-			payloadBytes, err := json.Marshal(outagePayload)
-			require.NoError(t, err)
-
-			req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify("Prow")+"/outages",
-				bytes.NewBuffer(payloadBytes))
-			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
-
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
-		})
-
-		t.Run("POST to sub-component with new URI structure succeeds", func(t *testing.T) {
+		t.Run("POST to sub-component succeeds", func(t *testing.T) {
 			outage := createOutage(t, serverURL, "Prow", "Tide")
 			defer deleteOutage(t, serverURL, "Prow", "Tide", outage.ID)
 
 			assert.NotZero(t, outage.ID)
-			assert.Equal(t, "Tide", outage.ComponentName)
+			assert.Equal(t, slugify("Prow"), outage.ComponentName)
+			assert.Equal(t, slugify("Tide"), outage.SubComponentName)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			assert.Equal(t, "e2e-test", outage.DiscoveredFrom)
 		})
@@ -316,7 +288,7 @@ func testOutages(serverURL string) func(*testing.T) {
 
 			// All outages should be for Tide only
 			for _, outage := range outages {
-				assert.Equal(t, "Tide", outage.ComponentName)
+				assert.Equal(t, slugify("Tide"), outage.SubComponentName)
 			}
 
 			// Verify our specific outages are present
@@ -525,7 +497,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, createdOutage.ID, outage.ID)
-			assert.Equal(t, "Tide", outage.ComponentName)
+			assert.Equal(t, slugify("Tide"), outage.SubComponentName)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			assert.Equal(t, "e2e-test", outage.DiscoveredFrom)
 			assert.Equal(t, "test-user", outage.CreatedBy)

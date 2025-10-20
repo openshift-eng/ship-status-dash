@@ -108,13 +108,13 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
 	}
-	subComponents := []string{}
-	for _, subComponent := range component.Subcomponents {
-		subComponents = append(subComponents, subComponent.Name)
+	subComponentSlugs := make([]string, len(component.Subcomponents))
+	for i, subComponent := range component.Subcomponents {
+		subComponentSlugs[i] = subComponent.Slug
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name IN ?", subComponents).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -147,7 +147,7 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ?", subComponent.Name).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -179,7 +179,8 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outage.ComponentName = subComponent.Name
+	outage.ComponentName = componentName
+	outage.SubComponentName = subComponentName
 
 	if message, valid := h.validateOutage(&outage); !valid {
 		respondWithError(w, http.StatusBadRequest, message)
@@ -249,7 +250,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ?", uint(outageID), subComponent.Name).First(&outage).Error; err != nil {
+	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", uint(outageID), componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -328,7 +329,7 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ?", outageId, subComponent.Name).First(&outage).Error; err != nil {
+	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -368,7 +369,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ?", outageId, subComponent.Name).First(&outage).Error; err != nil {
+	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -412,7 +413,7 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", subComponent.Name, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentName, subComponentName, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
 		return
@@ -473,26 +474,21 @@ func (h *Handlers) GetAllComponentsStatusJSON(w http.ResponseWriter, r *http.Req
 
 // getComponentStatus calculates the status of a component based on its sub-components and active outages
 func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus.Entry) (types.ComponentStatus, error) {
-	subComponents := make([]string, len(component.Subcomponents))
-	for i, subComponent := range component.Subcomponents {
-		subComponents[i] = subComponent.Name
-	}
-
 	var outages []types.Outage
-	if err := h.db.Where("component_name IN ? AND (end_time IS NULL OR end_time > ?)", subComponents, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", component.Slug, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		return types.ComponentStatus{}, err
 	}
 
 	subComponentsWithOutages := make(map[string]bool)
 	for _, outage := range outages {
-		subComponentsWithOutages[outage.ComponentName] = true
+		subComponentsWithOutages[outage.SubComponentName] = true
 	}
 
 	var status types.Status
 	if len(outages) == 0 {
 		status = types.StatusHealthy
-	} else if len(subComponentsWithOutages) < len(subComponents) {
+	} else if len(subComponentsWithOutages) < len(component.Subcomponents) {
 		// If there are some sub-components with outages, but not all, the component is partially healthy
 		status = types.StatusPartial
 	} else {
