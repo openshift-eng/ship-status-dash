@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -81,6 +82,14 @@ func loadConfig(log *logrus.Logger, configPath string) *types.Config {
 			"config_path": configPath,
 			"error":       err,
 		}).Fatal("Failed to parse config file")
+	}
+
+	// We need to compute and store all the slugs to match by them later
+	for _, component := range config.Components {
+		component.Slug = utils.Slugify(component.Name)
+		for i := range component.Subcomponents {
+			component.Subcomponents[i].Slug = utils.Slugify(component.Subcomponents[i].Name)
+		}
 	}
 
 	log.Infof("Loaded configuration with %d components", len(config.Components))

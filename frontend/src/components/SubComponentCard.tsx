@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Box, Card, CardContent, Typography, styled } from '@mui/material'
 import { StatusChip } from './StatusColors'
-import { getStatusChipColor } from '../helpers'
+import { getStatusChipColor } from '../utils/helpers'
 import { SubComponent } from '../types'
-import { getSubComponentStatusEndpoint } from '../endpoints'
+import { getSubComponentStatusEndpoint } from '../utils/endpoints'
 import OutageModal from './OutageModal'
 
 const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => {

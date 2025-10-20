@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"ship-status-dash/pkg/types"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,10 +86,17 @@ func testComponents(serverURL string) func(*testing.T) {
 	}
 }
 
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	s = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	return s
+}
+
 func testComponentInfo(serverURL string) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET component info for existing component returns component details", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/components/Prow")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -108,7 +117,7 @@ func testComponentInfo(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET component info for non-existent component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/components/NonExistentComponent")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("NonExistentComponent"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -130,7 +139,7 @@ func createOutage(t *testing.T, serverURL, componentName, subComponentName strin
 	payloadBytes, err := json.Marshal(outagePayload)
 	require.NoError(t, err)
 
-	req, err := http.NewRequest("POST", serverURL+"/api/components/"+componentName+"/"+subComponentName+"/outages",
+	req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify(componentName)+"/"+slugify(subComponentName)+"/outages",
 		bytes.NewBuffer(payloadBytes))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
@@ -151,7 +160,7 @@ func createOutage(t *testing.T, serverURL, componentName, subComponentName strin
 
 // deleteOutage is a helper function to delete an outage for cleanup
 func deleteOutage(t *testing.T, serverURL, componentName, subComponentName string, outageID uint) {
-	req, err := http.NewRequest("DELETE", serverURL+"/api/components/"+componentName+"/"+subComponentName+"/outages/"+fmt.Sprintf("%d", outageID), nil)
+	req, err := http.NewRequest("DELETE", serverURL+"/api/components/"+slugify(componentName)+"/"+slugify(subComponentName)+"/outages/"+fmt.Sprintf("%d", outageID), nil)
 	require.NoError(t, err)
 
 	client := &http.Client{}
@@ -176,7 +185,7 @@ func testOutages(serverURL string) func(*testing.T) {
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
-			req, err := http.NewRequest("POST", serverURL+"/api/components/Prow/outages",
+			req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify("Prow")+"/outages",
 				bytes.NewBuffer(payloadBytes))
 			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
@@ -211,7 +220,7 @@ func testOutages(serverURL string) func(*testing.T) {
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
-			req, err := http.NewRequest("POST", serverURL+"/api/components/Prow/NonExistentSub/outages",
+			req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("NonExistentSub")+"/outages",
 				bytes.NewBuffer(payloadBytes))
 			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
@@ -236,7 +245,7 @@ func testOutages(serverURL string) func(*testing.T) {
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
-			req, err := http.NewRequest("POST", serverURL+"/api/components/Prow/Deck/outages",
+			req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("Deck")+"/outages",
 				bytes.NewBuffer(payloadBytes))
 			require.NoError(t, err)
 			req.Header.Set("Content-Type", "application/json")
@@ -261,7 +270,7 @@ func testOutages(serverURL string) func(*testing.T) {
 			deckOutage := createOutage(t, serverURL, "Prow", "Deck")
 			defer deleteOutage(t, serverURL, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/components/Prow/outages")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/outages")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -292,7 +301,7 @@ func testOutages(serverURL string) func(*testing.T) {
 			deckOutage := createOutage(t, serverURL, "Prow", "Deck")
 			defer deleteOutage(t, serverURL, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/components/Prow/Tide/outages")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -322,7 +331,7 @@ func testOutages(serverURL string) func(*testing.T) {
 
 		t.Run("GET on non-existent sub-component fails", func(t *testing.T) {
 			// This test doesn't need any setup - it should fail regardless of existing data
-			resp, err := http.Get(serverURL + "/api/components/Prow/NonExistentSub/outages")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("NonExistentSub") + "/outages")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -348,7 +357,7 @@ func testUpdateOutage(serverURL string) func(*testing.T) {
 		updateBytes, err := json.Marshal(updatePayload)
 		require.NoError(t, err)
 
-		updateURL := serverURL + "/api/components/Prow/Tide/outages/" + fmt.Sprintf("%d", createdOutage.ID)
+		updateURL := serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/" + fmt.Sprintf("%d", createdOutage.ID)
 		t.Logf("Making PATCH request to: %s", updateURL)
 
 		updateReq, err := http.NewRequest("PATCH", updateURL, bytes.NewBuffer(updateBytes))
@@ -382,7 +391,7 @@ func testUpdateOutage(serverURL string) func(*testing.T) {
 
 		// Test updating non-existent outage
 		nonExistentReq, err := http.NewRequest("PATCH",
-			serverURL+"/api/components/Prow/Tide/outages/99999",
+			serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/99999",
 			bytes.NewBuffer(updateBytes))
 		require.NoError(t, err)
 		nonExistentReq.Header.Set("Content-Type", "application/json")
@@ -395,7 +404,7 @@ func testUpdateOutage(serverURL string) func(*testing.T) {
 
 		// Test updating with invalid component
 		invalidComponentReq, err := http.NewRequest("PATCH",
-			serverURL+"/api/components/NonExistentComponent/Tide/outages/"+fmt.Sprintf("%d", createdOutage.ID),
+			serverURL+"/api/components/"+slugify("NonExistentComponent")+"/"+slugify("Tide")+"/outages/"+fmt.Sprintf("%d", createdOutage.ID),
 			bytes.NewBuffer(updateBytes))
 		require.NoError(t, err)
 		invalidComponentReq.Header.Set("Content-Type", "application/json")
@@ -414,7 +423,7 @@ func testUpdateOutage(serverURL string) func(*testing.T) {
 		require.NoError(t, err)
 
 		invalidSeverityReq, err := http.NewRequest("PATCH",
-			serverURL+"/api/components/Prow/Tide/outages/"+fmt.Sprintf("%d", createdOutage.ID),
+			serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/"+fmt.Sprintf("%d", createdOutage.ID),
 			bytes.NewBuffer(invalidSeverityBytes))
 		require.NoError(t, err)
 		invalidSeverityReq.Header.Set("Content-Type", "application/json")
@@ -442,7 +451,7 @@ func testDeleteOutage(serverURL string) func(*testing.T) {
 			deleteOutage(t, serverURL, "Prow", "Tide", createdOutage.ID)
 
 			// Verify the outage is deleted by trying to get it
-			resp, err := http.Get(serverURL + "/api/components/Prow/Tide/outages")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -459,7 +468,7 @@ func testDeleteOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("DELETE non-existent outage returns 404", func(t *testing.T) {
-			req, err := http.NewRequest("DELETE", serverURL+"/api/components/Prow/Tide/outages/99999", nil)
+			req, err := http.NewRequest("DELETE", serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/99999", nil)
 			require.NoError(t, err)
 
 			client := &http.Client{}
@@ -471,7 +480,7 @@ func testDeleteOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("DELETE outage from non-existent component returns 404", func(t *testing.T) {
-			req, err := http.NewRequest("DELETE", serverURL+"/api/components/NonExistentComponent/Tide/outages/1", nil)
+			req, err := http.NewRequest("DELETE", serverURL+"/api/components/"+slugify("NonExistentComponent")+"/"+slugify("Tide")+"/outages/1", nil)
 			require.NoError(t, err)
 
 			client := &http.Client{}
@@ -483,7 +492,7 @@ func testDeleteOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("DELETE outage from non-existent sub-component returns 404", func(t *testing.T) {
-			req, err := http.NewRequest("DELETE", serverURL+"/api/components/Prow/NonExistentSub/outages/1", nil)
+			req, err := http.NewRequest("DELETE", serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("NonExistentSub")+"/outages/1", nil)
 			require.NoError(t, err)
 
 			client := &http.Client{}
@@ -504,7 +513,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 			defer deleteOutage(t, serverURL, "Prow", "Tide", createdOutage.ID)
 
 			// Get the outage
-			resp, err := http.Get(serverURL + "/api/components/Prow/Tide/outages/" + fmt.Sprintf("%d", createdOutage.ID))
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/" + fmt.Sprintf("%d", createdOutage.ID))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -523,7 +532,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET non-existent outage returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/components/Prow/Tide/outages/99999")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/99999")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -531,7 +540,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/components/NonExistentComponent/Tide/outages/1")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("NonExistentComponent") + "/" + slugify("Tide") + "/outages/1")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -539,7 +548,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/components/Prow/NonExistentSub/outages/1")
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("NonExistentSub") + "/outages/1")
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -552,7 +561,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 			defer deleteOutage(t, serverURL, "Prow", "Tide", tideOutage.ID)
 
 			// Try to get it as if it were a Deck outage
-			resp, err := http.Get(serverURL + "/api/components/Prow/Deck/outages/" + fmt.Sprintf("%d", tideOutage.ID))
+			resp, err := http.Get(serverURL + "/api/components/" + slugify("Prow") + "/" + slugify("Deck") + "/outages/" + fmt.Sprintf("%d", tideOutage.ID))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -564,7 +573,7 @@ func testGetOutage(serverURL string) func(*testing.T) {
 func testSubComponentStatus(serverURL string) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for healthy sub-component returns Healthy", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/status/Prow/Deck")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -584,7 +593,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 			outage := createOutage(t, serverURL, "Prow", "Deck")
 			defer deleteOutage(t, serverURL, "Prow", "Deck", outage.ID)
 
-			resp, err := http.Get(serverURL + "/api/status/Prow/Deck")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -608,7 +617,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 			downOutage := createOutageWithSeverity(t, serverURL, "Prow", "Tide", string(types.SeverityDown))
 			defer deleteOutage(t, serverURL, "Prow", "Tide", downOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/status/Prow/Tide")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow") + "/" + slugify("Tide"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -623,7 +632,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/status/NonExistent/Deck")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("NonExistent") + "/" + slugify("Deck"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -631,7 +640,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET status for non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/status/Prow/NonExistent")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow") + "/" + slugify("NonExistent"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -652,7 +661,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 			updateBytes, err := json.Marshal(updatePayload)
 			require.NoError(t, err)
 
-			updateReq, err := http.NewRequest("PATCH", serverURL+"/api/components/Prow/Deck/outages/"+fmt.Sprintf("%d", outage.ID),
+			updateReq, err := http.NewRequest("PATCH", serverURL+"/api/components/"+slugify("Prow")+"/"+slugify("Deck")+"/outages/"+fmt.Sprintf("%d", outage.ID),
 				bytes.NewBuffer(updateBytes))
 			require.NoError(t, err)
 			updateReq.Header.Set("Content-Type", "application/json")
@@ -665,7 +674,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, updateResp.StatusCode)
 
 			// Check that the status endpoint still considers this outage active
-			statusResp, err := http.Get(serverURL + "/api/status/Prow/Deck")
+			statusResp, err := http.Get(serverURL + "/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
 			require.NoError(t, err)
 			defer statusResp.Body.Close()
 
@@ -685,7 +694,7 @@ func testSubComponentStatus(serverURL string) func(*testing.T) {
 func testComponentStatus(serverURL string) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for healthy component returns Healthy", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/status/Prow")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -705,7 +714,7 @@ func testComponentStatus(serverURL string) func(*testing.T) {
 			tideOutage := createOutageWithSeverity(t, serverURL, "Prow", "Tide", string(types.SeverityDegraded))
 			defer deleteOutage(t, serverURL, "Prow", "Tide", tideOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/status/Prow")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -727,7 +736,7 @@ func testComponentStatus(serverURL string) func(*testing.T) {
 			deckOutage := createOutageWithSeverity(t, serverURL, "Prow", "Deck", string(types.SeverityDown))
 			defer deleteOutage(t, serverURL, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/status/Prow")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -751,7 +760,7 @@ func testComponentStatus(serverURL string) func(*testing.T) {
 			deckOutage := createOutageWithSeverity(t, serverURL, "Prow", "Deck", string(types.SeverityDegraded))
 			defer deleteOutage(t, serverURL, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := http.Get(serverURL + "/api/status/Prow")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("Prow"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -773,7 +782,7 @@ func testComponentStatus(serverURL string) func(*testing.T) {
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			resp, err := http.Get(serverURL + "/api/status/NonExistent")
+			resp, err := http.Get(serverURL + "/api/status/" + slugify("NonExistent"))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -794,7 +803,7 @@ func createOutageWithSeverity(t *testing.T, serverURL, componentName, subCompone
 	payloadBytes, err := json.Marshal(outagePayload)
 	require.NoError(t, err)
 
-	req, err := http.NewRequest("POST", serverURL+"/api/components/"+componentName+"/"+subComponentName+"/outages",
+	req, err := http.NewRequest("POST", serverURL+"/api/components/"+slugify(componentName)+"/"+slugify(subComponentName)+"/outages",
 		bytes.NewBuffer(payloadBytes))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")

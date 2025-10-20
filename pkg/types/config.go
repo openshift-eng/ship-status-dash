@@ -2,12 +2,13 @@ package types
 
 // Config contains the application configuration including component definitions.
 type Config struct {
-	Components []Component `json:"components" yaml:"components"`
+	Components []*Component `json:"components" yaml:"components"`
 }
 
 // Component represents a top-level system component with sub-components and ownership information.
 type Component struct {
 	Name          string         `json:"name" yaml:"name"`
+	Slug          string         `json:"slug"`
 	Description   string         `json:"description" yaml:"description"`
 	ShipTeam      string         `json:"ship_team" yaml:"ship_team"`
 	SlackChannel  string         `json:"slack_channel" yaml:"slack_channel"`
@@ -15,10 +16,10 @@ type Component struct {
 	Owners        []Owner        `json:"owners" yaml:"owners"`
 }
 
-func (c *Component) GetSubComponent(subComponentName string) *SubComponent {
-	for _, subComponent := range c.Subcomponents {
-		if subComponent.Name == subComponentName {
-			return &subComponent
+func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
+	for i := range c.Subcomponents {
+		if c.Subcomponents[i].Slug == slug {
+			return &c.Subcomponents[i]
 		}
 	}
 	return nil
@@ -27,6 +28,7 @@ func (c *Component) GetSubComponent(subComponentName string) *SubComponent {
 // SubComponent represents a sub-component that can have outages tracked against it.
 type SubComponent struct {
 	Name                 string `json:"name" yaml:"name"`
+	Slug                 string `json:"slug"`
 	Description          string `json:"description" yaml:"description"`
 	Managed              bool   `json:"managed" yaml:"managed"`
 	RequiresConfirmation bool   `json:"requires_confirmation" yaml:"requires_confirmation"`

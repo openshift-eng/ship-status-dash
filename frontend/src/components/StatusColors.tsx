@@ -1,6 +1,6 @@
 import { styled } from '@mui/material/styles'
 import { Chip } from '@mui/material'
-import { getStatusChipColor, getSeverityColor } from '../helpers'
+import { getStatusChipColor, getSeverityColor } from '../utils/helpers'
 
 export const StatusChip = styled(Chip)<{ status: string }>(({ theme, status }) => {
   const color = getStatusChipColor(theme, status)

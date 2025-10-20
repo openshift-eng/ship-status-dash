@@ -3,10 +3,11 @@ package types
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestComponent_GetSubComponent(t *testing.T) {
+func TestComponent_GetSubComponentBySlug(t *testing.T) {
 	tests := []struct {
 		name             string
 		component        Component
@@ -18,35 +19,35 @@ func TestComponent_GetSubComponent(t *testing.T) {
 			component: Component{
 				Name: "Prow",
 				Subcomponents: []SubComponent{
-					{Name: "Tide", Description: "Merge bot"},
+					{Name: "Tide", Slug: "tide", Description: "Merge bot"},
 				},
 			},
-			subComponentName: "Tide",
-			expectedResult:   &SubComponent{Name: "Tide", Description: "Merge bot"},
+			subComponentName: "tide",
+			expectedResult:   &SubComponent{Name: "Tide", Slug: "tide", Description: "Merge bot"},
 		},
 		{
 			name: "subcomponent found - multiple subcomponents",
 			component: Component{
 				Name: "Prow",
 				Subcomponents: []SubComponent{
-					{Name: "Tide", Description: "Merge bot"},
-					{Name: "Deck", Description: "Dashboard"},
-					{Name: "Hook", Description: "Webhook handler"},
+					{Name: "Tide", Slug: "tide", Description: "Merge bot"},
+					{Name: "Deck", Slug: "deck", Description: "Dashboard"},
+					{Name: "Hook", Slug: "hook", Description: "Webhook handler"},
 				},
 			},
-			subComponentName: "Deck",
-			expectedResult:   &SubComponent{Name: "Deck", Description: "Dashboard"},
+			subComponentName: "deck",
+			expectedResult:   &SubComponent{Name: "Deck", Slug: "deck", Description: "Dashboard"},
 		},
 		{
 			name: "subcomponent not found",
 			component: Component{
 				Name: "Prow",
 				Subcomponents: []SubComponent{
-					{Name: "Tide", Description: "Merge bot"},
-					{Name: "Deck", Description: "Dashboard"},
+					{Name: "Tide", Slug: "tide", Description: "Merge bot"},
+					{Name: "Deck", Slug: "deck", Description: "Dashboard"},
 				},
 			},
-			subComponentName: "NonExistent",
+			subComponentName: "nonexistent",
 			expectedResult:   nil,
 		},
 		{
@@ -55,7 +56,7 @@ func TestComponent_GetSubComponent(t *testing.T) {
 				Name:          "Prow",
 				Subcomponents: []SubComponent{},
 			},
-			subComponentName: "AnySubComponent",
+			subComponentName: "any-sub-component",
 			expectedResult:   nil,
 		},
 		{
@@ -63,24 +64,27 @@ func TestComponent_GetSubComponent(t *testing.T) {
 			component: Component{
 				Name: "Prow",
 				Subcomponents: []SubComponent{
-					{Name: "Tide", Description: "Merge bot"},
+					{Name: "Tide", Slug: "tide", Description: "Merge bot"},
 				},
 			},
-			subComponentName: "tide",
+			subComponentName: "Tide", // name, not slug
 			expectedResult:   nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.component.GetSubComponent(tt.subComponentName)
+			result := tt.component.GetSubComponentBySlug(tt.subComponentName)
 
 			if tt.expectedResult == nil {
 				assert.Nil(t, result)
 			} else {
-				assert.NotNil(t, result)
-				assert.Equal(t, tt.expectedResult.Name, result.Name)
-				assert.Equal(t, tt.expectedResult.Description, result.Description)
+				if result == nil {
+					t.Fatalf("got nil result, want non-nil: %+v", tt.expectedResult)
+				}
+				if diff := cmp.Diff(*tt.expectedResult, *result); diff != "" {
+					t.Errorf("GetSubComponentBySlug mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}

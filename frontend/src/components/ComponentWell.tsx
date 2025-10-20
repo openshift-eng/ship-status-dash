@@ -3,7 +3,7 @@ import { Box, Card, CardContent, Typography, styled } from '@mui/material'
 import { Component, SubComponent } from '../types'
 import SubComponentCard from './SubComponentCard'
 import { StatusChip } from './StatusColors'
-import { getStatusBackgroundColor } from '../helpers'
+import { getStatusBackgroundColor } from '../utils/helpers'
 
 const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
   const color = getStatusBackgroundColor(theme, status)

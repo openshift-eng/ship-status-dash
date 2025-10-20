@@ -5,6 +5,7 @@ import (
 
 	"ship-status-dash/pkg/types"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,49 +66,49 @@ func TestDetermineStatusFromSeverity(t *testing.T) {
 func TestGetComponent(t *testing.T) {
 	tests := []struct {
 		name           string
-		components     []types.Component
+		components     []*types.Component
 		componentName  string
 		expectedResult *types.Component
 	}{
 		{
-			name: "component found - single component",
-			components: []types.Component{
-				{Name: "Prow", Description: "CI/CD system"},
+			name: "component found - single component (slug)",
+			components: []*types.Component{
+				{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 			},
-			componentName:  "Prow",
-			expectedResult: &types.Component{Name: "Prow", Description: "CI/CD system"},
+			componentName:  "prow",
+			expectedResult: &types.Component{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 		},
 		{
-			name: "component found - multiple components",
-			components: []types.Component{
-				{Name: "Prow", Description: "CI/CD system"},
-				{Name: "Deck", Description: "Dashboard"},
-				{Name: "Tide", Description: "Merge bot"},
+			name: "component found - multiple components (slug)",
+			components: []*types.Component{
+				{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+				{Name: "Deck", Slug: "deck", Description: "Dashboard"},
+				{Name: "Tide", Slug: "tide", Description: "Merge bot"},
 			},
-			componentName:  "Deck",
-			expectedResult: &types.Component{Name: "Deck", Description: "Dashboard"},
+			componentName:  "deck",
+			expectedResult: &types.Component{Name: "Deck", Slug: "deck", Description: "Dashboard"},
 		},
 		{
 			name: "component not found",
-			components: []types.Component{
-				{Name: "Prow", Description: "CI/CD system"},
-				{Name: "Deck", Description: "Dashboard"},
+			components: []*types.Component{
+				{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+				{Name: "Deck", Slug: "deck", Description: "Dashboard"},
 			},
-			componentName:  "NonExistent",
+			componentName:  "nonexistent",
 			expectedResult: nil,
 		},
 		{
 			name:           "empty components list",
-			components:     []types.Component{},
-			componentName:  "AnyComponent",
+			components:     []*types.Component{},
+			componentName:  "any-component",
 			expectedResult: nil,
 		},
 		{
-			name: "case sensitive matching",
-			components: []types.Component{
-				{Name: "Prow", Description: "CI/CD system"},
+			name: "non-slug name is not accepted",
+			components: []*types.Component{
+				{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 			},
-			componentName:  "prow",
+			componentName:  "Prow", // name, not slug
 			expectedResult: nil,
 		},
 	}
@@ -124,8 +125,9 @@ func TestGetComponent(t *testing.T) {
 				assert.Nil(t, result)
 			} else {
 				assert.NotNil(t, result)
-				assert.Equal(t, tt.expectedResult.Name, result.Name)
-				assert.Equal(t, tt.expectedResult.Description, result.Description)
+				if diff := cmp.Diff(*tt.expectedResult, *result); diff != "" {
+					t.Errorf("getComponent mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
