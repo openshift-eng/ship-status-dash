@@ -63,14 +63,14 @@ const EndOutage: React.FC<EndOutageProps> = ({ outage, onEndSuccess, onError }) 
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`Failed to end outage: ${response.statusText}`)
+          throw new Error(`Failed to resolve outage: ${response.statusText}`)
         }
-        setSnackbarMessage('Outage ended successfully')
+        setSnackbarMessage('Outage resolved successfully')
         setSnackbarOpen(true)
         onEndSuccess()
       })
       .catch((err) => {
-        onError(err instanceof Error ? err.message : 'Failed to end outage')
+        onError(err instanceof Error ? err.message : 'Failed to resolve outage')
       })
       .finally(() => {
         setEndDialogOpen(false)
@@ -83,13 +83,13 @@ const EndOutage: React.FC<EndOutageProps> = ({ outage, onEndSuccess, onError }) 
 
   return (
     <>
-      <Tooltip title="End outage" arrow>
+      <Tooltip title="Resolve outage" arrow>
         <Button size="small" color="primary" onClick={handleEndClick} startIcon={<Stop />}>
-          End Outage
+          Resolve
         </Button>
       </Tooltip>
       <StyledDialog open={endDialogOpen} onClose={handleEndCancel} maxWidth="sm" fullWidth>
-        <DialogTitle>End Outage</DialogTitle>
+        <DialogTitle>Resolve</DialogTitle>
         <DialogContent>
           <Typography>
             Configure the end time for this outage:
@@ -121,7 +121,7 @@ const EndOutage: React.FC<EndOutageProps> = ({ outage, onEndSuccess, onError }) 
         <DialogActions>
           <Button onClick={handleEndCancel}>Cancel</Button>
           <Button onClick={handleEndConfirm} color="primary" variant="contained">
-            End Outage
+            Resolve
           </Button>
         </DialogActions>
       </StyledDialog>
