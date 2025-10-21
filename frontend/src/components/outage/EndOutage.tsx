@@ -14,9 +14,9 @@ import {
 } from '@mui/material'
 import React, { useState } from 'react'
 
-import type { Outage } from '../types'
-import { modifyOutageEndpoint } from '../utils/endpoints'
-import { getCurrentLocalTime } from '../utils/helpers'
+import type { Outage } from '../../types'
+import { modifyOutageEndpoint } from '../../utils/endpoints'
+import { getCurrentLocalTime } from '../../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {

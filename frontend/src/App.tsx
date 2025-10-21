@@ -4,10 +4,10 @@ import { StylesProvider } from '@mui/styles'
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 
-import ComponentDetailsPage from './components/ComponentDetailsPage'
+import ComponentDetailsPage from './components/component/ComponentDetailsPage'
 import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
-import SubComponentDetails from './components/SubComponentDetails'
+import SubComponentDetails from './components/sub-component/SubComponentDetails'
 
 const theme = createTheme()
 

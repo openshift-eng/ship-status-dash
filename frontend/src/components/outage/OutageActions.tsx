@@ -5,7 +5,7 @@ import React, { useState } from 'react'
 import DeleteOutage from './DeleteOutage'
 import EndOutage from './EndOutage'
 import UpsertOutageModal from './UpsertOutageModal'
-import type { Outage } from '../types'
+import type { Outage } from '../../types'
 
 interface OutageActionsProps {
   outage: Outage

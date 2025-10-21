@@ -3,7 +3,7 @@ import { Button, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
 import OutageDetailsModal from './OutageDetailsModal'
-import type { Outage } from '../types'
+import type { Outage } from '../../types'
 
 interface OutageDetailsButtonProps {
   outage: Outage

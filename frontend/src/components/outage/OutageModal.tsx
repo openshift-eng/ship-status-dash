@@ -15,9 +15,9 @@ import {
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { StatusChip, SeverityChip } from './StatusColors'
-import type { SubComponent, Outage } from '../types'
-import { relativeTime } from '../utils/helpers'
+import type { SubComponent, Outage } from '../../types'
+import { relativeTime } from '../../utils/helpers'
+import { StatusChip, SeverityChip } from '../StatusColors'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {

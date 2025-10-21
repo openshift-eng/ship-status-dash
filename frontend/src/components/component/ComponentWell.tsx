@@ -2,10 +2,10 @@ import { Box, Card, CardContent, Typography, Button, styled } from '@mui/materia
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import type { Component, SubComponent } from '../types'
-import { StatusChip } from './StatusColors'
-import SubComponentCard from './SubComponentCard'
-import { getStatusBackgroundColor } from '../utils/helpers'
+import type { Component, SubComponent } from '../../types'
+import { getStatusBackgroundColor } from '../../utils/helpers'
+import { StatusChip } from '../StatusColors'
+import SubComponentCard from '../sub-component/SubComponentCard'
 
 const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
   const color = getStatusBackgroundColor(theme, status)

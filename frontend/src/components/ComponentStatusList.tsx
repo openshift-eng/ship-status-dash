@@ -2,7 +2,7 @@ import { Box, CircularProgress, Alert, Container, styled, Typography } from '@mu
 import React, { useState, useEffect } from 'react'
 
 import type { Component } from '../types'
-import ComponentWell from './ComponentWell'
+import ComponentWell from './component/ComponentWell'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
 
 const StyledContainer = styled(Container)(({ theme }) => ({

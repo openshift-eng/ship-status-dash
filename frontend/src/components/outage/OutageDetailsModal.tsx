@@ -11,8 +11,8 @@ import {
 } from '@mui/material'
 import React from 'react'
 
-import type { Outage } from '../types'
-import { relativeTime, relativeDuration } from '../utils/helpers'
+import type { Outage } from '../../types'
+import { relativeTime, relativeDuration } from '../../utils/helpers'
 
 interface OutageDetailsModalProps {
   open: boolean

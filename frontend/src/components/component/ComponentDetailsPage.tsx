@@ -15,11 +15,11 @@ import {
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
-import type { Component } from '../types'
-import { StatusChip } from './StatusColors'
-import SubComponentCard from './SubComponentCard'
-import { getComponentsEndpoint, getComponentStatusEndpoint } from '../utils/endpoints'
-import { getStatusBackgroundColor } from '../utils/helpers'
+import type { Component } from '../../types'
+import { getComponentsEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
+import { getStatusBackgroundColor } from '../../utils/helpers'
+import { StatusChip } from '../StatusColors'
+import SubComponentCard from '../sub-component/SubComponentCard'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),

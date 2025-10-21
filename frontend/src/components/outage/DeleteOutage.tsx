@@ -13,8 +13,8 @@ import {
 } from '@mui/material'
 import React, { useState } from 'react'
 
-import type { Outage } from '../types'
-import { modifyOutageEndpoint } from '../utils/endpoints'
+import type { Outage } from '../../types'
+import { modifyOutageEndpoint } from '../../utils/endpoints'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {

@@ -15,13 +15,13 @@ import type { GridColDef } from '@mui/x-data-grid'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import OutageActions from './OutageActions'
-import OutageDetailsButton from './OutageDetailsButton'
-import { SeverityChip } from './StatusColors'
-import UpsertOutageModal from './UpsertOutageModal'
-import type { Outage } from '../types'
-import { createOutageEndpoint } from '../utils/endpoints'
-import { relativeTime, getStatusBackgroundColor } from '../utils/helpers'
+import type { Outage } from '../../types'
+import { createOutageEndpoint } from '../../utils/endpoints'
+import { relativeTime, getStatusBackgroundColor } from '../../utils/helpers'
+import OutageActions from '../outage/OutageActions'
+import OutageDetailsButton from '../outage/OutageDetailsButton'
+import UpsertOutageModal from '../outage/UpsertOutageModal'
+import { SeverityChip } from '../StatusColors'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   display: 'flex',
