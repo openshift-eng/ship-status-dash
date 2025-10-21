@@ -11,11 +11,13 @@ export const getStatusBackgroundColor = (theme: Theme, status: string) => {
     case 'Suspected':
       return theme.palette.info.light
     case 'Partial':
-      return '#FFB366' // More vibrant orange
+      return theme.palette.mode === 'dark'
+        ? theme.palette.warning.dark
+        : theme.palette.warning.light
     case 'Unknown':
-      return theme.palette.grey[300]
+      return theme.palette.mode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[300]
     default:
-      return theme.palette.grey[100]
+      return theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]
   }
 }
 
@@ -30,11 +32,13 @@ export const getStatusChipColor = (theme: Theme, status: string) => {
     case 'Suspected':
       return theme.palette.info.main
     case 'Partial':
-      return '#FF8C00' // Vibrant orange for better contrast
+      return theme.palette.mode === 'dark'
+        ? theme.palette.warning.light
+        : theme.palette.warning.dark
     case 'Unknown':
-      return theme.palette.grey[600]
+      return theme.palette.mode === 'dark' ? theme.palette.grey[400] : theme.palette.grey[600]
     default:
-      return theme.palette.grey[500]
+      return theme.palette.mode === 'dark' ? theme.palette.grey[300] : theme.palette.grey[500]
   }
 }
 

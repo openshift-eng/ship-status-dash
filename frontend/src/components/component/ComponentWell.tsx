@@ -53,10 +53,13 @@ const DetailsButton = styled(Button)(({ theme }) => ({
   borderRadius: theme.spacing(1),
   textTransform: 'none',
   fontWeight: 500,
-  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  backgroundColor:
+    theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.9)',
+  color: theme.palette.text.primary,
   backdropFilter: 'blur(4px)',
   '&:hover': {
-    backgroundColor: 'rgba(255, 255, 255, 1)',
+    backgroundColor:
+      theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 1)',
   },
 }))
 

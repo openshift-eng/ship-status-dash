@@ -1,8 +1,14 @@
-import { AppBar, Toolbar, Box } from '@mui/material'
+import { Brightness4, Brightness7 } from '@mui/icons-material'
+import { AppBar, Toolbar, Box, IconButton, Tooltip } from '@mui/material'
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onToggleTheme: () => void
+  isDarkMode: boolean
+}
+
+const Header: React.FC<HeaderProps> = ({ onToggleTheme, isDarkMode }) => {
   const navigate = useNavigate()
 
   const handleLogoClick = () => {
@@ -13,12 +19,12 @@ const Header: React.FC = () => {
     <AppBar
       position="sticky"
       sx={{
-        backgroundColor: 'white',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        backgroundColor: 'background.paper',
+        boxShadow: 1,
         zIndex: 1000,
       }}
     >
-      <Toolbar>
+      <Toolbar sx={{ justifyContent: 'space-between' }}>
         <Box
           component="img"
           src="/logo.svg"
@@ -34,6 +40,21 @@ const Header: React.FC = () => {
             },
           }}
         />
+
+        <Tooltip title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <IconButton
+            onClick={onToggleTheme}
+            sx={{
+              color: 'text.primary',
+              backgroundColor: 'action.hover',
+              '&:hover': {
+                backgroundColor: 'action.selected',
+              },
+            }}
+          >
+            {isDarkMode ? <Brightness7 /> : <Brightness4 />}
+          </IconButton>
+        </Tooltip>
       </Toolbar>
     </AppBar>
   )

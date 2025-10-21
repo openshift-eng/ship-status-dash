@@ -1,7 +1,7 @@
 import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { StylesProvider } from '@mui/styles'
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 
 import ComponentDetailsPage from './components/component/ComponentDetailsPage'
@@ -9,15 +9,42 @@ import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 
-const theme = createTheme()
+// Create light and dark themes
+const lightTheme = createTheme({
+  palette: {
+    mode: 'light',
+  },
+})
+
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+  },
+})
 
 function App() {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme')
+    if (saved) return saved === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  const theme = useMemo(() => {
+    return isDarkMode ? darkTheme : lightTheme
+  }, [isDarkMode])
+
+  const toggleTheme = () => {
+    const newMode = !isDarkMode
+    setIsDarkMode(newMode)
+    localStorage.setItem('theme', newMode ? 'dark' : 'light')
+  }
+
   return (
     <StylesProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <Header />
+          <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
           <Routes>
             <Route path="/" element={<ComponentStatusList />} />
             <Route path="/:componentName" element={<ComponentDetailsPage />} />

@@ -47,22 +47,23 @@ const StyledPaper = styled(Paper)<{ status?: string }>(({ theme, status }) => ({
 }))
 
 const StyledButton = styled(Button)(({ theme }) => ({
-  backgroundColor: 'white',
+  backgroundColor: theme.palette.mode === 'dark' ? theme.palette.grey[800] : 'white',
   color: theme.palette.text.primary,
   '&:hover': {
-    backgroundColor: theme.palette.grey[100],
+    backgroundColor:
+      theme.palette.mode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[100],
   },
 }))
 
-const StyledDataGrid = styled(DataGrid)(() => ({
+const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   '& .MuiDataGrid-cell': {
-    borderBottom: '1px solid #e0e0e0',
+    borderBottom: `1px solid ${theme.palette.divider}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   '& .MuiDataGrid-row:hover': {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.palette.action.hover,
   },
 }))
 

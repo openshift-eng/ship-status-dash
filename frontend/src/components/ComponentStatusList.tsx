@@ -21,6 +21,7 @@ const TitleSection = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(4),
   textAlign: 'center',
   borderBottom: `2px solid ${theme.palette.divider}`,
+  backgroundColor: theme.palette.background.default,
 }))
 
 const TitleContainer = styled(Box)(({ theme }) => ({
