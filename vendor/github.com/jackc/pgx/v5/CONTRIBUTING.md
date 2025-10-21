@@ -95,7 +95,6 @@ cp localhost.crt $POSTGRESQL_DATA_DIR/server.crt
 cd ..
 ```
 
-
 Start the new cluster. This will be necessary whenever you are running pgx tests.
 
 ```

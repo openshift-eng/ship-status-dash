@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"ship-status-dash/pkg/types"
 	"strconv"
 	"time"
@@ -49,6 +50,21 @@ func (h *Handlers) getComponent(componentName string) *types.Component {
 		}
 	}
 	return nil
+}
+
+// getActiveUser retrieves the active user from the request headers.
+// Returns the user from X-Forwarded-User header, or "developer" if DEV_MODE=1 and no header is present.
+// Returns an error if no user is available and DEV_MODE is not set.
+func (h *Handlers) getActiveUser(r *http.Request) (string, error) {
+	user := r.Header.Get("X-Forwarded-User")
+	if user != "" {
+		return user, nil
+	}
+	if os.Getenv("DEV_MODE") == "1" {
+		return "developer", nil
+	}
+
+	return "", fmt.Errorf("no active user found in X-Forwarded-User header and DEV_MODE is not set")
 }
 
 func (h *Handlers) validateOutage(outage *types.Outage) (string, bool) {
@@ -162,6 +178,12 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
 
+	activeUser, err := h.getActiveUser(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	component := h.getComponent(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
@@ -181,6 +203,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 
 	outage.ComponentName = componentName
 	outage.SubComponentName = subComponentName
+	outage.CreatedBy = activeUser
 
 	if message, valid := h.validateOutage(&outage); !valid {
 		respondWithError(w, http.StatusBadRequest, message)
@@ -208,13 +231,15 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 
 // UpdateOutageRequest represents the fields that can be updated in a PATCH request.
 type UpdateOutageRequest struct {
-	Severity    *string    `json:"severity,omitempty"`
-	StartTime   *time.Time `json:"start_time,omitempty"`
-	EndTime     *time.Time `json:"end_time,omitempty"`
-	Description *string    `json:"description,omitempty"`
-	ResolvedBy  *string    `json:"resolved_by,omitempty"`
-	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
-	TriageNotes *string    `json:"triage_notes,omitempty"`
+	Severity    *string       `json:"severity,omitempty"`
+	StartTime   *time.Time    `json:"start_time,omitempty"`
+	EndTime     *sql.NullTime `json:"end_time,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	// ResolvedBy should not be passed by the frontend, this is only for use via the component-monitor
+	// the value will be obtained from the active user header otherwise
+	ResolvedBy  *string `json:"resolved_by,omitempty"`
+	Confirmed   *bool   `json:"confirmed,omitempty"`
+	TriageNotes *string `json:"triage_notes,omitempty"`
 }
 
 // UpdateOutageJSON updates an existing outage with the provided fields.
@@ -223,6 +248,12 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
 	outageIDStr := vars["outageId"]
+
+	activeUser, err := h.getActiveUser(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
 	if err != nil {
@@ -234,6 +265,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		"outage_id":     outageID,
 		"component":     componentName,
 		"sub_component": subComponentName,
+		"active_user":   activeUser,
 	})
 	logger.Info("Updating outage")
 
@@ -276,8 +308,9 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	if updateReq.StartTime != nil {
 		outage.StartTime = *updateReq.StartTime
 	}
-	if updateReq.EndTime != nil {
-		outage.EndTime = sql.NullTime{Time: *updateReq.EndTime, Valid: true}
+	if updateReq.EndTime != nil && updateReq.EndTime.Time != outage.EndTime.Time {
+		outage.EndTime = *updateReq.EndTime
+		outage.ResolvedBy = &activeUser
 	}
 	if updateReq.Description != nil {
 		outage.Description = *updateReq.Description
@@ -285,8 +318,14 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	if updateReq.ResolvedBy != nil {
 		outage.ResolvedBy = updateReq.ResolvedBy
 	}
-	if updateReq.ConfirmedAt != nil {
-		outage.ConfirmedAt = sql.NullTime{Time: *updateReq.ConfirmedAt, Valid: true}
+	if updateReq.Confirmed != nil {
+		if *updateReq.Confirmed && !outage.ConfirmedAt.Valid {
+			outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
+			outage.ConfirmedBy = &activeUser
+		} else if !*updateReq.Confirmed && outage.ConfirmedAt.Valid {
+			outage.ConfirmedAt = sql.NullTime{Valid: false}
+			outage.ConfirmedBy = nil
+		}
 	}
 	if updateReq.TriageNotes != nil {
 		outage.TriageNotes = updateReq.TriageNotes

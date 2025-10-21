@@ -16,9 +16,10 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { SeverityChip } from './StatusColors'
-import CreateOutageModal from './CreateOutageModal'
+import UpsertOutageModal from './UpsertOutageModal'
+import OutageActions from './OutageActions'
 import type { Outage } from '../types'
-import { outageEndpoint } from '../utils/endpoints'
+import { createOutageEndpoint } from '../utils/endpoints'
 import { relativeTime, getStatusBackgroundColor } from '../utils/helpers'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
@@ -84,7 +85,7 @@ const SubComponentDetails: React.FC = () => {
     setLoading(true)
     setError(null)
 
-    fetch(outageEndpoint(componentName, subComponentName))
+    fetch(createOutageEndpoint(componentName, subComponentName))
       .then((response) => {
         if (!response.ok) {
           setError(`Failed to fetch outages: ${response.statusText}`)
@@ -246,6 +247,17 @@ const SubComponentDetails: React.FC = () => {
         </Typography>
       ),
     },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 100,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const outage = params.row as Outage
+        return <OutageActions outage={outage} onSuccess={handleOutageAction} onError={setError} />
+      },
+    },
   ]
 
   // Sort outages: active first, then by start time descending
@@ -321,7 +333,7 @@ const SubComponentDetails: React.FC = () => {
         )}
       </StyledPaper>
 
-      <CreateOutageModal
+      <UpsertOutageModal
         open={createOutageModalOpen}
         onClose={() => setCreateOutageModalOpen(false)}
         onSuccess={handleOutageAction}

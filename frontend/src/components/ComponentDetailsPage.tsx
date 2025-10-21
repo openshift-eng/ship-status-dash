@@ -241,9 +241,7 @@ const ComponentDetailsPage: React.FC = () => {
           </ComponentHeader>
 
           <SubComponentsSection>
-            <SubComponentsTitle>
-              Sub-components
-            </SubComponentsTitle>
+            <SubComponentsTitle>Sub-components</SubComponentsTitle>
             <SubComponentsGrid>
               {component.sub_components.map((subComponent) => (
                 <SubComponentCard

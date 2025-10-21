@@ -5,7 +5,7 @@ routes.route.openshift.io:
   Capability: ""
   Category: ""
   FeatureGates:
-  - ExternalRouteCertificate
+    - ExternalRouteCertificate
   FilenameOperatorName: ""
   FilenameOperatorOrdering: ""
   FilenameRunLevel: ""
@@ -15,20 +15,19 @@ routes.route.openshift.io:
   Labels: {}
   PluralName: routes
   PrinterColumns:
-  - jsonPath: .status.ingress[0].host
-    name: Host
-    type: string
-  - jsonPath: .status.ingress[0].conditions[?(@.type=="Admitted")].status
-    name: Admitted
-    type: string
-  - jsonPath: .spec.to.name
-    name: Service
-    type: string
-  - jsonPath: .spec.tls.type
-    name: TLS
-    type: string
+    - jsonPath: .status.ingress[0].host
+      name: Host
+      type: string
+    - jsonPath: .status.ingress[0].conditions[?(@.type=="Admitted")].status
+      name: Admitted
+      type: string
+    - jsonPath: .spec.to.name
+      name: Service
+      type: string
+    - jsonPath: .spec.tls.type
+      name: TLS
+      type: string
   Scope: Namespaced
   ShortNames: null
   TopLevelFeatureGates: []
   Version: v1
-

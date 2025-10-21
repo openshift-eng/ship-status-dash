@@ -166,7 +166,7 @@ const OutageModal: React.FC<OutageModalProps> = ({
           </DialogContent>
           <DialogActions>
             <Button onClick={handleViewAllOutages} variant="outlined">
-              View All Outages
+              More details
             </Button>
             <Button onClick={onClose}>Close</Button>
           </DialogActions>

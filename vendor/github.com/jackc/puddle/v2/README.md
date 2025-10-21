@@ -13,11 +13,11 @@ own.
 
 ## Features
 
-* Acquire cancellation via context standard library
-* Statistics API for monitoring pool pressure
-* No dependencies outside of standard library and golang.org/x/sync
-* High performance
-* 100% test coverage of reachable code
+- Acquire cancellation via context standard library
+- Statistics API for monitoring pool pressure
+- No dependencies outside of standard library and golang.org/x/sync
+- High performance
+- 100% test coverage of reachable code
 
 ## Example Usage
 
@@ -67,9 +67,9 @@ func main() {
 
 Puddle is stable and feature complete.
 
-* Bug reports and fixes are welcome.
-* New features will usually not be accepted if they can be feasibly implemented in a wrapper.
-* Performance optimizations will usually not be accepted unless the performance issue rises to the level of a bug.
+- Bug reports and fixes are welcome.
+- New features will usually not be accepted if they can be feasibly implemented in a wrapper.
+- Performance optimizations will usually not be accepted unless the performance issue rises to the level of a bug.
 
 ## Supported Go Versions
 

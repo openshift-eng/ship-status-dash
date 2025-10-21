@@ -12,5 +12,12 @@ export const getSubComponentStatusEndpoint = (componentName: string, subComponen
 export const getComponentStatusEndpoint = (componentName: string) =>
   `${getApiBaseUrl()}/api/status/${slugify(componentName)}`
 
-export const outageEndpoint = (componentName: string, subComponentName: string) =>
+export const createOutageEndpoint = (componentName: string, subComponentName: string) =>
   `${getApiBaseUrl()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages`
+
+export const modifyOutageEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+) =>
+  `${getApiBaseUrl()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}`

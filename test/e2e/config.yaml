@@ -14,4 +14,3 @@ components:
         requires_confirmation: false
     owners:
       - rover_group: dptp
-
