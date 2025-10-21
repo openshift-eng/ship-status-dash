@@ -27,7 +27,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleTheme, isDarkMode }) => {
       <Toolbar sx={{ justifyContent: 'space-between' }}>
         <Box
           component="img"
-          src="/logo.svg"
+          src={isDarkMode ? '/logo-dark.svg' : '/logo.svg'}
           alt="Logo"
           onClick={handleLogoClick}
           sx={{

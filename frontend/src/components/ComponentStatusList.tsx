@@ -57,6 +57,25 @@ const ComponentStatusList: React.FC = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme')
+    return saved === 'dark'
+  })
+
+  useEffect(() => {
+    // Listen for theme changes
+    const handleThemeChange = () => {
+      const saved = localStorage.getItem('theme')
+      setIsDarkMode(saved === 'dark')
+    }
+
+    window.addEventListener('storage', handleThemeChange)
+    window.addEventListener('themeChanged', handleThemeChange)
+    return () => {
+      window.removeEventListener('storage', handleThemeChange)
+      window.removeEventListener('themeChanged', handleThemeChange)
+    }
+  }, [])
 
   useEffect(() => {
     // Fetch components configuration and their statuses
@@ -112,7 +131,7 @@ const ComponentStatusList: React.FC = () => {
     <StyledContainer maxWidth="lg">
       <TitleSection>
         <TitleContainer>
-          <Logo src="/logo.svg" alt="SHIP Logo" />
+          <Logo src={isDarkMode ? '/logo-dark.svg' : '/logo.svg'} alt="SHIP Logo" />
         </TitleContainer>
         <Subtitle>Real-time monitoring of system components and availability</Subtitle>
       </TitleSection>

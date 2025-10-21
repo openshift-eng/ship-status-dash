@@ -37,6 +37,8 @@ function App() {
     const newMode = !isDarkMode
     setIsDarkMode(newMode)
     localStorage.setItem('theme', newMode ? 'dark' : 'light')
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('themeChanged'))
   }
 
   return (
