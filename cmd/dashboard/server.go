@@ -56,7 +56,7 @@ func (s *Server) setupRoutes() http.Handler {
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
-		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User"}),
 		handlers.AllowCredentials(),
 	)(router)
 
