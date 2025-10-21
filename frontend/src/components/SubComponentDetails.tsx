@@ -225,29 +225,6 @@ const SubComponentDetails: React.FC = () => {
       },
     },
     {
-      field: 'discovered_from',
-      headerName: 'Discovered By',
-      width: 120,
-      renderCell: (params) => <Typography variant="body2">{params.value || 'Unknown'}</Typography>,
-    },
-    {
-      field: 'resolved_by',
-      headerName: 'Resolved By',
-      width: 120,
-      renderCell: (params) => <Typography variant="body2">{params.value || '-'}</Typography>,
-    },
-    {
-      field: 'triage_notes',
-      headerName: 'Triage Notes',
-      flex: 1,
-      minWidth: 150,
-      renderCell: (params) => (
-        <Typography variant="body2" noWrap title={params.value || ''}>
-          {params.value || '-'}
-        </Typography>
-      ),
-    },
-    {
       field: 'actions',
       headerName: 'Actions',
       width: 100,
