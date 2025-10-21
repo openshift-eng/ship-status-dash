@@ -11,8 +11,8 @@ import {
 } from '@mui/material'
 import React from 'react'
 
-import { relativeTime, relativeDuration } from '../utils/helpers'
 import type { Outage } from '../types'
+import { relativeTime, relativeDuration } from '../utils/helpers'
 
 interface OutageDetailsModalProps {
   open: boolean
@@ -59,11 +59,7 @@ const OutageDetailsModal: React.FC<OutageDetailsModalProps> = ({ open, onClose, 
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={2}>
           <Typography variant="h6">Outage Details</Typography>
-          <Chip
-            label={outage.severity}
-            color={getSeverityColor(outage.severity)}
-            size="small"
-          />
+          <Chip label={outage.severity} color={getSeverityColor(outage.severity)} size="small" />
         </Box>
       </DialogTitle>
 
@@ -126,9 +122,7 @@ const OutageDetailsModal: React.FC<OutageDetailsModalProps> = ({ open, onClose, 
                 <Typography variant="body2" color="text.secondary">
                   End Time
                 </Typography>
-                <Typography variant="body1">
-                  {formatNullableDateTime(outage.end_time)}
-                </Typography>
+                <Typography variant="body1">{formatNullableDateTime(outage.end_time)}</Typography>
               </Box>
               <Box>
                 <Typography variant="body2" color="text.secondary">

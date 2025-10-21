@@ -26,11 +26,7 @@ const OutageDetailsButton: React.FC<OutageDetailsButtonProps> = ({ outage }) => 
         <Button size="small" onClick={handleDetailsClick} startIcon={<Visibility />}></Button>
       </Tooltip>
 
-      <OutageDetailsModal
-        open={detailsDialogOpen}
-        onClose={handleDetailsClose}
-        outage={outage}
-      />
+      <OutageDetailsModal open={detailsDialogOpen} onClose={handleDetailsClose} outage={outage} />
     </>
   )
 }

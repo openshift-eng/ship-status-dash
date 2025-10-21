@@ -18,9 +18,9 @@ import {
 } from '@mui/material'
 import React, { useState, useEffect } from 'react'
 
+import type { Outage } from '../types'
 import { createOutageEndpoint, modifyOutageEndpoint } from '../utils/endpoints'
 import { getCurrentLocalTime, formatDateForDateTimeLocal } from '../utils/helpers'
-import type { Outage } from '../types'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -118,6 +118,7 @@ const UpsertOutageModal: React.FC<UpsertOutageModalProps> = ({
       }
     }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleSelectChange = (field: keyof OutageFormData) => (event: any) => {
     setFormData((prev) => ({
       ...prev,
@@ -168,7 +169,7 @@ const UpsertOutageModal: React.FC<UpsertOutageModalProps> = ({
     setLoading(true)
     setError(null)
 
-    const requestData: any = {
+    const requestData: Record<string, unknown> = {
       severity: formData.severity,
       description: formData.description || undefined,
       start_time: new Date(formData.start_time).toISOString(),

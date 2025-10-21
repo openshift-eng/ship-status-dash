@@ -40,19 +40,6 @@ const Logo = styled('img')(({ theme }) => ({
   },
 }))
 
-const MainTitle = styled(Typography)(({ theme }) => ({
-  fontWeight: 600,
-  fontSize: '2rem',
-  marginBottom: 0,
-  color: theme.palette.text.primary,
-  [theme.breakpoints.down('md')]: {
-    fontSize: '1.75rem',
-  },
-  [theme.breakpoints.down('sm')]: {
-    fontSize: '1.5rem',
-  },
-}))
-
 const Subtitle = styled(Typography)(({ theme }) => ({
   fontSize: '1rem',
   color: theme.palette.text.secondary,

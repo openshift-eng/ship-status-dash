@@ -14,9 +14,9 @@ import {
 } from '@mui/material'
 import React, { useState } from 'react'
 
+import type { Outage } from '../types'
 import { modifyOutageEndpoint } from '../utils/endpoints'
 import { getCurrentLocalTime } from '../utils/helpers'
-import type { Outage } from '../types'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -91,9 +91,7 @@ const EndOutage: React.FC<EndOutageProps> = ({ outage, onEndSuccess, onError }) 
       <StyledDialog open={endDialogOpen} onClose={handleEndCancel} maxWidth="sm" fullWidth>
         <DialogTitle>Resolve</DialogTitle>
         <DialogContent>
-          <Typography>
-            Configure the end time for this outage:
-          </Typography>
+          <Typography>Configure the end time for this outage:</Typography>
           <Box sx={{ mt: 2 }}>
             <TextField
               label="End Time"

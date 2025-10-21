@@ -1,10 +1,10 @@
-import { MoreVert, Edit, Stop } from '@mui/icons-material'
+import { MoreVert, Edit } from '@mui/icons-material'
 import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
-import UpsertOutageModal from './UpsertOutageModal'
 import DeleteOutage from './DeleteOutage'
 import EndOutage from './EndOutage'
+import UpsertOutageModal from './UpsertOutageModal'
 import type { Outage } from '../types'
 
 interface OutageActionsProps {
@@ -79,7 +79,6 @@ const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onErro
         subComponentName={outage.sub_component_name}
         outage={outage}
       />
-
     </>
   )
 }

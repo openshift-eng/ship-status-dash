@@ -15,10 +15,10 @@ import type { GridColDef } from '@mui/x-data-grid'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { SeverityChip } from './StatusColors'
-import UpsertOutageModal from './UpsertOutageModal'
 import OutageActions from './OutageActions'
 import OutageDetailsButton from './OutageDetailsButton'
+import { SeverityChip } from './StatusColors'
+import UpsertOutageModal from './UpsertOutageModal'
 import type { Outage } from '../types'
 import { createOutageEndpoint } from '../utils/endpoints'
 import { relativeTime, getStatusBackgroundColor } from '../utils/helpers'
@@ -54,7 +54,7 @@ const StyledButton = styled(Button)(({ theme }) => ({
   },
 }))
 
-const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
+const StyledDataGrid = styled(DataGrid)(() => ({
   '& .MuiDataGrid-cell': {
     borderBottom: '1px solid #e0e0e0',
     display: 'flex',
