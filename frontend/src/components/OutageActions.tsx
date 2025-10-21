@@ -1,10 +1,10 @@
-import { MoreVert, Edit, Visibility } from '@mui/icons-material'
+import { MoreVert, Edit, Stop } from '@mui/icons-material'
 import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
 import UpsertOutageModal from './UpsertOutageModal'
 import DeleteOutage from './DeleteOutage'
-import OutageDetailsModal from './OutageDetailsModal'
+import EndOutage from './EndOutage'
 import type { Outage } from '../types'
 
 interface OutageActionsProps {
@@ -16,7 +16,6 @@ interface OutageActionsProps {
 const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onError }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -33,15 +32,6 @@ const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onErro
 
   const handleUpdateClose = () => {
     setUpdateDialogOpen(false)
-  }
-
-  const handleDetailsClick = () => {
-    setDetailsDialogOpen(true)
-    handleMenuClose()
-  }
-
-  const handleDetailsClose = () => {
-    setDetailsDialogOpen(false)
   }
 
   return (
@@ -65,18 +55,17 @@ const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onErro
           horizontal: 'right',
         }}
       >
-        <MenuItem onClick={handleDetailsClick}>
-          <ListItemIcon>
-            <Visibility fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Full Details</ListItemText>
-        </MenuItem>
         <MenuItem onClick={handleUpdateClick}>
           <ListItemIcon>
             <Edit fontSize="small" />
           </ListItemIcon>
           <ListItemText>Update</ListItemText>
         </MenuItem>
+        {!outage.end_time.Valid && (
+          <MenuItem>
+            <EndOutage outage={outage} onEndSuccess={onSuccess} onError={onError} />
+          </MenuItem>
+        )}
         <MenuItem>
           <DeleteOutage outage={outage} onDeleteSuccess={onSuccess} onError={onError} />
         </MenuItem>
@@ -91,11 +80,6 @@ const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onErro
         outage={outage}
       />
 
-      <OutageDetailsModal
-        open={detailsDialogOpen}
-        onClose={handleDetailsClose}
-        outage={outage}
-      />
     </>
   )
 }

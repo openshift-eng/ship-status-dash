@@ -18,6 +18,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { SeverityChip } from './StatusColors'
 import UpsertOutageModal from './UpsertOutageModal'
 import OutageActions from './OutageActions'
+import OutageDetailsButton from './OutageDetailsButton'
 import type { Outage } from '../types'
 import { createOutageEndpoint } from '../utils/endpoints'
 import { relativeTime, getStatusBackgroundColor } from '../utils/helpers'
@@ -222,6 +223,17 @@ const SubComponentDetails: React.FC = () => {
             Ongoing
           </Typography>
         )
+      },
+    },
+    {
+      field: 'details',
+      headerName: 'Details',
+      width: 100,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const outage = params.row as Outage
+        return <OutageDetailsButton outage={outage} />
       },
     },
     {
