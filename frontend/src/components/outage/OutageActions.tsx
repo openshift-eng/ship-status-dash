@@ -2,6 +2,7 @@ import { MoreVert, Edit } from '@mui/icons-material'
 import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
+import ConfirmOutage from './ConfirmOutage'
 import DeleteOutage from './DeleteOutage'
 import EndOutage from './EndOutage'
 import UpsertOutageModal from './UpsertOutageModal'
@@ -61,6 +62,11 @@ const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onErro
           </ListItemIcon>
           <ListItemText>Update</ListItemText>
         </MenuItem>
+        {!outage.confirmed_at.Valid && (
+          <MenuItem>
+            <ConfirmOutage outage={outage} onConfirmSuccess={onSuccess} onError={onError} />
+          </MenuItem>
+        )}
         {!outage.end_time.Valid && (
           <MenuItem>
             <EndOutage outage={outage} onEndSuccess={onSuccess} onError={onError} />
