@@ -17,16 +17,33 @@ const LoadingBox = styled(Box)(() => ({
 }))
 
 const TitleSection = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(3, 0),
+  padding: theme.spacing(1, 0),
   marginBottom: theme.spacing(4),
   textAlign: 'center',
   borderBottom: `2px solid ${theme.palette.divider}`,
 }))
 
+const TitleContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: theme.spacing(1),
+  gap: theme.spacing(2),
+}))
+
+const Logo = styled('img')(({ theme }) => ({
+  height: '120px',
+  width: 'auto',
+  [theme.breakpoints.down('sm')]: {
+    height: '80px',
+  },
+}))
+
 const MainTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
   fontSize: '2rem',
-  marginBottom: theme.spacing(1),
+  marginBottom: 0,
   color: theme.palette.text.primary,
   [theme.breakpoints.down('md')]: {
     fontSize: '1.75rem',
@@ -106,7 +123,9 @@ const ComponentStatusList: React.FC = () => {
   return (
     <StyledContainer maxWidth="lg">
       <TitleSection>
-        <MainTitle>SHIP Status Dashboard</MainTitle>
+        <TitleContainer>
+          <Logo src="/logo.svg" alt="SHIP Logo" />
+        </TitleContainer>
         <Subtitle>Real-time monitoring of system components and availability</Subtitle>
       </TitleSection>
 
