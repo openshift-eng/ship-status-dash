@@ -16,7 +16,7 @@ const ConfirmOutage: React.FC<ConfirmOutageProps> = ({ outage, onConfirmSuccess,
 
   const handleConfirmClick = () => {
     setIsLoading(true)
-    
+
     fetch(modifyOutageEndpoint(outage.component_name, outage.sub_component_name, outage.id), {
       method: 'PATCH',
       headers: {
@@ -42,10 +42,10 @@ const ConfirmOutage: React.FC<ConfirmOutageProps> = ({ outage, onConfirmSuccess,
 
   return (
     <Tooltip title="Confirm outage" arrow>
-      <Button 
-        size="small" 
-        color="primary" 
-        onClick={handleConfirmClick} 
+      <Button
+        size="small"
+        color="primary"
+        onClick={handleConfirmClick}
         startIcon={<CheckCircle />}
         disabled={isLoading}
       >
