@@ -1,12 +1,12 @@
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Typography,
-  Box,
-  styled,
+    Box,
+    Button,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    styled,
+    Typography,
 } from '@mui/material'
 import type { ReactNode } from 'react'
 import React from 'react'
@@ -20,8 +20,10 @@ const StyledDialog = styled(Dialog)(({ theme }) => ({
 const OutageDetailsBox = styled(Box)(({ theme }) => ({
   marginTop: theme.spacing(2),
   padding: theme.spacing(2),
-  backgroundColor: theme.palette.grey[100],
+  backgroundColor:
+    theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100],
   borderRadius: theme.spacing(1),
+  border: `1px solid ${theme.palette.divider}`,
 }))
 
 interface ConfirmationModalProps {
