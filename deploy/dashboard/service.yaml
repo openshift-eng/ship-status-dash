@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: ship-status
+  labels:
+    app: dashboard
+spec:
+  selector:
+    app: dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

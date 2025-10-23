@@ -53,6 +53,9 @@ func (s *Server) setupRoutes() http.Handler {
 	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.GetSubComponentOutagesJSON).Methods("GET")
 	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods("GET")
 
+	// Serve static files (React frontend) - must be after API routes
+	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
+
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),

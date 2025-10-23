@@ -1,6 +1,11 @@
 import { slugify } from './slugify'
 
-const getApiBaseUrl = () => process.env.REACT_APP_API_BASE_URL
+const getApiBaseUrl = () => {
+  const baseUrl = process.env.REACT_APP_API_BASE_URL
+  // If REACT_APP_API_BASE_URL is set, use it (for local development)
+  // If not set, use relative URLs (for production where frontend and backend are served together)
+  return baseUrl || ''
+}
 
 export const getComponentsEndpoint = () => `${getApiBaseUrl()}/api/components`
 

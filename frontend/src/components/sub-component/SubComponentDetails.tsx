@@ -16,7 +16,11 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
-import { createOutageEndpoint, getComponentInfoEndpoint, getSubComponentStatusEndpoint } from '../../utils/endpoints'
+import {
+  createOutageEndpoint,
+  getComponentInfoEndpoint,
+  getSubComponentStatusEndpoint,
+} from '../../utils/endpoints'
 import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
@@ -78,7 +82,8 @@ const SubComponentDetails: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
   const [subComponentStatus, setSubComponentStatus] = useState<string>('Unknown')
-  const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] = useState<boolean>(false)
+  const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
+    useState<boolean>(false)
 
   const fetchData = () => {
     if (!componentName || !subComponentName) {
@@ -93,7 +98,7 @@ const SubComponentDetails: React.FC = () => {
     Promise.all([
       fetch(createOutageEndpoint(componentName, subComponentName)),
       fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
-      fetch(getComponentInfoEndpoint(componentName))
+      fetch(getComponentInfoEndpoint(componentName)),
     ])
       .then(([outagesResponse, statusResponse, componentResponse]) => {
         if (!outagesResponse.ok) {
@@ -108,7 +113,11 @@ const SubComponentDetails: React.FC = () => {
           setError(`Failed to fetch component: ${componentResponse.statusText}`)
           return
         }
-        return Promise.all([outagesResponse.json(), statusResponse.json(), componentResponse.json()])
+        return Promise.all([
+          outagesResponse.json(),
+          statusResponse.json(),
+          componentResponse.json(),
+        ])
       })
       .then((results) => {
         if (results) {
@@ -122,7 +131,8 @@ const SubComponentDetails: React.FC = () => {
           if (componentData) {
             // Set the confirmation requirement based on the subcomponent configuration
             const subComponent = componentData.sub_components.find(
-              (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponentName
+              (sub: { name: string; requires_confirmation: boolean }) =>
+                sub.name === subComponentName,
             )
             setSubComponentRequiresConfirmation(subComponent?.requires_confirmation || false)
           }
@@ -185,23 +195,27 @@ const SubComponentDetails: React.FC = () => {
         />
       ),
     },
-    ...(subComponentRequiresConfirmation ? [{
-      field: 'confirmation',
-      headerName: 'Confirmation',
-      width: 120,
-      sortable: false,
-      filterable: false,
-      renderCell: (params: GridRenderCellParams) => {
-        const outage = params.row as Outage
-        const isConfirmed = outage.confirmed_at.Valid
-        
-        return (
-          <Tooltip title={isConfirmed ? 'Confirmed' : 'Unconfirmed'} arrow>
-            {isConfirmed ? <CheckCircle color="success" /> : <Warning color="warning" />}
-          </Tooltip>
-        )
-      },
-    }] : []),
+    ...(subComponentRequiresConfirmation
+      ? [
+          {
+            field: 'confirmation',
+            headerName: 'Confirmation',
+            width: 120,
+            sortable: false,
+            filterable: false,
+            renderCell: (params: GridRenderCellParams) => {
+              const outage = params.row as Outage
+              const isConfirmed = outage.confirmed_at.Valid
+
+              return (
+                <Tooltip title={isConfirmed ? 'Confirmed' : 'Unconfirmed'} arrow>
+                  {isConfirmed ? <CheckCircle color="success" /> : <Warning color="warning" />}
+                </Tooltip>
+              )
+            },
+          },
+        ]
+      : []),
     {
       field: 'description',
       headerName: 'Description',

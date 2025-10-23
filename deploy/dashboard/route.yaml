@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: dashboard
+  namespace: ship-status
+  labels:
+    app: dashboard
+spec:
+  to:
+    kind: Service
+    name: dashboard
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -93,12 +93,12 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
   useEffect(() => {
     Promise.all([
       fetch(getSubComponentStatusEndpoint(componentName, subComponent.name)),
-      fetch(getComponentInfoEndpoint(componentName))
+      fetch(getComponentInfoEndpoint(componentName)),
     ])
       .then(([statusRes, componentRes]) => {
         return Promise.all([
           statusRes.json().catch(() => ({ status: 'Unknown', active_outages: [] })),
-          componentRes.json().catch(() => ({ sub_components: [] }))
+          componentRes.json().catch(() => ({ sub_components: [] })),
         ])
       })
       .then(([subStatus, componentData]) => {
@@ -107,10 +107,10 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
           status: subStatus.status,
           active_outages: subStatus.active_outages,
         })
-        
+
         // Check if this subcomponent requires confirmation
         const subComponentConfig = componentData.sub_components.find(
-          (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponent.name
+          (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponent.name,
         )
         setRequiresConfirmation(subComponentConfig?.requires_confirmation || false)
       })

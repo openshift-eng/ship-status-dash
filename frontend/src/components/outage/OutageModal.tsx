@@ -86,7 +86,6 @@ const OutageModal: React.FC<OutageModalProps> = ({
     return outage.confirmed_at.Valid
   }
 
-
   return (
     <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       {selectedSubComponent && (
