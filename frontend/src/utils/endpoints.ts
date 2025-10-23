@@ -4,6 +4,9 @@ const getApiBaseUrl = () => process.env.REACT_APP_API_BASE_URL
 
 export const getComponentsEndpoint = () => `${getApiBaseUrl()}/api/components`
 
+export const getComponentInfoEndpoint = (componentName: string) =>
+  `${getApiBaseUrl()}/api/components/${slugify(componentName)}`
+
 export const getOverallStatusEndpoint = () => `${getApiBaseUrl()}/api/status`
 
 export const getSubComponentStatusEndpoint = (componentName: string, subComponentName: string) =>

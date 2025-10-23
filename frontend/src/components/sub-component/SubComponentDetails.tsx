@@ -1,23 +1,23 @@
-import { CheckCircle, Error, ReportProblem } from '@mui/icons-material'
+import { CheckCircle, Error, ReportProblem, Warning } from '@mui/icons-material'
 import {
-  Box,
-  Typography,
-  Button,
-  styled,
-  CircularProgress,
   Alert,
+  Box,
+  Button,
+  CircularProgress,
   Container,
   Paper,
+  styled,
   Tooltip,
+  Typography,
 } from '@mui/material'
+import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import type { GridColDef } from '@mui/x-data-grid'
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
-import { createOutageEndpoint } from '../../utils/endpoints'
-import { relativeTime, getStatusBackgroundColor } from '../../utils/helpers'
+import { createOutageEndpoint, getComponentInfoEndpoint, getSubComponentStatusEndpoint } from '../../utils/endpoints'
+import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
@@ -77,8 +77,10 @@ const SubComponentDetails: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
+  const [subComponentStatus, setSubComponentStatus] = useState<string>('Unknown')
+  const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] = useState<boolean>(false)
 
-  const fetchOutages = () => {
+  const fetchData = () => {
     if (!componentName || !subComponentName) {
       setError('Missing component or subcomponent name')
       return
@@ -87,21 +89,47 @@ const SubComponentDetails: React.FC = () => {
     setLoading(true)
     setError(null)
 
-    fetch(createOutageEndpoint(componentName, subComponentName))
-      .then((response) => {
-        if (!response.ok) {
-          setError(`Failed to fetch outages: ${response.statusText}`)
+    // Fetch outages, status, and component configuration in parallel
+    Promise.all([
+      fetch(createOutageEndpoint(componentName, subComponentName)),
+      fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
+      fetch(getComponentInfoEndpoint(componentName))
+    ])
+      .then(([outagesResponse, statusResponse, componentResponse]) => {
+        if (!outagesResponse.ok) {
+          setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
           return
         }
-        return response.json()
+        if (!statusResponse.ok) {
+          setError(`Failed to fetch status: ${statusResponse.statusText}`)
+          return
+        }
+        if (!componentResponse.ok) {
+          setError(`Failed to fetch component: ${componentResponse.statusText}`)
+          return
+        }
+        return Promise.all([outagesResponse.json(), statusResponse.json(), componentResponse.json()])
       })
-      .then((data) => {
-        if (data) {
-          setOutages(data)
+      .then((results) => {
+        if (results) {
+          const [outagesData, statusData, componentData] = results
+          if (outagesData) {
+            setOutages(outagesData)
+          }
+          if (statusData) {
+            setSubComponentStatus(statusData.status)
+          }
+          if (componentData) {
+            // Set the confirmation requirement based on the subcomponent configuration
+            const subComponent = componentData.sub_components.find(
+              (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponentName
+            )
+            setSubComponentRequiresConfirmation(subComponent?.requires_confirmation || false)
+          }
         }
       })
       .catch(() => {
-        setError('Failed to fetch outages')
+        setError('Failed to fetch data')
       })
       .finally(() => {
         setLoading(false)
@@ -109,7 +137,7 @@ const SubComponentDetails: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchOutages()
+    fetchData()
   }, [componentName, subComponentName])
 
   const formatDate = (dateString: string) => {
@@ -123,28 +151,8 @@ const SubComponentDetails: React.FC = () => {
     return 'Active'
   }
 
-  const getSubComponentStatus = () => {
-    const activeOutages = outages.filter((outage) => !outage.end_time.Valid)
-    if (activeOutages.length === 0) {
-      return 'Healthy'
-    }
-
-    // Check for highest severity among active outages
-    const hasDownOutage = activeOutages.some((outage) => outage.severity === 'Down')
-    if (hasDownOutage) {
-      return 'Down'
-    }
-
-    const hasDegradedOutage = activeOutages.some((outage) => outage.severity === 'Degraded')
-    if (hasDegradedOutage) {
-      return 'Degraded'
-    }
-
-    return 'Suspected'
-  }
-
   const handleOutageAction = () => {
-    fetchOutages()
+    fetchData()
   }
 
   const columns: GridColDef[] = [
@@ -177,6 +185,23 @@ const SubComponentDetails: React.FC = () => {
         />
       ),
     },
+    ...(subComponentRequiresConfirmation ? [{
+      field: 'confirmation',
+      headerName: 'Confirmation',
+      width: 120,
+      sortable: false,
+      filterable: false,
+      renderCell: (params: GridRenderCellParams) => {
+        const outage = params.row as Outage
+        const isConfirmed = outage.confirmed_at.Valid
+        
+        return (
+          <Tooltip title={isConfirmed ? 'Confirmed' : 'Unconfirmed'} arrow>
+            {isConfirmed ? <CheckCircle color="success" /> : <Warning color="warning" />}
+          </Tooltip>
+        )
+      },
+    }] : []),
     {
       field: 'description',
       headerName: 'Description',
@@ -271,8 +296,8 @@ const SubComponentDetails: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <StyledPaper status={getSubComponentStatus()}>
-        <HeaderBox status={getSubComponentStatus()}>
+      <StyledPaper status={subComponentStatus}>
+        <HeaderBox status={subComponentStatus}>
           <Typography variant="h4">
             {componentName} / {subComponentName} - Outage History
           </Typography>

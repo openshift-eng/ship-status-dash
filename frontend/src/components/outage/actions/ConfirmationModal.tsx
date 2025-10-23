@@ -1,12 +1,12 @@
 import {
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    styled,
-    Typography,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  styled,
+  Typography,
 } from '@mui/material'
 import type { ReactNode } from 'react'
 import React from 'react'

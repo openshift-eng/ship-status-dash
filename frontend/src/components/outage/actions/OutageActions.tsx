@@ -1,5 +1,5 @@
-import { MoreVert, Edit } from '@mui/icons-material'
-import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material'
+import { Edit, MoreVert } from '@mui/icons-material'
+import { Button, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
 import type { Outage } from '../../../types'
