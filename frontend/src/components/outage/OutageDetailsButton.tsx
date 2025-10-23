@@ -2,8 +2,9 @@ import { Visibility } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
-import OutageDetailsModal from './OutageDetailsModal'
 import type { Outage } from '../../types'
+
+import OutageDetailsModal from './OutageDetailsModal'
 
 interface OutageDetailsButtonProps {
   outage: Outage

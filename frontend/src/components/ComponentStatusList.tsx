@@ -2,8 +2,9 @@ import { Box, CircularProgress, Alert, Container, styled, Typography } from '@mu
 import React, { useState, useEffect } from 'react'
 
 import type { Component } from '../types'
-import ComponentWell from './component/ComponentWell'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
+
+import ComponentWell from './component/ComponentWell'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),

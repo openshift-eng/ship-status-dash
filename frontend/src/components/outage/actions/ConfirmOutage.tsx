@@ -2,8 +2,8 @@ import { CheckCircle } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
-import type { Outage } from '../../types'
-import { modifyOutageEndpoint } from '../../utils/endpoints'
+import type { Outage } from '../../../types'
+import { modifyOutageEndpoint } from '../../../utils/endpoints'
 
 interface ConfirmOutageProps {
   outage: Outage

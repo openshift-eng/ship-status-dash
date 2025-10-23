@@ -18,9 +18,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { Outage } from '../../types'
 import { createOutageEndpoint } from '../../utils/endpoints'
 import { relativeTime, getStatusBackgroundColor } from '../../utils/helpers'
-import OutageActions from '../outage/OutageActions'
+import OutageActions from '../outage/actions/OutageActions'
+import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
-import UpsertOutageModal from '../outage/UpsertOutageModal'
 import { SeverityChip } from '../StatusColors'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({

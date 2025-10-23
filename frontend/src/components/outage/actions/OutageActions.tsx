@@ -2,11 +2,12 @@ import { MoreVert, Edit } from '@mui/icons-material'
 import { Button, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from '@mui/material'
 import React, { useState } from 'react'
 
+import type { Outage } from '../../../types'
+
 import ConfirmOutage from './ConfirmOutage'
 import DeleteOutage from './DeleteOutage'
 import EndOutage from './EndOutage'
 import UpsertOutageModal from './UpsertOutageModal'
-import type { Outage } from '../../types'
 
 interface OutageActionsProps {
   outage: Outage
