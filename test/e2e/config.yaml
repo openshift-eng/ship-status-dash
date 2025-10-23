@@ -7,7 +7,7 @@ components:
       - name: Tide
         description: Merges PRs
         managed: true
-        requires_confirmation: false
+        requires_confirmation: true
       - name: Deck
         description: The frontend for Prow
         managed: true

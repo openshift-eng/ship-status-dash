@@ -63,16 +63,7 @@ func testHealth(client *TestHTTPClient) func(*testing.T) {
 
 func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		resp, err := client.Get("/api/components")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-		var components []types.Component
-		err = json.NewDecoder(resp.Body).Decode(&components)
-		require.NoError(t, err)
+		components := getComponents(t, client)
 
 		assert.Len(t, components, 1)
 		assert.Equal(t, "Prow", components[0].Name)
@@ -85,23 +76,10 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	}
 }
 
-func slugify(s string) string {
-	return utils.Slugify(s)
-}
-
 func testComponentInfo(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET component info for existing component returns component details", func(t *testing.T) {
-			resp, err := client.Get("/api/components/" + slugify("Prow"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-			var component types.Component
-			err = json.NewDecoder(resp.Body).Decode(&component)
-			require.NoError(t, err)
+			component := getComponent(t, client, "Prow")
 
 			assert.Equal(t, "Prow", component.Name)
 			assert.Equal(t, "Backbone of the CI system", component.Description)
@@ -113,11 +91,7 @@ func testComponentInfo(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET component info for non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/components/" + slugify("NonExistentComponent"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+			expect404(t, client, "/api/components/"+utils.Slugify("NonExistentComponent"))
 		})
 	}
 }
@@ -135,7 +109,7 @@ func createOutage(t *testing.T, client *TestHTTPClient, componentName, subCompon
 	payloadBytes, err := json.Marshal(outagePayload)
 	require.NoError(t, err)
 
-	resp, err := client.Post("/api/components/"+slugify(componentName)+"/"+slugify(subComponentName)+"/outages", payloadBytes)
+	resp, err := client.Post(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify(componentName), utils.Slugify(subComponentName)), payloadBytes)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -153,11 +127,24 @@ func createOutage(t *testing.T, client *TestHTTPClient, componentName, subCompon
 
 // deleteOutage is a helper function to delete an outage for cleanup
 func deleteOutage(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, outageID uint) {
-	resp, err := client.Delete("/api/components/" + slugify(componentName) + "/" + slugify(subComponentName) + "/outages/" + fmt.Sprintf("%d", outageID))
+	resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify(componentName), utils.Slugify(subComponentName), outageID))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+// updateOutage is a helper function to update an outage
+func updateOutage(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, outageID uint, payload map[string]interface{}) {
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	updateURL := fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify(componentName), utils.Slugify(subComponentName), outageID)
+	resp, err := client.Patch(updateURL, payloadBytes)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func testOutages(client *TestHTTPClient) func(*testing.T) {
@@ -167,8 +154,8 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
 
 			assert.NotZero(t, outage.ID)
-			assert.Equal(t, slugify("Prow"), outage.ComponentName)
-			assert.Equal(t, slugify("Tide"), outage.SubComponentName)
+			assert.Equal(t, utils.Slugify("Prow"), outage.ComponentName)
+			assert.Equal(t, utils.Slugify("Tide"), outage.SubComponentName)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			assert.Equal(t, "e2e-test", outage.DiscoveredFrom)
 		})
@@ -185,7 +172,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
-			resp, err := client.Post("/api/components/"+slugify("Prow")+"/"+slugify("NonExistentSub")+"/outages", payloadBytes)
+			resp, err := client.Post(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")), payloadBytes)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -204,7 +191,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
-			resp, err := client.Post("/api/components/"+slugify("Prow")+"/"+slugify("Deck")+"/outages", payloadBytes)
+			resp, err := client.Post(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Deck")), payloadBytes)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -223,15 +210,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			deckOutage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/outages")
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var outages []types.Outage
-			err = json.NewDecoder(resp.Body).Decode(&outages)
-			require.NoError(t, err)
+			outages := getOutages(t, client, "Prow", "")
 
 			// Should have exactly our 2 outages since we clean up after ourselves
 			assert.Len(t, outages, 2)
@@ -254,22 +233,14 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			deckOutage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages")
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var outages []types.Outage
-			err = json.NewDecoder(resp.Body).Decode(&outages)
-			require.NoError(t, err)
+			outages := getOutages(t, client, "Prow", "Tide")
 
 			// Should have exactly our 2 Tide outages since we clean up after ourselves
 			assert.Len(t, outages, 2)
 
 			// All outages should be for Tide only
 			for _, outage := range outages {
-				assert.Equal(t, slugify("Tide"), outage.SubComponentName)
+				assert.Equal(t, utils.Slugify("Tide"), outage.SubComponentName)
 			}
 
 			// Verify our specific outages are present
@@ -284,11 +255,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 
 		t.Run("GET on non-existent sub-component fails", func(t *testing.T) {
 			// This test doesn't need any setup - it should fail regardless of existing data
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("NonExistentSub") + "/outages")
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+			expect404(t, client, fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
 		})
 	}
 }
@@ -310,7 +277,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		updateBytes, err := json.Marshal(updatePayload)
 		require.NoError(t, err)
 
-		updateURL := "/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/" + fmt.Sprintf("%d", createdOutage.ID)
+		updateURL := fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID)
 		t.Logf("Making PATCH request to: %s", updateURL)
 
 		updateResp, err := client.Patch(updateURL, updateBytes)
@@ -338,14 +305,14 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, createdOutage.CreatedBy, updatedOutage.CreatedBy)                                   // Should remain unchanged
 
 		// Test updating non-existent outage
-		nonExistentResp, err := client.Patch("/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/99999", updateBytes)
+		nonExistentResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/99999", utils.Slugify("Prow"), utils.Slugify("Tide")), updateBytes)
 		require.NoError(t, err)
 		defer nonExistentResp.Body.Close()
 
 		assert.Equal(t, http.StatusNotFound, nonExistentResp.StatusCode)
 
 		// Test updating with invalid component
-		invalidComponentResp, err := client.Patch("/api/components/"+slugify("NonExistentComponent")+"/"+slugify("Tide")+"/outages/"+fmt.Sprintf("%d", createdOutage.ID), updateBytes)
+		invalidComponentResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("NonExistentComponent"), utils.Slugify("Tide"), createdOutage.ID), updateBytes)
 		require.NoError(t, err)
 		defer invalidComponentResp.Body.Close()
 
@@ -358,7 +325,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		invalidSeverityBytes, err := json.Marshal(invalidSeverityUpdate)
 		require.NoError(t, err)
 
-		invalidSeverityResp, err := client.Patch("/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/"+fmt.Sprintf("%d", createdOutage.ID), invalidSeverityBytes)
+		invalidSeverityResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), invalidSeverityBytes)
 		require.NoError(t, err)
 		defer invalidSeverityResp.Body.Close()
 
@@ -376,7 +343,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		confirmBytes, err := json.Marshal(confirmPayload)
 		require.NoError(t, err)
 
-		confirmResp, err := client.Patch("/api/components/"+slugify("Prow")+"/"+slugify("Tide")+"/outages/"+fmt.Sprintf("%d", createdOutage.ID), confirmBytes)
+		confirmResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), confirmBytes)
 		require.NoError(t, err)
 		defer confirmResp.Body.Close()
 
@@ -403,7 +370,7 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 			deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
 
 			// Verify the outage is deleted by trying to get it
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages")
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -420,7 +387,7 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("DELETE non-existent outage returns 404", func(t *testing.T) {
-			resp, err := client.Delete("/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/99999")
+			resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/99999", utils.Slugify("Prow"), utils.Slugify("Tide")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -428,7 +395,7 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("DELETE outage from non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Delete("/api/components/" + slugify("NonExistentComponent") + "/" + slugify("Tide") + "/outages/1")
+			resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("NonExistentComponent"), utils.Slugify("Tide")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -436,7 +403,7 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("DELETE outage from non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := client.Delete("/api/components/" + slugify("Prow") + "/" + slugify("NonExistentSub") + "/outages/1")
+			resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -453,7 +420,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			defer deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
 
 			// Get the outage
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/" + fmt.Sprintf("%d", createdOutage.ID))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -465,14 +432,14 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, createdOutage.ID, outage.ID)
-			assert.Equal(t, slugify("Tide"), outage.SubComponentName)
+			assert.Equal(t, utils.Slugify("Tide"), outage.SubComponentName)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			assert.Equal(t, "e2e-test", outage.DiscoveredFrom)
 			assert.Equal(t, "test-user", outage.CreatedBy)
 		})
 
 		t.Run("GET non-existent outage returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("Tide") + "/outages/99999")
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/99999", utils.Slugify("Prow"), utils.Slugify("Tide")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -480,7 +447,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/components/" + slugify("NonExistentComponent") + "/" + slugify("Tide") + "/outages/1")
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("NonExistentComponent"), utils.Slugify("Tide")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -488,7 +455,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("NonExistentSub") + "/outages/1")
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -501,7 +468,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 
 			// Try to get it as if it were a Deck outage
-			resp, err := client.Get("/api/components/" + slugify("Prow") + "/" + slugify("Deck") + "/outages/" + fmt.Sprintf("%d", tideOutage.ID))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Deck"), tideOutage.ID))
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -513,35 +480,18 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for healthy sub-component returns Healthy", func(t *testing.T) {
-			resp, err := client.Get("/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "Deck")
 
 			assert.Equal(t, types.StatusHealthy, status.Status)
 			assert.Empty(t, status.ActiveOutages)
 		})
 
 		t.Run("GET status for sub-component with active outage returns outage severity", func(t *testing.T) {
-			// Create an outage for Deck
+			// Create an outage for Deck (should be auto-confirmed)
 			outage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", outage.ID)
 
-			resp, err := client.Get("/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "Deck")
 
 			assert.Equal(t, types.StatusDown, status.Status)
 			assert.Len(t, status.ActiveOutages, 1)
@@ -557,38 +507,30 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			downOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Tide", downOutage.ID)
 
-			resp, err := client.Get("/api/status/" + slugify("Prow") + "/" + slugify("Tide"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
+			// Confirm both outages to test most critical logic
+			updateOutage(t, client, "Prow", "Tide", degradedOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
+			updateOutage(t, client, "Prow", "Tide", downOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
 
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "Tide")
 
 			assert.Equal(t, types.StatusDown, status.Status)
 			assert.Len(t, status.ActiveOutages, 2)
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/status/" + slugify("NonExistent") + "/" + slugify("Deck"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("NonExistent"), utils.Slugify("Deck")))
 		})
 
 		t.Run("GET status for non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/status/" + slugify("Prow") + "/" + slugify("NonExistent"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("Prow"), utils.Slugify("NonExistent")))
 		})
 
 		t.Run("GET status for sub-component with future end_time still considers outage active", func(t *testing.T) {
-			// Create an outage first
+			// Create an outage first (should be auto-confirmed)
 			outage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", outage.ID)
 
@@ -604,7 +546,7 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			updateBytes, err := json.Marshal(updatePayload)
 			require.NoError(t, err)
 
-			updateResp, err := client.Patch("/api/components/"+slugify("Prow")+"/"+slugify("Deck")+"/outages/"+fmt.Sprintf("%d", outage.ID), updateBytes)
+			updateResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Deck"), outage.ID), updateBytes)
 			require.NoError(t, err)
 			defer updateResp.Body.Close()
 
@@ -618,19 +560,44 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "test-user", *updatedOutage.ResolvedBy, "resolved_by should be set to the user from X-Forwarded-User header")
 
 			// Check that the status endpoint still considers this outage active
-			statusResp, err := client.Get("/api/status/" + slugify("Prow") + "/" + slugify("Deck"))
-			require.NoError(t, err)
-			defer statusResp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, statusResp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(statusResp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "Deck")
 
 			assert.Equal(t, types.StatusDown, status.Status)
 			assert.Len(t, status.ActiveOutages, 1)
 			assert.Equal(t, outage.ID, status.ActiveOutages[0].ID)
+		})
+
+		t.Run("GET status for sub-component with unconfirmed outage returns Suspected", func(t *testing.T) {
+			// Create an unconfirmed outage for Tide (which has requires_confirmation: true)
+			outage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
+
+			status := getStatus(t, client, "Prow", "Tide")
+
+			assert.Equal(t, types.StatusSuspected, status.Status)
+			assert.Len(t, status.ActiveOutages, 1)
+			assert.False(t, status.ActiveOutages[0].ConfirmedAt.Valid)
+		})
+
+		t.Run("GET status for sub-component with mixed confirmed/unconfirmed outages returns confirmed severity", func(t *testing.T) {
+			// Create confirmed degraded outage
+			confirmedOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Tide", confirmedOutage.ID)
+
+			// Confirm the degraded outage
+			updateOutage(t, client, "Prow", "Tide", confirmedOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
+
+			// Create unconfirmed down outage
+			unconfirmedOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Tide", unconfirmedOutage.ID)
+
+			status := getStatus(t, client, "Prow", "Tide")
+
+			// Should return Degraded (confirmed) not Suspected (unconfirmed)
+			assert.Equal(t, types.StatusDegraded, status.Status)
+			assert.Len(t, status.ActiveOutages, 2)
 		})
 	}
 }
@@ -638,35 +605,18 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for healthy component returns Healthy", func(t *testing.T) {
-			resp, err := client.Get("/api/status/" + slugify("Prow"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "")
 
 			assert.Equal(t, types.StatusHealthy, status.Status)
 			assert.Empty(t, status.ActiveOutages)
 		})
 
 		t.Run("GET status for component with one degraded sub-component returns Partial", func(t *testing.T) {
-			// Create a degraded outage for Tide
-			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
-			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+			// Create a degraded outage for Deck (doesn't require confirmation)
+			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/status/" + slugify("Prow"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "")
 
 			assert.Equal(t, types.StatusPartial, status.Status)
 			assert.Len(t, status.ActiveOutages, 1)
@@ -680,15 +630,12 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/status/" + slugify("Prow"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
+			// Confirm Tide outage (Deck should be auto-confirmed)
+			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
 
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "")
 
 			assert.Equal(t, types.StatusDown, status.Status)
 			assert.Len(t, status.ActiveOutages, 2)
@@ -704,15 +651,12 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDegraded))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/status/" + slugify("Prow"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
+			// Confirm the Tide outage to test most severe logic
+			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
 
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var status types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&status)
-			require.NoError(t, err)
+			status := getStatus(t, client, "Prow", "")
 
 			assert.Equal(t, types.StatusDown, status.Status)
 			assert.Len(t, status.ActiveOutages, 2)
@@ -725,12 +669,36 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.True(t, severities[string(types.SeverityDegraded)])
 		})
 
-		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Get("/api/status/" + slugify("NonExistent"))
-			require.NoError(t, err)
-			defer resp.Body.Close()
+		t.Run("GET status for component with unconfirmed outages on one sub-component returns Partial", func(t *testing.T) {
+			// Create unconfirmed outages for Tide (requires_confirmation: true)
+			tideOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+			status := getStatus(t, client, "Prow", "")
+
+			assert.Equal(t, types.StatusPartial, status.Status)
+			assert.Len(t, status.ActiveOutages, 1)
+			assert.False(t, status.ActiveOutages[0].ConfirmedAt.Valid)
+		})
+
+		t.Run("GET status for component with mixed confirmed/unconfirmed outages shows confirmed severity", func(t *testing.T) {
+			// Create outage for Deck (should be auto-confirmed)
+			deckOutage := createOutage(t, client, "Prow", "Deck")
+			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+
+			// Create unconfirmed outage for Tide (requires_confirmation: true)
+			tideOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+
+			status := getStatus(t, client, "Prow", "")
+
+			// Should return Down (confirmed) not Suspected (unconfirmed)
+			assert.Equal(t, types.StatusDown, status.Status)
+			assert.Len(t, status.ActiveOutages, 2)
+		})
+
+		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
+			expect404(t, client, "/api/status/"+utils.Slugify("NonExistent"))
 		})
 	}
 }
@@ -739,7 +707,7 @@ func createOutageWithSeverity(t *testing.T, client *TestHTTPClient, componentNam
 	outagePayload := map[string]interface{}{
 		"severity":        severity,
 		"start_time":      time.Now().UTC().Format(time.RFC3339),
-		"description":     "Test outage with " + severity + " severity",
+		"description":     fmt.Sprintf("Test outage with %s severity", severity),
 		"discovered_from": "e2e-test",
 		"created_by":      "test-user",
 	}
@@ -747,7 +715,7 @@ func createOutageWithSeverity(t *testing.T, client *TestHTTPClient, componentNam
 	payloadBytes, err := json.Marshal(outagePayload)
 	require.NoError(t, err)
 
-	resp, err := client.Post("/api/components/"+slugify(componentName)+"/"+slugify(subComponentName)+"/outages", payloadBytes)
+	resp, err := client.Post(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify(componentName), utils.Slugify(subComponentName)), payloadBytes)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -765,16 +733,7 @@ func createOutageWithSeverity(t *testing.T, client *TestHTTPClient, componentNam
 func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
-			resp, err := client.Get("/api/status")
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-			var allStatuses []types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&allStatuses)
-			require.NoError(t, err)
+			allStatuses := getAllComponentsStatus(t, client)
 
 			// Should have exactly 1 component (Prow) based on test config
 			assert.Len(t, allStatuses, 1)
@@ -790,15 +749,12 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/status")
-			require.NoError(t, err)
-			defer resp.Body.Close()
+			// Confirm Tide outage (Deck should be auto-confirmed)
+			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
 
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var allStatuses []types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&allStatuses)
-			require.NoError(t, err)
+			allStatuses := getAllComponentsStatus(t, client)
 
 			// Should have exactly 1 component (Prow)
 			assert.Len(t, allStatuses, 1)
@@ -816,19 +772,11 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for all components with partial outages shows Partial status", func(t *testing.T) {
-			// Create outage for only one sub-component
-			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
-			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+			// Create outage for only one sub-component (Deck doesn't require confirmation)
+			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
 
-			resp, err := client.Get("/api/status")
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var allStatuses []types.ComponentStatus
-			err = json.NewDecoder(resp.Body).Decode(&allStatuses)
-			require.NoError(t, err)
+			allStatuses := getAllComponentsStatus(t, client)
 
 			// Should have exactly 1 component (Prow)
 			assert.Len(t, allStatuses, 1)
@@ -836,6 +784,40 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, types.StatusPartial, allStatuses[0].Status) // Only one sub-component affected
 			assert.Len(t, allStatuses[0].ActiveOutages, 1)
 			assert.Equal(t, string(types.SeverityDegraded), string(allStatuses[0].ActiveOutages[0].Severity))
+		})
+
+		t.Run("GET status for all components with unconfirmed outages shows Partial", func(t *testing.T) {
+			// Create unconfirmed outage for Tide (requires_confirmation: true)
+			tideOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+
+			allStatuses := getAllComponentsStatus(t, client)
+
+			// Should have exactly 1 component (Prow)
+			assert.Len(t, allStatuses, 1)
+			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
+			assert.Equal(t, types.StatusPartial, allStatuses[0].Status)
+			assert.Len(t, allStatuses[0].ActiveOutages, 1)
+			assert.False(t, allStatuses[0].ActiveOutages[0].ConfirmedAt.Valid)
+		})
+
+		t.Run("GET status for all components with mixed confirmed/unconfirmed outages shows confirmed severity", func(t *testing.T) {
+			// Create outage for Deck (should be auto-confirmed)
+			deckOutage := createOutage(t, client, "Prow", "Deck")
+			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+
+			// Create unconfirmed outage for Tide (requires_confirmation: true)
+			tideOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+
+			allStatuses := getAllComponentsStatus(t, client)
+
+			// Should have exactly 1 component (Prow)
+			assert.Len(t, allStatuses, 1)
+			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
+			// Should return Down (confirmed) not Suspected (unconfirmed)
+			assert.Equal(t, types.StatusDown, allStatuses[0].Status)
+			assert.Len(t, allStatuses[0].ActiveOutages, 2)
 		})
 	}
 }

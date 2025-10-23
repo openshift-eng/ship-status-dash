@@ -201,15 +201,6 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outage.ComponentName = componentName
-	outage.SubComponentName = subComponentName
-	outage.CreatedBy = activeUser
-
-	if message, valid := h.validateOutage(&outage); !valid {
-		respondWithError(w, http.StatusBadRequest, message)
-		return
-	}
-
 	logger := h.logger.WithFields(logrus.Fields{
 		"component":       componentName,
 		"sub_component":   subComponentName,
@@ -217,6 +208,22 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		"created_by":      outage.CreatedBy,
 		"discovered_from": outage.DiscoveredFrom,
 	})
+
+	outage.ComponentName = componentName
+	outage.SubComponentName = subComponentName
+	outage.CreatedBy = activeUser
+
+	// Auto-confirm outages when requires_confirmation is false
+	if !subComponent.RequiresConfirmation {
+		logger.Info("Auto-confirming outage as requires_confirmation is false")
+		outage.ConfirmedBy = &activeUser
+		outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+
+	if message, valid := h.validateOutage(&outage); !valid {
+		respondWithError(w, http.StatusBadRequest, message)
+		return
+	}
 
 	if err := h.db.Create(&outage).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
@@ -528,7 +535,6 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	if len(outages) == 0 {
 		status = types.StatusHealthy
 	} else if len(subComponentsWithOutages) < len(component.Subcomponents) {
-		// If there are some sub-components with outages, but not all, the component is partially healthy
 		status = types.StatusPartial
 	} else {
 		status = determineStatusFromSeverity(outages)
@@ -546,15 +552,37 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 		return types.StatusHealthy
 	}
 
-	mostCriticalSeverity := outages[0].Severity
-	highestLevel := types.GetSeverityLevel(mostCriticalSeverity)
+	// First, determine status based on confirmed outages
+	confirmedOutages := make([]types.Outage, 0)
+	hasUnconfirmedOutage := false
 
 	for _, outage := range outages {
-		level := types.GetSeverityLevel(outage.Severity)
-		if level > highestLevel {
-			highestLevel = level
-			mostCriticalSeverity = outage.Severity
+		if outage.ConfirmedAt.Valid {
+			confirmedOutages = append(confirmedOutages, outage)
+		} else {
+			hasUnconfirmedOutage = true
 		}
 	}
-	return mostCriticalSeverity.ToStatus()
+
+	// If there are confirmed outages, determine status by their severity
+	if len(confirmedOutages) > 0 {
+		mostCriticalSeverity := confirmedOutages[0].Severity
+		highestLevel := types.GetSeverityLevel(mostCriticalSeverity)
+
+		for _, outage := range confirmedOutages {
+			level := types.GetSeverityLevel(outage.Severity)
+			if level > highestLevel {
+				highestLevel = level
+				mostCriticalSeverity = outage.Severity
+			}
+		}
+		return mostCriticalSeverity.ToStatus()
+	}
+
+	// Only unconfirmed outages - return Suspected
+	if hasUnconfirmedOutage {
+		return types.StatusSuspected
+	}
+
+	return types.StatusHealthy
 }
