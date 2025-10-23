@@ -1,23 +1,25 @@
+import { CheckCircle, Warning } from '@mui/icons-material'
 import {
   Box,
-  Typography,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   List,
   ListItem,
   ListItemText,
-  Divider,
   styled,
+  Typography,
 } from '@mui/material'
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import type { SubComponent, Outage } from '../../types'
+import type { Outage, SubComponent } from '../../types'
 import { relativeTime } from '../../utils/helpers'
-import { StatusChip, SeverityChip } from '../StatusColors'
+import { SeverityChip, StatusChip } from '../StatusColors'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -62,6 +64,7 @@ interface OutageModalProps {
   onClose: () => void
   selectedSubComponent: SubComponent | null
   componentName?: string
+  requiresConfirmation?: boolean
 }
 
 const OutageModal: React.FC<OutageModalProps> = ({
@@ -69,6 +72,7 @@ const OutageModal: React.FC<OutageModalProps> = ({
   onClose,
   selectedSubComponent,
   componentName,
+  requiresConfirmation = false,
 }) => {
   const navigate = useNavigate()
 
@@ -77,6 +81,11 @@ const OutageModal: React.FC<OutageModalProps> = ({
       navigate(`/${componentName}/${selectedSubComponent.name}`)
     }
   }
+
+  const isOutageConfirmed = (outage: Outage) => {
+    return outage.confirmed_at.Valid
+  }
+
 
   return (
     <StyledDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -118,6 +127,15 @@ const OutageModal: React.FC<OutageModalProps> = ({
                                 size="small"
                                 variant="outlined"
                               />
+                              {requiresConfirmation && (
+                                <Chip
+                                  icon={isOutageConfirmed(outage) ? <CheckCircle /> : <Warning />}
+                                  label={isOutageConfirmed(outage) ? 'Confirmed' : 'Unconfirmed'}
+                                  color={isOutageConfirmed(outage) ? 'success' : 'warning'}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              )}
                               <Typography variant="subtitle2">
                                 {outage.description || 'No description'}
                               </Typography>

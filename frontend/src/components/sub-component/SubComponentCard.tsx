@@ -1,9 +1,9 @@
 import { Box, Card, CardContent, Typography, styled } from '@mui/material'
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import type { SubComponent } from '../../types'
-import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
-import { getStatusChipColor, getStatusBackgroundColor } from '../../utils/helpers'
+import { getComponentInfoEndpoint, getSubComponentStatusEndpoint } from '../../utils/endpoints'
+import { getStatusBackgroundColor, getStatusChipColor } from '../../utils/helpers'
 import OutageModal from '../outage/OutageModal'
 import { StatusChip } from '../StatusColors'
 
@@ -88,17 +88,31 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
   const [modalOpen, setModalOpen] = useState(false)
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
+  const [requiresConfirmation, setRequiresConfirmation] = useState<boolean>(false)
 
   useEffect(() => {
-    fetch(getSubComponentStatusEndpoint(componentName, subComponent.name))
-      .then((res) => res.json())
-      .catch(() => ({ status: 'Unknown', active_outages: [] }))
-      .then((subStatus) => {
+    Promise.all([
+      fetch(getSubComponentStatusEndpoint(componentName, subComponent.name)),
+      fetch(getComponentInfoEndpoint(componentName))
+    ])
+      .then(([statusRes, componentRes]) => {
+        return Promise.all([
+          statusRes.json().catch(() => ({ status: 'Unknown', active_outages: [] })),
+          componentRes.json().catch(() => ({ sub_components: [] }))
+        ])
+      })
+      .then(([subStatus, componentData]) => {
         setSubComponentWithStatus({
           ...subComponent,
           status: subStatus.status,
           active_outages: subStatus.active_outages,
         })
+        
+        // Check if this subcomponent requires confirmation
+        const subComponentConfig = componentData.sub_components.find(
+          (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponent.name
+        )
+        setRequiresConfirmation(subComponentConfig?.requires_confirmation || false)
       })
       .finally(() => {
         setLoading(false)
@@ -141,6 +155,7 @@ const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
         onClose={handleCloseModal}
         selectedSubComponent={subComponentWithStatus}
         componentName={componentName}
+        requiresConfirmation={requiresConfirmation}
       />
     </>
   )
