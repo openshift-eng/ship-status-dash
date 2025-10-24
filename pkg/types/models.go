@@ -71,4 +71,5 @@ type Outage struct {
 	ConfirmedBy      *string        `json:"confirmed_by,omitempty" gorm:"column:confirmed_by"`
 	ConfirmedAt      sql.NullTime   `json:"confirmed_at" gorm:"column:confirmed_at"`
 	TriageNotes      *string        `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
+	//TODO: Add optional link to jira card, and incident slack thread link for outage
 }

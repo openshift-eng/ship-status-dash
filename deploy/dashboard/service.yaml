@@ -9,7 +9,7 @@ spec:
   selector:
     app: dashboard
   ports:
-    - port: 8080
-      targetPort: 8080
-      protocol: TCP
+    - name: http
+      port: 8443
+      targetPort: 8443
   type: ClusterIP

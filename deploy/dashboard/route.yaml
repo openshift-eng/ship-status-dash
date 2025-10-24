@@ -10,7 +10,7 @@ spec:
     kind: Service
     name: dashboard
   port:
-    targetPort: 8080
+    targetPort: 8443
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

@@ -15,49 +15,78 @@ spec:
       labels:
         app: dashboard
     spec:
+      serviceAccountName: ship-status
       containers:
-        - name: dashboard
-          image: quay.io/sgoeddel/dashboard:latest
-          command: ["./dashboard"]
-          args:
-            - "--config=/app/config/config.yaml"
-            - "--dsn=$(DATABASE_DSN)"
-            - "--port=8080"
-          ports:
-            - containerPort: 8080
-              protocol: TCP
-          env:
-            - name: DATABASE_DSN
-              valueFrom:
-                secretKeyRef:
-                  name: postgres
-                  key: dsn
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-              readOnly: true
-          resources:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"
-              cpu: "200m"
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+      - name: oauth-proxy
+        image: quay.io/openshift/origin-oauth-proxy:4.16
+        args:
+          - -provider=openshift
+          - -http-address=:8443
+          - -https-address=
+          - -upstream=http://localhost:8080
+          - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          - --cookie-secret-file=/etc/secrets/session_secret
+          - --cookie-samesite=none
+          - --client-id=system:serviceaccount:ship-status:ship-status
+          - --client-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+          - '--openshift-sar={"resource": "namespaces", "verb": "get"}'
+          - '--openshift-delegate-urls={"/": {"resource": "namespaces", "verb": "get"}}'
+          - --request-logging #TODO: we probably don't want this, but it helps with debugging
+        ports:
+        - containerPort: 8443
+          name: http
+        readinessProbe:
+          tcpSocket:
+            port: 8443
+        volumeMounts:
+        - name: oauth-proxy-cookie-secret
+          mountPath: /etc/secrets
+          readOnly: true
+      - name: dashboard
+        image: quay.io/sgoeddel/dashboard:latest
+        command: ["./dashboard"]
+        args:
+          - "--config=/app/config/config.yaml"
+          - "--dsn=$(DATABASE_DSN)"
+          - "--port=8080"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        env:
+          - name: DATABASE_DSN
+            valueFrom:
+              secretKeyRef:
+                name: postgres
+                key: dsn
+        volumeMounts:
+          - name: config
+            mountPath: /app/config
+            readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
       volumes:
         - name: config
           configMap:
             name: dashboard-config
+        - name: oauth-proxy-cookie-secret
+          secret:
+            secretName: oauth-proxy-cookie-secret
