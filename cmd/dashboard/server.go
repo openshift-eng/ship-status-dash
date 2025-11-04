@@ -19,52 +19,51 @@ type Server struct {
 	handlers   *Handlers
 	db         *gorm.DB
 	corsOrigin string
+	hmacSecret []byte
 	httpServer *http.Server
 }
 
-// NewServer creates a new Server instance with the provided configuration, database connection, and logger.
-func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOrigin string) *Server {
-	handlers := NewHandlers(logger, config, db)
-
+// NewServer creates a new Server instance
+func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte) *Server {
 	return &Server{
 		logger:     logger,
 		config:     config,
-		handlers:   handlers,
+		handlers:   NewHandlers(logger, config, db),
 		db:         db,
 		corsOrigin: corsOrigin,
+		hmacSecret: hmacSecret,
 	}
 }
 
 func (s *Server) setupRoutes() http.Handler {
 	router := mux.NewRouter()
 
-	router.HandleFunc("/health", s.handlers.HealthJSON).Methods("GET")
+	router.HandleFunc("/health", s.handlers.HealthJSON).Methods(http.MethodGet)
 
-	router.HandleFunc("/api/status", s.handlers.GetAllComponentsStatusJSON).Methods("GET")
-	router.HandleFunc("/api/status/{componentName}", s.handlers.GetComponentStatusJSON).Methods("GET")
-	router.HandleFunc("/api/status/{componentName}/{subComponentName}", s.handlers.GetSubComponentStatusJSON).Methods("GET")
+	router.HandleFunc("/api/status", s.handlers.GetAllComponentsStatusJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/status/{componentName}", s.handlers.GetComponentStatusJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/status/{componentName}/{subComponentName}", s.handlers.GetSubComponentStatusJSON).Methods(http.MethodGet)
 
-	router.HandleFunc("/api/components", s.handlers.GetComponentsJSON).Methods("GET")
-	router.HandleFunc("/api/components/{componentName}", s.handlers.GetComponentInfoJSON).Methods("GET")
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.GetOutageJSON).Methods("GET")
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.UpdateOutageJSON).Methods("PATCH")
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.DeleteOutage).Methods("DELETE")
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.CreateOutageJSON).Methods("POST")
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.GetSubComponentOutagesJSON).Methods("GET")
-	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods("GET")
+	router.HandleFunc("/api/components", s.handlers.GetComponentsJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/components/{componentName}", s.handlers.GetComponentInfoJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.GetOutageJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.UpdateOutageJSON).Methods(http.MethodPatch)
+	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.DeleteOutage).Methods(http.MethodDelete)
+	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.CreateOutageJSON).Methods(http.MethodPost)
+	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.GetSubComponentOutagesJSON).Methods(http.MethodGet)
+	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods(http.MethodGet)
 
 	// Serve static files (React frontend) - must be after API routes
 	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
-		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User"}),
+		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "X-Signature"}),
 		handlers.AllowCredentials(),
 	)(router)
-
-	// Add logging middleware
-	handler := s.loggingMiddleware(corsHandler)
+	handler := authMiddleware(corsHandler, s.logger, s.hmacSecret)
+	handler = s.loggingMiddleware(handler)
 
 	return handler
 }

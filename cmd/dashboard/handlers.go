@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"ship-status-dash/pkg/types"
 	"strconv"
 	"time"
@@ -50,21 +49,6 @@ func (h *Handlers) getComponent(componentName string) *types.Component {
 		}
 	}
 	return nil
-}
-
-// getActiveUser retrieves the active user from the request headers.
-// Returns the user from X-Forwarded-User header, or "developer" if DEV_MODE=1 and no header is present.
-// Returns an error if no user is available and DEV_MODE is not set.
-func (h *Handlers) getActiveUser(r *http.Request) (string, error) {
-	user := r.Header.Get("X-Forwarded-User")
-	if user != "" {
-		return user, nil
-	}
-	if os.Getenv("DEV_MODE") == "1" {
-		return "developer", nil
-	}
-
-	return "", fmt.Errorf("no active user found in X-Forwarded-User header and DEV_MODE is not set")
 }
 
 func (h *Handlers) validateOutage(outage *types.Outage) (string, bool) {
@@ -178,9 +162,9 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
 
-	activeUser, err := h.getActiveUser(r)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, err.Error())
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
 		return
 	}
 
@@ -256,9 +240,9 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	subComponentName := vars["subComponentName"]
 	outageIDStr := vars["outageId"]
 
-	activeUser, err := h.getActiveUser(r)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, err.Error())
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
 		return
 	}
 

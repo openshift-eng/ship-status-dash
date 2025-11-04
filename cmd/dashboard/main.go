@@ -21,10 +21,11 @@ import (
 
 // Options contains command-line configuration options for the dashboard server.
 type Options struct {
-	ConfigPath  string
-	Port        string
-	DatabaseDSN string
-	CORSOrigin  string
+	ConfigPath     string
+	Port           string
+	DatabaseDSN    string
+	CORSOrigin     string
+	HMACSecretFile string
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -35,6 +36,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.Port, "port", "8080", "Port to listen on")
 	flag.StringVar(&opts.DatabaseDSN, "dsn", "", "PostgreSQL DSN connection string")
 	flag.StringVar(&opts.CORSOrigin, "cors-origin", "*", "Allowed CORS origin (use '*' for all origins)")
+	flag.StringVar(&opts.HMACSecretFile, "hmac-secret-file", "", "File containing HMAC secret")
 	flag.Parse()
 
 	return opts
@@ -56,6 +58,13 @@ func (o *Options) Validate() error {
 
 	if o.DatabaseDSN == "" {
 		return errors.New("database DSN is required (use --dsn flag)")
+	}
+
+	if o.HMACSecretFile == "" {
+		return errors.New("hmac secret file is required (use --hmac-secret-file flag)")
+	}
+	if _, err := os.Stat(o.HMACSecretFile); os.IsNotExist(err) {
+		return errors.New("hmac secret file does not exist: " + o.HMACSecretFile)
 	}
 
 	return nil
@@ -112,6 +121,15 @@ func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
 	return db
 }
 
+func getHMACSecret(path string) []byte {
+	secret, err := os.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+
+	return secret
+}
+
 func main() {
 	log := setupLogger()
 	opts := NewOptions()
@@ -122,7 +140,8 @@ func main() {
 
 	config := loadConfig(log, opts.ConfigPath)
 	db := connectDatabase(log, opts.DatabaseDSN)
-	server := NewServer(config, db, log, opts.CORSOrigin)
+	hmacSecret := getHMACSecret(opts.HMACSecretFile)
+	server := NewServer(config, db, log, opts.CORSOrigin, hmacSecret)
 
 	addr := ":" + opts.Port
 	// Run server in a goroutine

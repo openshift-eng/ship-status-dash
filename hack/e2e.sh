@@ -23,6 +23,9 @@ cleanup() {
   echo "Cleaning up test container..."
   podman stop $CONTAINER_NAME 2>/dev/null || true
   podman rm $CONTAINER_NAME 2>/dev/null || true
+  
+  echo "Cleaning up HMAC secret file..."
+  rm -f "$HMAC_SECRET_FILE" 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -60,6 +63,14 @@ podman exec $CONTAINER_NAME psql -U $DB_USER -c "CREATE DATABASE $DB_NAME;"
 DSN="postgres://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME?sslmode=disable&client_encoding=UTF8"
 export TEST_DATABASE_DSN="$DSN"
 
+echo "Creating HMAC secret file..."
+HMAC_SECRET_FILE="/tmp/e2e-hmac-secret"
+echo "test-hmac-secret-key" > "$HMAC_SECRET_FILE"
+export TEST_HMAC_SECRET_FILE="$HMAC_SECRET_FILE"
+
+# Ensure DEV_MODE is not set for e2e tests to properly test authentication
+unset DEV_MODE
+
 echo "Running migration..."
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -86,7 +97,7 @@ DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-server.log"
 
 # Start dashboard server in background
-go run ./cmd/dashboard --config test/e2e/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config test/e2e/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for server to be ready

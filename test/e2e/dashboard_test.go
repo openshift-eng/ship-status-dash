@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,8 +27,15 @@ func TestE2E_Dashboard(t *testing.T) {
 		serverPort = "8888" // fallback to default
 	}
 
+	// Get HMAC secret file from environment variable
+	hmacSecretFile := os.Getenv("TEST_HMAC_SECRET_FILE")
+	if hmacSecretFile == "" {
+		t.Fatal("TEST_HMAC_SECRET_FILE environment variable is required")
+	}
+
 	serverURL := "http://localhost:" + serverPort
-	client := NewTestHTTPClient(serverURL)
+	client, err := NewTestHTTPClient(serverURL, hmacSecretFile)
+	require.NoError(t, err)
 
 	t.Run("Health", testHealth(client))
 	t.Run("Components", testComponents(client))
@@ -39,6 +47,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("SubComponentStatus", testSubComponentStatus(client))
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
+	t.Run("InvalidSignatureAuth", testInvalidSignatureAuth(client))
 
 	t.Log("All tests passed!")
 }
@@ -818,6 +827,80 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Should return Down (confirmed) not Suspected (unconfirmed)
 			assert.Equal(t, types.StatusDown, allStatuses[0].Status)
 			assert.Len(t, allStatuses[0].ActiveOutages, 2)
+		})
+	}
+}
+
+func setInvalidSignatureHeaders(req *http.Request) {
+	req.Header.Set("X-Forwarded-User", "test-user")
+	req.Header.Set("X-Signature", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+}
+
+func testInvalidSignatureAuth(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("POST with invalid signature returns 401", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Test outage with invalid signature",
+				"discovered_from": "e2e-test",
+				"created_by":      "test-user",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			req, err := http.NewRequest("POST", client.serverURL+"/api/components/prow/tide/outages", bytes.NewBuffer(payloadBytes))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			setInvalidSignatureHeaders(req)
+			resp, err := client.client.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		})
+
+		t.Run("PATCH with invalid signature returns 401", func(t *testing.T) {
+			// First create an outage with valid signature
+			outage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
+
+			updatePayload := map[string]interface{}{
+				"description": "Updated description",
+			}
+
+			payloadBytes, err := json.Marshal(updatePayload)
+			require.NoError(t, err)
+
+			updateURL := fmt.Sprintf("%s/api/components/prow/tide/outages/%d", client.serverURL, outage.ID)
+			req, err := http.NewRequest("PATCH", updateURL, bytes.NewBuffer(payloadBytes))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			setInvalidSignatureHeaders(req)
+			resp, err := client.client.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		})
+
+		t.Run("DELETE with invalid signature returns 401", func(t *testing.T) {
+			// First create an outage with valid signature
+			outage := createOutage(t, client, "Prow", "Tide")
+
+			deleteURL := fmt.Sprintf("%s/api/components/prow/tide/outages/%d", client.serverURL, outage.ID)
+			req, err := http.NewRequest("DELETE", deleteURL, nil)
+			require.NoError(t, err)
+			setInvalidSignatureHeaders(req)
+			resp, err := client.client.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+			// Clean up with valid signature
+			deleteOutage(t, client, "Prow", "Tide", outage.ID)
 		})
 	}
 }
