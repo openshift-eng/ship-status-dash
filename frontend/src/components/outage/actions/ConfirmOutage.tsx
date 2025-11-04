@@ -1,6 +1,6 @@
 import { CheckCircle } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { modifyOutageEndpoint } from '../../../utils/endpoints'
@@ -11,7 +11,7 @@ interface ConfirmOutageProps {
   onError: (error: string) => void
 }
 
-const ConfirmOutage: React.FC<ConfirmOutageProps> = ({ outage, onConfirmSuccess, onError }) => {
+const ConfirmOutage = ({ outage, onConfirmSuccess, onError }: ConfirmOutageProps) => {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleConfirmClick = () => {

@@ -14,7 +14,7 @@ import {
   styled,
   Typography,
 } from '@mui/material'
-import React from 'react'
+import { Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import type { Outage, SubComponent } from '../../types'
@@ -67,13 +67,13 @@ interface OutageModalProps {
   requiresConfirmation?: boolean
 }
 
-const OutageModal: React.FC<OutageModalProps> = ({
+const OutageModal = ({
   open,
   onClose,
   selectedSubComponent,
   componentName,
   requiresConfirmation = false,
-}) => {
+}: OutageModalProps) => {
   const navigate = useNavigate()
 
   const handleViewAllOutages = () => {
@@ -115,7 +115,7 @@ const OutageModal: React.FC<OutageModalProps> = ({
                 </Typography>
                 <List>
                   {selectedSubComponent.active_outages.map((outage: Outage, index: number) => (
-                    <React.Fragment key={outage.id}>
+                    <Fragment key={outage.id}>
                       <StyledListItem alignItems="flex-start">
                         <ListItemText
                           primary={
@@ -166,7 +166,7 @@ const OutageModal: React.FC<OutageModalProps> = ({
                       {index < (selectedSubComponent.active_outages?.length || 0) - 1 && (
                         <Divider />
                       )}
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </List>
               </Box>

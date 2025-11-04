@@ -1,6 +1,5 @@
 import { Brightness4, Brightness7 } from '@mui/icons-material'
 import { AppBar, Toolbar, Box, IconButton, Tooltip } from '@mui/material'
-import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
 interface HeaderProps {
@@ -8,7 +7,7 @@ interface HeaderProps {
   isDarkMode: boolean
 }
 
-const Header: React.FC<HeaderProps> = ({ onToggleTheme, isDarkMode }) => {
+const Header = ({ onToggleTheme, isDarkMode }: HeaderProps) => {
   const navigate = useNavigate()
 
   const handleLogoClick = () => {

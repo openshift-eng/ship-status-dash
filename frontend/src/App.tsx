@@ -1,7 +1,7 @@
 import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { StylesProvider } from '@mui/styles'
-import React, { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 
 import ComponentDetailsPage from './components/component/ComponentDetailsPage'

@@ -1,5 +1,5 @@
-import { Box, CircularProgress, Alert, Container, styled, Typography } from '@mui/material'
-import React, { useState, useEffect } from 'react'
+import { Alert, Box, CircularProgress, Container, styled, Typography } from '@mui/material'
+import { useEffect, useState } from 'react'
 
 import type { Component } from '../types'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
@@ -54,7 +54,7 @@ const ComponentsGrid = styled(Box)(({ theme }) => ({
   gap: theme.spacing(3),
 }))
 
-const ComponentStatusList: React.FC = () => {
+const ComponentStatusList = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

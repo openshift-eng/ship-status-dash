@@ -1,5 +1,4 @@
 import { Box, Card, CardContent, Typography, Button, styled } from '@mui/material'
-import React from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import type { Component, SubComponent } from '../../types'
@@ -80,7 +79,7 @@ interface ComponentWellProps {
   component: Component
 }
 
-const ComponentWellComponent: React.FC<ComponentWellProps> = ({ component }) => {
+const ComponentWellComponent = ({ component }: ComponentWellProps) => {
   const navigate = useNavigate()
 
   const handleDetailsClick = () => {

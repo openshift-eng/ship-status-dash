@@ -1,6 +1,7 @@
 import { Edit, MoreVert } from '@mui/icons-material'
 import { Button, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material'
-import React, { useState } from 'react'
+import type { MouseEvent } from 'react'
+import { useState } from 'react'
 
 import type { Outage } from '../../../types'
 
@@ -15,11 +16,11 @@ interface OutageActionsProps {
   onError: (error: string) => void
 }
 
-const OutageActions: React.FC<OutageActionsProps> = ({ outage, onSuccess, onError }) => {
+const OutageActions = ({ outage, onSuccess, onError }: OutageActionsProps) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleMenuClick = (event: MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
   }
 

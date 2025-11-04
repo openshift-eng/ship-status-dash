@@ -1,6 +1,6 @@
 import { Stop } from '@mui/icons-material'
 import { Button, Tooltip, TextField, Box } from '@mui/material'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { modifyOutageEndpoint } from '../../../utils/endpoints'
@@ -14,7 +14,7 @@ interface EndOutageProps {
   onError: (error: string) => void
 }
 
-const EndOutage: React.FC<EndOutageProps> = ({ outage, onEndSuccess, onError }) => {
+const EndOutage = ({ outage, onEndSuccess, onError }: EndOutageProps) => {
   const [endDialogOpen, setEndDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [endTime, setEndTime] = useState(getCurrentLocalTime())

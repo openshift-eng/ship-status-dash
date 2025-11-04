@@ -1,6 +1,6 @@
 import { Delete } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
-import React, { useState } from 'react'
+import { useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { modifyOutageEndpoint } from '../../../utils/endpoints'
@@ -13,7 +13,7 @@ interface DeleteOutageProps {
   onError: (error: string) => void
 }
 
-const DeleteOutage: React.FC<DeleteOutageProps> = ({ outage, onDeleteSuccess, onError }) => {
+const DeleteOutage = ({ outage, onDeleteSuccess, onError }: DeleteOutageProps) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 

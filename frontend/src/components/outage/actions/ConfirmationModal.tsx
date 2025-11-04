@@ -9,7 +9,6 @@ import {
   Typography,
 } from '@mui/material'
 import type { ReactNode } from 'react'
-import React from 'react'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -43,7 +42,7 @@ interface ConfirmationModalProps {
   }
 }
 
-const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
+const ConfirmationModal = ({
   open,
   onClose,
   onConfirm,
@@ -54,7 +53,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   isLoading,
   children,
   outage,
-}) => {
+}: ConfirmationModalProps) => {
   const handleConfirm = () => {
     onConfirm()
   }

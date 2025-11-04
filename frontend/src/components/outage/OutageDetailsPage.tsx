@@ -1,14 +1,14 @@
 import { AccessTime, ArrowBack, Assignment, Info, Person, Settings } from '@mui/icons-material'
 import {
-    Alert,
-    Box,
-    Button,
-    Chip,
-    CircularProgress,
-    Container,
-    Paper,
-    Typography,
-    styled,
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Container,
+  Paper,
+  Typography,
+  styled,
 } from '@mui/material'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -16,10 +16,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
 import {
-    formatDuration,
-    getStatusBackgroundColor,
-    getStatusChipColor,
-    relativeTime,
+  formatDuration,
+  getStatusBackgroundColor,
+  getStatusChipColor,
+  relativeTime,
 } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 

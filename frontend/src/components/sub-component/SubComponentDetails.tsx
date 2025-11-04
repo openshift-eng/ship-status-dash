@@ -12,7 +12,7 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
@@ -71,7 +71,7 @@ const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   },
 }))
 
-const SubComponentDetails: React.FC = () => {
+const SubComponentDetails = () => {
   const navigate = useNavigate()
   const { componentName, subComponentName } = useParams<{
     componentName: string

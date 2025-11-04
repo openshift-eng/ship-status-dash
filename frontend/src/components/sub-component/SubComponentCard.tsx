@@ -1,5 +1,5 @@
 import { Box, Card, CardContent, Typography, styled } from '@mui/material'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { SubComponent } from '../../types'
 import { getComponentInfoEndpoint, getSubComponentStatusEndpoint } from '../../utils/endpoints'
@@ -80,11 +80,11 @@ interface SubComponentCardProps {
   useBackgroundColor?: boolean
 }
 
-const SubComponentCardComponent: React.FC<SubComponentCardProps> = ({
+const SubComponentCardComponent = ({
   subComponent,
   componentName,
   useBackgroundColor = false,
-}) => {
+}: SubComponentCardProps) => {
   const [modalOpen, setModalOpen] = useState(false)
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)

@@ -16,7 +16,8 @@ import {
   FormControlLabel,
   Checkbox,
 } from '@mui/material'
-import React, { useState, useEffect } from 'react'
+import type { ChangeEvent } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
@@ -54,14 +55,14 @@ interface OutageFormData {
   confirmed: boolean
 }
 
-const UpsertOutageModal: React.FC<UpsertOutageModalProps> = ({
+const UpsertOutageModal = ({
   open,
   onClose,
   onSuccess,
   componentName,
   subComponentName,
   outage,
-}) => {
+}: UpsertOutageModalProps) => {
   const isUpdateMode = !!outage
 
   const [formData, setFormData] = useState<OutageFormData>({
@@ -107,7 +108,7 @@ const UpsertOutageModal: React.FC<UpsertOutageModalProps> = ({
 
   const handleInputChange =
     (field: keyof OutageFormData) =>
-    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setFormData((prev) => ({
         ...prev,
         [field]: event.target.value,
@@ -131,7 +132,7 @@ const UpsertOutageModal: React.FC<UpsertOutageModalProps> = ({
   }
 
   const handleCheckboxChange =
-    (field: keyof OutageFormData) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    (field: keyof OutageFormData) => (event: ChangeEvent<HTMLInputElement>) => {
       setFormData((prev) => ({
         ...prev,
         [field]: event.target.checked,

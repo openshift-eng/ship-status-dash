@@ -12,7 +12,7 @@ import {
   CardContent,
   Divider,
 } from '@mui/material'
-import React, { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
 import type { Component } from '../../types'
@@ -109,7 +109,7 @@ const LoadingBox = styled(Box)(() => ({
   minHeight: '200px',
 }))
 
-const ComponentDetailsPage: React.FC = () => {
+const ComponentDetailsPage = () => {
   const { componentName } = useParams<{ componentName: string }>()
   const navigate = useNavigate()
   const [component, setComponent] = useState<Component | null>(null)
