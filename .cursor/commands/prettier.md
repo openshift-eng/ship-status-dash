@@ -1,0 +1,1 @@
+run eslint and prettier on the frontend, save the result

@@ -1,27 +1,27 @@
 import {
-  Typography,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Alert,
-  styled,
-  CircularProgress,
-  FormControlLabel,
+  Button,
   Checkbox,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Select,
+  styled,
+  TextField,
+  Typography,
 } from '@mui/material'
 import type { ChangeEvent } from 'react'
 import { useEffect, useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
-import { getCurrentLocalTime, formatDateForDateTimeLocal } from '../../../utils/helpers'
+import { formatDateForDateTimeLocal, getCurrentLocalTime } from '../../../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -197,7 +197,7 @@ const UpsertOutageModal = ({
     }
 
     const url = isUpdateMode
-      ? modifyOutageEndpoint(componentName, subComponentName, outage!.id)
+      ? modifyOutageEndpoint(componentName, subComponentName, outage?.id)
       : createOutageEndpoint(componentName, subComponentName)
 
     const method = isUpdateMode ? 'PATCH' : 'POST'
