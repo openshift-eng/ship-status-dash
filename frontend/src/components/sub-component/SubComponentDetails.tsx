@@ -12,7 +12,7 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
@@ -85,7 +85,7 @@ const SubComponentDetails = () => {
   const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
     useState<boolean>(false)
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     if (!componentName || !subComponentName) {
       setError('Missing component or subcomponent name')
       return
@@ -144,11 +144,11 @@ const SubComponentDetails = () => {
       .finally(() => {
         setLoading(false)
       })
-  }
+  }, [componentName, subComponentName])
 
   useEffect(() => {
     fetchData()
-  }, [componentName, subComponentName])
+  }, [fetchData])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()

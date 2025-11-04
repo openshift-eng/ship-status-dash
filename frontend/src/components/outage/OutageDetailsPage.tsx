@@ -1,28 +1,29 @@
 import { AccessTime, ArrowBack, Assignment, Info, Person, Settings } from '@mui/icons-material'
 import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Container,
-  Paper,
-  Typography,
-  styled,
+    Alert,
+    Box,
+    Button,
+    Chip,
+    CircularProgress,
+    Container,
+    Paper,
+    Typography,
+    styled,
 } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
 import {
-  formatDuration,
-  getStatusBackgroundColor,
-  getStatusChipColor,
-  relativeTime,
+    formatDuration,
+    getStatusBackgroundColor,
+    getStatusChipColor,
+    relativeTime,
 } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 
+import OutageActions from './actions/OutageActions'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
 import Section from './OutageDetailsSection'
 
@@ -136,6 +137,15 @@ const LoadingContainer = styled(Box)(() => ({
   minHeight: '400px',
 }))
 
+const TopActionsContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  '& button': {
+    border: `1px solid ${theme.palette.divider}`,
+  },
+}))
+
 const OutageDetailsPage = () => {
   const navigate = useNavigate()
   const { componentName, subComponentName, outageId } = useParams<{
@@ -147,7 +157,7 @@ const OutageDetailsPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchOutage = useCallback(() => {
     if (!componentName || !subComponentName || !outageId) {
       setError('Missing component, subcomponent, or outage ID')
       setLoading(false)
@@ -160,12 +170,23 @@ const OutageDetailsPage = () => {
     fetch(getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)))
       .then((outageResponse) => {
         if (!outageResponse.ok) {
+          // If 404, outage was deleted, navigate back
+          if (outageResponse.status === 404) {
+            if (componentName && subComponentName) {
+              navigate(`/${componentName}/${subComponentName}`)
+            } else {
+              navigate('/')
+            }
+            return
+          }
           throw new Error(`Failed to fetch outage: ${outageResponse.statusText}`)
         }
         return outageResponse.json()
       })
       .then((outageData) => {
-        setOutage(outageData)
+        if (outageData) {
+          setOutage(outageData)
+        }
       })
       .catch((err) => {
         setError(err.message || 'Failed to fetch data')
@@ -173,7 +194,11 @@ const OutageDetailsPage = () => {
       .finally(() => {
         setLoading(false)
       })
-  }, [componentName, subComponentName, outageId])
+  }, [componentName, subComponentName, outageId, navigate])
+
+  useEffect(() => {
+    fetchOutage()
+  }, [fetchOutage])
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
@@ -234,9 +259,14 @@ const OutageDetailsPage = () => {
 
   return (
     <StyledContainer maxWidth="lg">
-      <BackButton onClick={handleBack} variant="outlined" startIcon={<ArrowBack />}>
-        {getBackButtonLabel()}
-      </BackButton>
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start" marginBottom={3}>
+        <BackButton onClick={handleBack} variant="outlined" startIcon={<ArrowBack />}>
+          {getBackButtonLabel()}
+        </BackButton>
+        <TopActionsContainer>
+          <OutageActions outage={outage} onSuccess={fetchOutage} onError={setError} />
+        </TopActionsContainer>
+      </Box>
 
       <HeaderPaper severity={outage.severity} resolved={isResolved()} elevation={2}>
         <HeaderContent>
