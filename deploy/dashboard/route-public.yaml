@@ -1,7 +1,7 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: dashboard-protected
+  name: dashboard-public
   namespace: ship-status
   labels:
     app: dashboard
@@ -10,7 +10,8 @@ spec:
     kind: Service
     name: dashboard
   port:
-    targetPort: protected
+    targetPort: public
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+
