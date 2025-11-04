@@ -29,3 +29,10 @@ export const modifyOutageEndpoint = (
   outageId: number,
 ) =>
   `${getApiBaseUrl()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}`
+
+export const getOutageEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+) =>
+  `${getApiBaseUrl()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}`

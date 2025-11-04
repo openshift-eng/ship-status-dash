@@ -1,34 +1,24 @@
 import { Visibility } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
-import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { Outage } from '../../types'
-
-import OutageDetailsModal from './OutageDetailsModal'
 
 interface OutageDetailsButtonProps {
   outage: Outage
 }
 
-const OutageDetailsButton: React.FC<OutageDetailsButtonProps> = ({ outage }) => {
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
+const OutageDetailsButton = ({ outage }: OutageDetailsButtonProps) => {
+  const navigate = useNavigate()
 
   const handleDetailsClick = () => {
-    setDetailsDialogOpen(true)
-  }
-
-  const handleDetailsClose = () => {
-    setDetailsDialogOpen(false)
+    navigate(`/${outage.component_name}/${outage.sub_component_name}/outages/${outage.id}`)
   }
 
   return (
-    <>
-      <Tooltip title="View full details" arrow>
-        <Button size="small" onClick={handleDetailsClick} startIcon={<Visibility />}></Button>
-      </Tooltip>
-
-      <OutageDetailsModal open={detailsDialogOpen} onClose={handleDetailsClose} outage={outage} />
-    </>
+    <Tooltip title="View full details" arrow>
+      <Button size="small" onClick={handleDetailsClick} startIcon={<Visibility />}></Button>
+    </Tooltip>
   )
 }
 

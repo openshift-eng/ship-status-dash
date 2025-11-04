@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import ComponentDetailsPage from './components/component/ComponentDetailsPage'
 import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
+import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 
 // Create light and dark themes
@@ -51,6 +52,10 @@ function App() {
             <Route path="/" element={<ComponentStatusList />} />
             <Route path="/:componentName" element={<ComponentDetailsPage />} />
             <Route path="/:componentName/:subComponentName" element={<SubComponentDetails />} />
+            <Route
+              path="/:componentName/:subComponentName/outages/:outageId"
+              element={<OutageDetailsPage />}
+            />
           </Routes>
         </Router>
       </ThemeProvider>

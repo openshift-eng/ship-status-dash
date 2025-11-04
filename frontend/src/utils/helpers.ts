@@ -104,6 +104,18 @@ export const relativeDuration = (secondsAgo: number) => {
   }
 }
 
+// formatDuration formats a duration between start time and optional end time as a human-readable string
+export const formatDuration = (
+  startTime: string,
+  endTime?: { Time: string; Valid: boolean },
+): string => {
+  const start = new Date(startTime)
+  const end = endTime?.Valid ? new Date(endTime.Time) : new Date()
+  const durationSeconds = Math.floor((end.getTime() - start.getTime()) / 1000)
+  const duration = relativeDuration(durationSeconds)
+  return `${Math.round(Number(duration.value))} ${duration.units}`
+}
+
 // Helper function to get current local time in datetime-local format
 export const getCurrentLocalTime = () => {
   return formatDateForDateTimeLocal(new Date())
