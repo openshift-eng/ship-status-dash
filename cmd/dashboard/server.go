@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"ship-status-dash/pkg/types"
 	"time"
 
@@ -54,7 +56,8 @@ func (s *Server) setupRoutes() http.Handler {
 	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods(http.MethodGet)
 
 	// Serve static files (React frontend) - must be after API routes
-	router.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
+	spa := spaHandler{staticPath: "./static", indexPath: "index.html"}
+	router.PathPrefix("/").Handler(spa)
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
@@ -67,6 +70,36 @@ func (s *Server) setupRoutes() http.Handler {
 	handler = s.loggingMiddleware(handler)
 
 	return handler
+}
+
+// spaHandler implements the http.Handler interface for serving a Single Page Application.
+// It serves static files if they exist, otherwise serves index.html to allow
+// client-side routing to work.
+type spaHandler struct {
+	staticPath string
+	indexPath  string
+}
+
+func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := filepath.Join(h.staticPath, r.URL.Path)
+
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if info.IsDir() {
+		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
+		return
+	}
+
+	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
 }
 
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {

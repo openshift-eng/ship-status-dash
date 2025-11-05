@@ -65,15 +65,6 @@ func authMiddleware(next http.Handler, logger *logrus.Logger, hmacAuth hmacauth.
 
 		user := r.Header.Get("X-Forwarded-User")
 
-		if os.Getenv("DEV_MODE") == "1" {
-			if user == "" {
-				user = "developer"
-			}
-			ctx := context.WithValue(r.Context(), userContextKey, user)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
 		if user == "" {
 			authLogger.Warn("Missing X-Forwarded-User header")
 			http.Error(w, "Missing X-Forwarded-User header", http.StatusUnauthorized)
