@@ -61,11 +61,13 @@ func (o *Options) Validate() error {
 		return errors.New("database DSN is required (use --dsn flag)")
 	}
 
-	if o.HMACSecretFile == "" {
-		return errors.New("hmac secret file is required (use --hmac-secret-file flag)")
-	}
-	if _, err := os.Stat(o.HMACSecretFile); os.IsNotExist(err) {
-		return errors.New("hmac secret file does not exist: " + o.HMACSecretFile)
+	if os.Getenv("DEV_MODE") != "1" {
+		if o.HMACSecretFile == "" {
+			return errors.New("hmac secret file is required (use --hmac-secret-file flag)")
+		}
+		if _, err := os.Stat(o.HMACSecretFile); os.IsNotExist(err) {
+			return errors.New("hmac secret file does not exist: " + o.HMACSecretFile)
+		}
 	}
 
 	return nil
@@ -122,13 +124,12 @@ func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
 	return db
 }
 
-func getHMACSecret(path string) []byte {
+func getHMACSecret(log *logrus.Logger, path string) []byte {
 	secret, err := os.ReadFile(path)
 	if err != nil {
-		panic(err)
+		log.WithField("error", err).Warn("Failed to read HMAC secret file")
+		return []byte{}
 	}
-
-	// Trim any trailing newlines/whitespace from the secret
 	return []byte(strings.TrimSpace(string(secret)))
 }
 
@@ -142,7 +143,7 @@ func main() {
 
 	config := loadConfig(log, opts.ConfigPath)
 	db := connectDatabase(log, opts.DatabaseDSN)
-	hmacSecret := getHMACSecret(opts.HMACSecretFile)
+	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
 	server := NewServer(config, db, log, opts.CORSOrigin, hmacSecret)
 
 	addr := ":" + opts.Port

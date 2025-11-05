@@ -10,6 +10,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var oauthSignatureHeaders = []string{
+	"Content-Length",
+	"Content-Md5",
+	"Content-Type",
+	"Date",
+	"Authorization",
+	"X-Forwarded-User",
+	"X-Forwarded-Email",
+	"X-Forwarded-Access-Token",
+	"Cookie",
+	"Gap-Auth",
+}
+
+const gapSignatureHeader = "GAP-Signature"
+
 type contextKey string
 
 const userContextKey contextKey = "user"
@@ -23,26 +38,21 @@ func GetUserFromContext(ctx context.Context) (string, bool) {
 func newAuthMiddleware(logger *logrus.Logger, hmacSecret []byte, next http.Handler) http.Handler {
 	// Create HmacAuth instance with the same headers that oauth-proxy uses
 	// These are the headers that oauth-proxy includes in the signature
-	signatureHeaders := []string{
-		"Content-Length",
-		"Content-Md5",
-		"Content-Type",
-		"Date",
-		"Authorization",
-		"X-Forwarded-User",
-		"X-Forwarded-Email",
-		"X-Forwarded-Access-Token",
-		"Cookie",
-		"Gap-Auth",
-	}
-	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, "GAP-Signature", signatureHeaders)
+	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, gapSignatureHeader, oauthSignatureHeaders)
 	return authMiddleware(next, logger, hmacAuth)
 }
 
 func authMiddleware(next http.Handler, logger *logrus.Logger, hmacAuth hmacauth.HmacAuth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		isMutating := r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete
+		// In development mode, we skip authentication
+		if os.Getenv("DEV_MODE") == "1" {
+			logger.Info("Skipping authentication in development mode")
+			ctx := context.WithValue(r.Context(), userContextKey, "developer")
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 
+		isMutating := r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete
 		if !isMutating {
 			next.ServeHTTP(w, r)
 			return

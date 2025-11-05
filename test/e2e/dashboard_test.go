@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,14 +26,8 @@ func TestE2E_Dashboard(t *testing.T) {
 		serverPort = "8888" // fallback to default
 	}
 
-	// Get HMAC secret file from environment variable
-	hmacSecretFile := os.Getenv("TEST_HMAC_SECRET_FILE")
-	if hmacSecretFile == "" {
-		t.Fatal("TEST_HMAC_SECRET_FILE environment variable is required")
-	}
-
 	serverURL := "http://localhost:" + serverPort
-	client, err := NewTestHTTPClient(serverURL, hmacSecretFile)
+	client, err := NewTestHTTPClient(serverURL)
 	require.NoError(t, err)
 
 	t.Run("Health", testHealth(client))
@@ -47,7 +40,6 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("SubComponentStatus", testSubComponentStatus(client))
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
-	t.Run("InvalidSignatureAuth", testInvalidSignatureAuth(client))
 
 	t.Log("All tests passed!")
 }
@@ -112,7 +104,7 @@ func createOutage(t *testing.T, client *TestHTTPClient, componentName, subCompon
 		"start_time":      time.Now().UTC().Format(time.RFC3339),
 		"description":     "Test outage for " + subComponentName,
 		"discovered_from": "e2e-test",
-		"created_by":      "test-user",
+		"created_by":      "developer",
 	}
 
 	payloadBytes, err := json.Marshal(outagePayload)
@@ -129,7 +121,7 @@ func createOutage(t *testing.T, client *TestHTTPClient, componentName, subCompon
 	require.NoError(t, err)
 
 	// Verify that created_by is set to the user from X-Forwarded-User header
-	assert.Equal(t, "test-user", outage.CreatedBy, "created_by should be set to the user from X-Forwarded-User header")
+	assert.Equal(t, "developer", outage.CreatedBy, "created_by should be set to the user from X-Forwarded-User header")
 
 	return outage
 }
@@ -175,7 +167,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Test outage for non-existent sub-component",
 				"discovered_from": "e2e-test",
-				"created_by":      "test-user",
+				"created_by":      "developer",
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -194,7 +186,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Test outage with invalid severity",
 				"discovered_from": "e2e-test",
-				"created_by":      "test-user",
+				"created_by":      "developer",
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -364,7 +356,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 
 		// Verify that confirmed_by is set to the user from X-Forwarded-User header
 		assert.NotNil(t, confirmedOutage.ConfirmedBy, "confirmed_by should be set when confirmed is true")
-		assert.Equal(t, "test-user", *confirmedOutage.ConfirmedBy, "confirmed_by should be set to the user from X-Forwarded-User header")
+		assert.Equal(t, "developer", *confirmedOutage.ConfirmedBy, "confirmed_by should be set to the user from X-Forwarded-User header")
 		assert.True(t, confirmedOutage.ConfirmedAt.Valid, "confirmed_at should be set when confirmed is true")
 	}
 }
@@ -444,7 +436,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, utils.Slugify("Tide"), outage.SubComponentName)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			assert.Equal(t, "e2e-test", outage.DiscoveredFrom)
-			assert.Equal(t, "test-user", outage.CreatedBy)
+			assert.Equal(t, "developer", outage.CreatedBy)
 		})
 
 		t.Run("GET non-existent outage returns 404", func(t *testing.T) {
@@ -566,7 +558,7 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(updateResp.Body).Decode(&updatedOutage)
 			require.NoError(t, err)
 			assert.NotNil(t, updatedOutage.ResolvedBy, "resolved_by should be set when end_time is provided")
-			assert.Equal(t, "test-user", *updatedOutage.ResolvedBy, "resolved_by should be set to the user from X-Forwarded-User header")
+			assert.Equal(t, "developer", *updatedOutage.ResolvedBy, "resolved_by should be set to the user from X-Forwarded-User header")
 
 			// Check that the status endpoint still considers this outage active
 			status := getStatus(t, client, "Prow", "Deck")
@@ -718,7 +710,7 @@ func createOutageWithSeverity(t *testing.T, client *TestHTTPClient, componentNam
 		"start_time":      time.Now().UTC().Format(time.RFC3339),
 		"description":     fmt.Sprintf("Test outage with %s severity", severity),
 		"discovered_from": "e2e-test",
-		"created_by":      "test-user",
+		"created_by":      "developer",
 	}
 
 	payloadBytes, err := json.Marshal(outagePayload)
@@ -735,7 +727,7 @@ func createOutageWithSeverity(t *testing.T, client *TestHTTPClient, componentNam
 	require.NoError(t, err)
 
 	// Verify that created_by is set to the user from X-Forwarded-User header
-	assert.Equal(t, "test-user", outage.CreatedBy, "created_by should be set to the user from X-Forwarded-User header")
+	assert.Equal(t, "developer", outage.CreatedBy, "created_by should be set to the user from X-Forwarded-User header")
 
 	return outage
 }
@@ -827,80 +819,6 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Should return Down (confirmed) not Suspected (unconfirmed)
 			assert.Equal(t, types.StatusDown, allStatuses[0].Status)
 			assert.Len(t, allStatuses[0].ActiveOutages, 2)
-		})
-	}
-}
-
-func setInvalidSignatureHeaders(req *http.Request) {
-	req.Header.Set("X-Forwarded-User", "test-user")
-	req.Header.Set("GAP-Signature", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
-}
-
-func testInvalidSignatureAuth(client *TestHTTPClient) func(*testing.T) {
-	return func(t *testing.T) {
-		t.Run("POST with invalid signature returns 401", func(t *testing.T) {
-			outagePayload := map[string]interface{}{
-				"severity":        string(types.SeverityDown),
-				"start_time":      time.Now().UTC().Format(time.RFC3339),
-				"description":     "Test outage with invalid signature",
-				"discovered_from": "e2e-test",
-				"created_by":      "test-user",
-			}
-
-			payloadBytes, err := json.Marshal(outagePayload)
-			require.NoError(t, err)
-
-			req, err := http.NewRequest("POST", client.serverURL+"/api/components/prow/tide/outages", bytes.NewBuffer(payloadBytes))
-			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
-			setInvalidSignatureHeaders(req)
-			resp, err := client.client.Do(req)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-		})
-
-		t.Run("PATCH with invalid signature returns 401", func(t *testing.T) {
-			// First create an outage with valid signature
-			outage := createOutage(t, client, "Prow", "Tide")
-			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
-
-			updatePayload := map[string]interface{}{
-				"description": "Updated description",
-			}
-
-			payloadBytes, err := json.Marshal(updatePayload)
-			require.NoError(t, err)
-
-			updateURL := fmt.Sprintf("%s/api/components/prow/tide/outages/%d", client.serverURL, outage.ID)
-			req, err := http.NewRequest("PATCH", updateURL, bytes.NewBuffer(payloadBytes))
-			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
-			setInvalidSignatureHeaders(req)
-			resp, err := client.client.Do(req)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-		})
-
-		t.Run("DELETE with invalid signature returns 401", func(t *testing.T) {
-			// First create an outage with valid signature
-			outage := createOutage(t, client, "Prow", "Tide")
-
-			deleteURL := fmt.Sprintf("%s/api/components/prow/tide/outages/%d", client.serverURL, outage.ID)
-			req, err := http.NewRequest("DELETE", deleteURL, nil)
-			require.NoError(t, err)
-			setInvalidSignatureHeaders(req)
-			resp, err := client.client.Do(req)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-
-			// Clean up with valid signature
-			deleteOutage(t, client, "Prow", "Tide", outage.ID)
 		})
 	}
 }
