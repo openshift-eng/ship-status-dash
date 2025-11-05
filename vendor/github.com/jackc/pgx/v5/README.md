@@ -50,25 +50,25 @@ See the [getting started guide](https://github.com/jackc/pgx/wiki/Getting-starte
 
 ## Features
 
-- Support for approximately 70 different PostgreSQL types
-- Automatic statement preparation and caching
-- Batch queries
-- Single-round trip query mode
-- Full TLS connection control
-- Binary format support for custom types (allows for much quicker encoding/decoding)
-- `COPY` protocol support for faster bulk data loads
-- Tracing and logging support
-- Connection pool with after-connect hook for arbitrary connection setup
-- `LISTEN` / `NOTIFY`
-- Conversion of PostgreSQL arrays to Go slice mappings for integers, floats, and strings
-- `hstore` support
-- `json` and `jsonb` support
-- Maps `inet` and `cidr` PostgreSQL types to `netip.Addr` and `netip.Prefix`
-- Large object support
-- NULL mapping to pointer to pointer
-- Supports `database/sql.Scanner` and `database/sql/driver.Valuer` interfaces for custom types
-- Notice response handling
-- Simulated nested transactions with savepoints
+* Support for approximately 70 different PostgreSQL types
+* Automatic statement preparation and caching
+* Batch queries
+* Single-round trip query mode
+* Full TLS connection control
+* Binary format support for custom types (allows for much quicker encoding/decoding)
+* `COPY` protocol support for faster bulk data loads
+* Tracing and logging support
+* Connection pool with after-connect hook for arbitrary connection setup
+* `LISTEN` / `NOTIFY`
+* Conversion of PostgreSQL arrays to Go slice mappings for integers, floats, and strings
+* `hstore` support
+* `json` and `jsonb` support
+* Maps `inet` and `cidr` PostgreSQL types to `netip.Addr` and `netip.Prefix`
+* Large object support
+* NULL mapping to pointer to pointer
+* Supports `database/sql.Scanner` and `database/sql/driver.Valuer` interfaces for custom types
+* Notice response handling
+* Simulated nested transactions with savepoints
 
 ## Choosing Between the pgx and database/sql Interfaces
 
@@ -118,27 +118,28 @@ pgerrcode contains constants for the PostgreSQL error codes.
 
 ## Adapters for 3rd Party Types
 
-- [github.com/jackc/pgx-gofrs-uuid](https://github.com/jackc/pgx-gofrs-uuid)
-- [github.com/jackc/pgx-shopspring-decimal](https://github.com/jackc/pgx-shopspring-decimal)
-- [github.com/twpayne/pgx-geos](https://github.com/twpayne/pgx-geos) ([PostGIS](https://postgis.net/) and [GEOS](https://libgeos.org/) via [go-geos](https://github.com/twpayne/go-geos))
-- [github.com/vgarvardt/pgx-google-uuid](https://github.com/vgarvardt/pgx-google-uuid)
+* [github.com/jackc/pgx-gofrs-uuid](https://github.com/jackc/pgx-gofrs-uuid)
+* [github.com/jackc/pgx-shopspring-decimal](https://github.com/jackc/pgx-shopspring-decimal)
+* [github.com/twpayne/pgx-geos](https://github.com/twpayne/pgx-geos) ([PostGIS](https://postgis.net/) and [GEOS](https://libgeos.org/) via [go-geos](https://github.com/twpayne/go-geos))
+* [github.com/vgarvardt/pgx-google-uuid](https://github.com/vgarvardt/pgx-google-uuid)
+
 
 ## Adapters for 3rd Party Tracers
 
-- [github.com/jackhopner/pgx-xray-tracer](https://github.com/jackhopner/pgx-xray-tracer)
-- [github.com/exaring/otelpgx](https://github.com/exaring/otelpgx)
+* [github.com/jackhopner/pgx-xray-tracer](https://github.com/jackhopner/pgx-xray-tracer)
+* [github.com/exaring/otelpgx](https://github.com/exaring/otelpgx)
 
 ## Adapters for 3rd Party Loggers
 
 These adapters can be used with the tracelog package.
 
-- [github.com/jackc/pgx-go-kit-log](https://github.com/jackc/pgx-go-kit-log)
-- [github.com/jackc/pgx-log15](https://github.com/jackc/pgx-log15)
-- [github.com/jackc/pgx-logrus](https://github.com/jackc/pgx-logrus)
-- [github.com/jackc/pgx-zap](https://github.com/jackc/pgx-zap)
-- [github.com/jackc/pgx-zerolog](https://github.com/jackc/pgx-zerolog)
-- [github.com/mcosta74/pgx-slog](https://github.com/mcosta74/pgx-slog)
-- [github.com/kataras/pgx-golog](https://github.com/kataras/pgx-golog)
+* [github.com/jackc/pgx-go-kit-log](https://github.com/jackc/pgx-go-kit-log)
+* [github.com/jackc/pgx-log15](https://github.com/jackc/pgx-log15)
+* [github.com/jackc/pgx-logrus](https://github.com/jackc/pgx-logrus)
+* [github.com/jackc/pgx-zap](https://github.com/jackc/pgx-zap)
+* [github.com/jackc/pgx-zerolog](https://github.com/jackc/pgx-zerolog)
+* [github.com/mcosta74/pgx-slog](https://github.com/mcosta74/pgx-slog)
+* [github.com/kataras/pgx-golog](https://github.com/kataras/pgx-golog)
 
 ## 3rd Party Libraries with PGX Support
 

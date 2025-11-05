@@ -833,7 +833,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 func setInvalidSignatureHeaders(req *http.Request) {
 	req.Header.Set("X-Forwarded-User", "test-user")
-	req.Header.Set("X-Signature", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+	req.Header.Set("GAP-Signature", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 }
 
 func testInvalidSignatureAuth(client *TestHTTPClient) func(*testing.T) {

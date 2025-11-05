@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-// HTTP client helper with X-Forwarded-User header and X-Signature for mutating requests
+// HTTP client helper with X-Forwarded-User header and GAP-Signature for mutating requests
 type TestHTTPClient struct {
 	serverURL  string
 	client     *http.Client
@@ -38,7 +38,7 @@ func (c *TestHTTPClient) computeSignature(user string) string {
 func (c *TestHTTPClient) setAuthHeaders(req *http.Request) {
 	user := "test-user"
 	req.Header.Set("X-Forwarded-User", user)
-	req.Header.Set("X-Signature", c.computeSignature(user))
+	req.Header.Set("GAP-Signature", c.computeSignature(user))
 }
 
 func (c *TestHTTPClient) Get(url string) (*http.Response, error) {

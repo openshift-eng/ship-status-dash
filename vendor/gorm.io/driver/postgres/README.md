@@ -27,4 +27,5 @@ db, err := gorm.Open(postgres.New(postgres.Config{
 }), &gorm.Config{})
 ```
 
+
 Checkout [https://gorm.io](https://gorm.io) for details.

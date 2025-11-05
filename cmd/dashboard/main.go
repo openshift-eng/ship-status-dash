@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
+	"strings"
 	"syscall"
 	"time"
 
@@ -127,7 +128,8 @@ func getHMACSecret(path string) []byte {
 		panic(err)
 	}
 
-	return secret
+	// Trim any trailing newlines/whitespace from the secret
+	return []byte(strings.TrimSpace(string(secret)))
 }
 
 func main() {

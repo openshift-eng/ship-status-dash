@@ -59,10 +59,11 @@ func (s *Server) setupRoutes() http.Handler {
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions}),
-		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "X-Signature"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "GAP-Signature"}),
 		handlers.AllowCredentials(),
 	)(router)
-	handler := authMiddleware(corsHandler, s.logger, s.hmacSecret)
+
+	handler := newAuthMiddleware(s.logger, s.hmacSecret, corsHandler)
 	handler = s.loggingMiddleware(handler)
 
 	return handler

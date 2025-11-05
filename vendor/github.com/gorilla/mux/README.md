@@ -5,6 +5,7 @@
 [![godoc](https://godoc.org/github.com/gorilla/mux?status.svg)](https://godoc.org/github.com/gorilla/mux)
 [![sourcegraph](https://sourcegraph.com/github.com/gorilla/mux/-/badge.svg)](https://sourcegraph.com/github.com/gorilla/mux?badge)
 
+
 ![Gorilla Logo](https://github.com/gorilla/.github/assets/53367916/d92caabf-98e0-473e-bfbf-ab554ba435e5)
 
 Package `gorilla/mux` implements a request router and dispatcher for matching incoming requests to
@@ -12,26 +13,26 @@ their respective handler.
 
 The name mux stands for "HTTP request multiplexer". Like the standard `http.ServeMux`, `mux.Router` matches incoming requests against a list of registered routes and calls a handler for the route that matches the URL or other conditions. The main features are:
 
-- It implements the `http.Handler` interface so it is compatible with the standard `http.ServeMux`.
-- Requests can be matched based on URL host, path, path prefix, schemes, header and query values, HTTP methods or using custom matchers.
-- URL hosts, paths and query values can have variables with an optional regular expression.
-- Registered URLs can be built, or "reversed", which helps maintaining references to resources.
-- Routes can be used as subrouters: nested routes are only tested if the parent route matches. This is useful to define groups of routes that share common conditions like a host, a path prefix or other repeated attributes. As a bonus, this optimizes request matching.
+* It implements the `http.Handler` interface so it is compatible with the standard `http.ServeMux`.
+* Requests can be matched based on URL host, path, path prefix, schemes, header and query values, HTTP methods or using custom matchers.
+* URL hosts, paths and query values can have variables with an optional regular expression.
+* Registered URLs can be built, or "reversed", which helps maintaining references to resources.
+* Routes can be used as subrouters: nested routes are only tested if the parent route matches. This is useful to define groups of routes that share common conditions like a host, a path prefix or other repeated attributes. As a bonus, this optimizes request matching.
 
 ---
 
-- [Install](#install)
-- [Examples](#examples)
-- [Matching Routes](#matching-routes)
-- [Static Files](#static-files)
-- [Serving Single Page Applications](#serving-single-page-applications) (e.g. React, Vue, Ember.js, etc.)
-- [Registered URLs](#registered-urls)
-- [Walking Routes](#walking-routes)
-- [Graceful Shutdown](#graceful-shutdown)
-- [Middleware](#middleware)
-- [Handling CORS Requests](#handling-cors-requests)
-- [Testing Handlers](#testing-handlers)
-- [Full Example](#full-example)
+* [Install](#install)
+* [Examples](#examples)
+* [Matching Routes](#matching-routes)
+* [Static Files](#static-files)
+* [Serving Single Page Applications](#serving-single-page-applications) (e.g. React, Vue, Ember.js, etc.)
+* [Registered URLs](#registered-urls)
+* [Walking Routes](#walking-routes)
+* [Graceful Shutdown](#graceful-shutdown)
+* [Middleware](#middleware)
+* [Handling CORS Requests](#handling-cors-requests)
+* [Testing Handlers](#testing-handlers)
+* [Full Example](#full-example)
 
 ---
 
@@ -180,6 +181,7 @@ s.HandleFunc("/{key}/", ProductHandler)
 // "/products/{key}/details"
 s.HandleFunc("/{key}/details", ProductDetailsHandler)
 ```
+
 
 ### Static Files
 
@@ -367,7 +369,6 @@ url, err := r.Get("article").URL("subdomain", "news",
 ```
 
 To find all the required variables for a given route when calling `URL()`, the method `GetVarNames()` is available:
-
 ```go
 r := mux.NewRouter()
 r.Host("{domain}").
@@ -380,7 +381,6 @@ r.Host("{domain}").
 fmt.Println(r.Get("article").GetVarNames())
 
 ```
-
 ### Walking Routes
 
 The `Walk` function on `mux.Router` can be used to visit all of the routes that are registered on a router. For example,
@@ -590,10 +590,10 @@ Note: The handler chain will be stopped if your middleware doesn't call `next.Se
 
 [CORSMethodMiddleware](https://godoc.org/github.com/gorilla/mux#CORSMethodMiddleware) intends to make it easier to strictly set the `Access-Control-Allow-Methods` response header.
 
-- You will still need to use your own CORS handler to set the other CORS headers such as `Access-Control-Allow-Origin`
-- The middleware will set the `Access-Control-Allow-Methods` header to all the method matchers (e.g. `r.Methods(http.MethodGet, http.MethodPut, http.MethodOptions)` -> `Access-Control-Allow-Methods: GET,PUT,OPTIONS`) on a route
-- If you do not specify any methods, then:
-    > _Important_: there must be an `OPTIONS` method matcher for the middleware to set the headers.
+* You will still need to use your own CORS handler to set the other CORS headers such as `Access-Control-Allow-Origin`
+* The middleware will set the `Access-Control-Allow-Methods` header to all the method matchers (e.g. `r.Methods(http.MethodGet, http.MethodPut, http.MethodOptions)` -> `Access-Control-Allow-Methods: GET,PUT,OPTIONS`) on a route
+* If you do not specify any methods, then:
+> _Important_: there must be an `OPTIONS` method matcher for the middleware to set the headers.
 
 Here is an example of using `CORSMethodMiddleware` along with a custom `OPTIONS` handler to set all the required CORS headers:
 
@@ -611,7 +611,7 @@ func main() {
     // IMPORTANT: you must specify an OPTIONS method matcher for the middleware to set CORS headers
     r.HandleFunc("/foo", fooHandler).Methods(http.MethodGet, http.MethodPut, http.MethodPatch, http.MethodOptions)
     r.Use(mux.CORSMethodMiddleware(r))
-
+    
     http.ListenAndServe(":8080", r)
 }
 
@@ -641,14 +641,14 @@ Would look like:
 > Host: localhost:8080
 > User-Agent: curl/7.59.0
 > Accept: */*
->
+> 
 < HTTP/1.1 200 OK
 < Access-Control-Allow-Methods: GET,PUT,PATCH,OPTIONS
 < Access-Control-Allow-Origin: *
 < Date: Fri, 28 Jun 2019 20:13:30 GMT
 < Content-Length: 3
 < Content-Type: text/plain; charset=utf-8
-<
+< 
 * Connection #0 to host localhost left intact
 foo
 ```
@@ -763,8 +763,8 @@ func TestMetricsHandler(t *testing.T) {
         }
 
         rr := httptest.NewRecorder()
-
-	// To add the vars to the context,
+	
+	// To add the vars to the context, 
 	// we need to create a router through which we can pass the request.
 	router := mux.NewRouter()
         router.HandleFunc("/metrics/{type}", MetricsHandler)

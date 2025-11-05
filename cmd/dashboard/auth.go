@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto"
 	"net/http"
 	"os"
 
+	"github.com/18F/hmacauth"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +20,26 @@ func GetUserFromContext(ctx context.Context) (string, bool) {
 	return user, ok
 }
 
-func authMiddleware(next http.Handler, logger *logrus.Logger, hmacSecret []byte) http.Handler {
+func newAuthMiddleware(logger *logrus.Logger, hmacSecret []byte, next http.Handler) http.Handler {
+	// Create HmacAuth instance with the same headers that oauth-proxy uses
+	// These are the headers that oauth-proxy includes in the signature
+	signatureHeaders := []string{
+		"Content-Length",
+		"Content-Md5",
+		"Content-Type",
+		"Date",
+		"Authorization",
+		"X-Forwarded-User",
+		"X-Forwarded-Email",
+		"X-Forwarded-Access-Token",
+		"Cookie",
+		"Gap-Auth",
+	}
+	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, "GAP-Signature", signatureHeaders)
+	return authMiddleware(next, logger, hmacAuth)
+}
+
+func authMiddleware(next http.Handler, logger *logrus.Logger, hmacAuth hmacauth.HmacAuth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		isMutating := r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete
 
@@ -36,7 +54,6 @@ func authMiddleware(next http.Handler, logger *logrus.Logger, hmacSecret []byte)
 		})
 
 		user := r.Header.Get("X-Forwarded-User")
-		signature := r.Header.Get("X-Signature")
 
 		if os.Getenv("DEV_MODE") == "1" {
 			if user == "" {
@@ -54,28 +71,26 @@ func authMiddleware(next http.Handler, logger *logrus.Logger, hmacSecret []byte)
 		}
 
 		authLogger = authLogger.WithField("user", user)
-
-		if signature == "" {
-			authLogger.Warn("Missing X-Signature header")
-			http.Error(w, "Missing X-Signature header", http.StatusUnauthorized)
+		result, _, _ := hmacAuth.AuthenticateRequest(r)
+		switch result {
+		case hmacauth.ResultNoSignature:
+			authLogger.Warn("Missing GAP-Signature header")
+			http.Error(w, "Missing GAP-Signature header", http.StatusUnauthorized)
 			return
-		}
-
-		mac := hmac.New(sha256.New, hmacSecret)
-		mac.Write([]byte(user))
-		expectedSignatureBytes := mac.Sum(nil)
-
-		signatureBytes, err := hex.DecodeString(signature)
-		if err != nil {
-			authLogger.Warn("Invalid signature format (not hex-encoded)")
+		case hmacauth.ResultInvalidFormat:
+			authLogger.Warn("Invalid signature format")
 			http.Error(w, "Invalid signature format", http.StatusUnauthorized)
 			return
-		}
-
-		if !hmac.Equal(signatureBytes, expectedSignatureBytes) {
+		case hmacauth.ResultUnsupportedAlgorithm:
+			authLogger.Warn("Unsupported signature algorithm")
+			http.Error(w, "Unsupported signature algorithm", http.StatusUnauthorized)
+			return
+		case hmacauth.ResultMismatch:
 			authLogger.Warn("Invalid HMAC signature")
 			http.Error(w, "Invalid signature", http.StatusUnauthorized)
 			return
+		case hmacauth.ResultMatch:
+			// Signature is valid, continue
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
