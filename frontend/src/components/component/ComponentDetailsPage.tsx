@@ -1,19 +1,19 @@
 import { ArrowBack } from '@mui/icons-material'
 import {
-  Box,
-  Container,
-  Typography,
-  Paper,
-  Button,
-  CircularProgress,
   Alert,
-  styled,
+  Box,
+  Button,
   Card,
   CardContent,
+  CircularProgress,
+  Container,
   Divider,
+  Paper,
+  styled,
+  Typography,
 } from '@mui/material'
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Component } from '../../types'
 import { getComponentsEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'

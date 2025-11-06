@@ -25,6 +25,7 @@ const ConfirmOutage = ({ outage, onConfirmSuccess, onError }: ConfirmOutageProps
       body: JSON.stringify({
         confirmed: true,
       }),
+      credentials: 'include',
     })
       .then((response) => {
         if (!response.ok) {

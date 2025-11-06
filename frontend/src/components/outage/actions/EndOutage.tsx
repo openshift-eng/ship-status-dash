@@ -37,6 +37,7 @@ const EndOutage = ({ outage, onEndSuccess, onError }: EndOutageProps) => {
           Valid: true,
         },
       }),
+      credentials: 'include',
     })
       .then((response) => {
         if (!response.ok) {

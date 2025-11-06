@@ -17,8 +17,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
 import {
-  createOutageEndpoint,
   getComponentInfoEndpoint,
+  getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
 import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
@@ -96,7 +96,7 @@ const SubComponentDetails = () => {
 
     // Fetch outages, status, and component configuration in parallel
     Promise.all([
-      fetch(createOutageEndpoint(componentName, subComponentName)),
+      fetch(getSubComponentOutagesEndpoint(componentName, subComponentName)),
       fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
       fetch(getComponentInfoEndpoint(componentName)),
     ])

@@ -2,11 +2,12 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { StylesProvider } from '@mui/styles'
 import { useMemo, useState } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 
 import ComponentDetailsPage from './components/component/ComponentDetailsPage'
 import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
+import OAuthCallback from './components/OAuthCallback'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 
@@ -49,6 +50,7 @@ function App() {
         <Router>
           <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
           <Routes>
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
             <Route path="/" element={<ComponentStatusList />} />
             <Route path="/:componentName" element={<ComponentDetailsPage />} />
             <Route path="/:componentName/:subComponentName" element={<SubComponentDetails />} />

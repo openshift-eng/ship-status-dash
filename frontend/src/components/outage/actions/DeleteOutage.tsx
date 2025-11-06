@@ -25,6 +25,7 @@ const DeleteOutage = ({ outage, onDeleteSuccess, onError }: DeleteOutageProps) =
     setIsLoading(true)
     fetch(modifyOutageEndpoint(outage.component_name, outage.sub_component_name, outage.id), {
       method: 'DELETE',
+      credentials: 'include',
     })
       .then((response) => {
         if (!response.ok) {

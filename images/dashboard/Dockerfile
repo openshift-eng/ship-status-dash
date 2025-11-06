@@ -17,6 +17,10 @@ WORKDIR /app/frontend
 # Copy source code and node_modules
 COPY frontend/ .
 
+# Set environment variables for React build
+ENV REACT_APP_PUBLIC_DOMAIN=https://dashboard-public-ship-status.apps.ci.l2s4.p1.openshiftapps.com
+ENV REACT_APP_PROTECTED_DOMAIN=https://dashboard-protected-ship-status.apps.ci.l2s4.p1.openshiftapps.com
+
 # Build the application
 RUN npm run build
 

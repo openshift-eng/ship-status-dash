@@ -59,15 +59,15 @@ func (s *Server) setupRoutes() http.Handler {
 	spa := spaHandler{staticPath: "./static", indexPath: "index.html"}
 	router.PathPrefix("/").Handler(spa)
 
+	authHandler := newAuthMiddleware(s.logger, s.hmacSecret, router)
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "GAP-Signature"}),
 		handlers.AllowCredentials(),
-	)(router)
+	)(authHandler)
 
-	handler := newAuthMiddleware(s.logger, s.hmacSecret, corsHandler)
-	handler = s.loggingMiddleware(handler)
+	handler := s.loggingMiddleware(corsHandler)
 
 	return handler
 }
