@@ -37,37 +37,119 @@ func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOri
 	}
 }
 
+type route struct {
+	path      string
+	method    string
+	handler   func(http.ResponseWriter, *http.Request)
+	protected bool
+}
+
 func (s *Server) setupRoutes() http.Handler {
+	routes := []route{
+		{
+			path:      "/health",
+			method:    http.MethodGet,
+			handler:   s.handlers.HealthJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/status",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetAllComponentsStatusJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/status/{componentName}",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetComponentStatusJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/status/{componentName}/{subComponentName}",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetSubComponentStatusJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetComponentsJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetComponentInfoJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/outages",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutagesJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetSubComponentOutagesJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
+			method:    http.MethodPatch,
+			handler:   s.handlers.UpdateOutageJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
+			method:    http.MethodDelete,
+			handler:   s.handlers.DeleteOutage,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages",
+			method:    http.MethodPost,
+			handler:   s.handlers.CreateOutageJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/user",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetAuthenticatedUserJSON,
+			protected: true,
+		},
+	}
+
 	router := mux.NewRouter()
+	protectedRouter := router.Name("protected").Subrouter()
+	protectedRouter.Use(func(next http.Handler) http.Handler {
+		return newAuthMiddleware(s.logger, s.hmacSecret, next)
+	})
 
-	router.HandleFunc("/health", s.handlers.HealthJSON).Methods(http.MethodGet)
-
-	router.HandleFunc("/api/status", s.handlers.GetAllComponentsStatusJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/status/{componentName}", s.handlers.GetComponentStatusJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/status/{componentName}/{subComponentName}", s.handlers.GetSubComponentStatusJSON).Methods(http.MethodGet)
-
-	router.HandleFunc("/api/components", s.handlers.GetComponentsJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/components/{componentName}", s.handlers.GetComponentInfoJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.GetOutageJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.UpdateOutageJSON).Methods(http.MethodPatch)
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}", s.handlers.DeleteOutage).Methods(http.MethodDelete)
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.CreateOutageJSON).Methods(http.MethodPost)
-	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.GetSubComponentOutagesJSON).Methods(http.MethodGet)
-	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods(http.MethodGet)
-
-	router.HandleFunc("/api/user", s.handlers.GetAuthenticatedUserJSON).Methods(http.MethodGet)
+	for _, route := range routes {
+		if route.protected {
+			protectedRouter.HandleFunc(route.path, route.handler).Methods(route.method)
+		} else {
+			router.HandleFunc(route.path, route.handler).Methods(route.method)
+		}
+	}
 
 	// Serve static files (React frontend) - must be after API routes
 	spa := spaHandler{staticPath: "./static", indexPath: "index.html"}
 	router.PathPrefix("/").Handler(spa)
 
-	authHandler := newAuthMiddleware(s.logger, s.hmacSecret, router)
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions}),
 		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "GAP-Signature"}),
 		handlers.AllowCredentials(),
-	)(authHandler)
+	)(router)
 
 	handler := s.loggingMiddleware(corsHandler)
 
