@@ -18,7 +18,7 @@ spec:
       serviceAccountName: ship-status
       containers:
       - name: oauth-proxy
-        image: quay.io/openshift/origin-oauth-proxy:4.16
+        image: quay.io/openshift/origin-oauth-proxy:4.20 #TODO: was 4.16
         args:
           - -provider=openshift
           - -http-address=:8443
@@ -27,8 +27,10 @@ spec:
           - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
           - --cookie-secret-file=/etc/secrets/session_secret
           - --cookie-samesite=none
+          - --cookie-secure=true
+          - --cookie-domain=.apps.ci.l2s4.p1.openshiftapps.com
           - --skip-auth-preflight
-          - --redirect-url=https://dashboard-public-ship-status.apps.ci.l2s4.p1.openshiftapps.com/oauth/callback
+          - --redirect-url=https://dashboard-protected-ship-status.apps.ci.l2s4.p1.openshiftapps.com/oauth/callback
           - --client-id=system:serviceaccount:ship-status:ship-status
           - --client-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
           - '--openshift-sar={"resource": "namespaces", "verb": "get"}'

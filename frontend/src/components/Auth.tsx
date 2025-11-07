@@ -55,8 +55,6 @@ const Auth = () => {
   }, [])
 
   const handleLoginClick = () => {
-    // we need to store the redirect url in local storage because the oauth proxy will redirect to the callback url after authentication
-    localStorage.setItem('oauth_redirect', window.location.href)
     window.location.href = `${getProtectedDomain()}/oauth/start`
   }
 
