@@ -18,6 +18,8 @@ WORKDIR /app/frontend
 COPY frontend/ .
 
 # Set environment variables for React build
+#TODO: can we pass these as flags to the build process?
+#TODO: or is there a better way to do this?
 ENV REACT_APP_PUBLIC_DOMAIN=https://dashboard-public-ship-status.apps.ci.l2s4.p1.openshiftapps.com
 ENV REACT_APP_PROTECTED_DOMAIN=https://dashboard-protected-ship-status.apps.ci.l2s4.p1.openshiftapps.com
 

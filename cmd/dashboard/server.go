@@ -55,6 +55,8 @@ func (s *Server) setupRoutes() http.Handler {
 	router.HandleFunc("/api/components/{componentName}/{subComponentName}/outages", s.handlers.GetSubComponentOutagesJSON).Methods(http.MethodGet)
 	router.HandleFunc("/api/components/{componentName}/outages", s.handlers.GetOutagesJSON).Methods(http.MethodGet)
 
+	router.HandleFunc("/api/user", s.handlers.GetAuthenticatedUserJSON).Methods(http.MethodGet)
+
 	// Serve static files (React frontend) - must be after API routes
 	spa := spaHandler{staticPath: "./static", indexPath: "index.html"}
 	router.PathPrefix("/").Handler(spa)

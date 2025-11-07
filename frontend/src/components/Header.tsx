@@ -1,25 +1,27 @@
-import { Brightness4, Brightness7, Login } from '@mui/icons-material'
-import { AppBar, Box, Button, IconButton, Toolbar, Tooltip } from '@mui/material'
+import { Brightness4, Brightness7 } from '@mui/icons-material'
+import { AppBar, Box, IconButton, styled, Toolbar, Tooltip } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 
-import { getProtectedDomain } from '../utils/endpoints'
+import Auth from './Auth'
 
 interface HeaderProps {
   onToggleTheme: () => void
   isDarkMode: boolean
 }
 
+const DarkModeToggle = styled(IconButton)(({ theme }) => ({
+  color: theme.palette.text.primary,
+  backgroundColor: theme.palette.action.hover,
+  '&:hover': {
+    backgroundColor: theme.palette.action.selected,
+  },
+}))
+
 const Header = ({ onToggleTheme, isDarkMode }: HeaderProps) => {
   const navigate = useNavigate()
 
   const handleLogoClick = () => {
     navigate('/')
-  }
-
-  const handleLoginClick = () => {
-    // we need to store the redirect url in local storage because the oauth proxy will redirect to the callback url after authentication
-    localStorage.setItem('oauth_redirect', window.location.href)
-    window.location.href = `${getProtectedDomain()}/oauth/start`
   }
 
   return (
@@ -49,36 +51,12 @@ const Header = ({ onToggleTheme, isDarkMode }: HeaderProps) => {
         />
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<Login />}
-            onClick={handleLoginClick}
-            sx={{
-              color: 'text.primary',
-              borderColor: 'divider',
-              textTransform: 'none',
-              '&:hover': {
-                borderColor: 'primary.main',
-                backgroundColor: 'action.hover',
-              },
-            }}
-          >
-            Login
-          </Button>
           <Tooltip title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
-            <IconButton
-              onClick={onToggleTheme}
-              sx={{
-                color: 'text.primary',
-                backgroundColor: 'action.hover',
-                '&:hover': {
-                  backgroundColor: 'action.selected',
-                },
-              }}
-            >
+            <DarkModeToggle onClick={onToggleTheme}>
               {isDarkMode ? <Brightness7 /> : <Brightness4 />}
-            </IconButton>
+            </DarkModeToggle>
           </Tooltip>
+          <Auth />
         </Box>
       </Toolbar>
     </AppBar>

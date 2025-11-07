@@ -93,6 +93,7 @@ func (h *Handlers) GetComponentInfoJSON(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
 	}
+	//TODO: I think this response should contain a bool as to if the current user is an admin
 	respondWithJSON(w, http.StatusOK, component)
 }
 
@@ -569,4 +570,15 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	}
 
 	return types.StatusHealthy
+}
+
+func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Request) {
+	user, authenticated := GetUserFromContext(r.Context())
+	if !authenticated {
+		respondWithError(w, http.StatusUnauthorized, "No Authenticated user found")
+	}
+	response := map[string]string{
+		"user": user,
+	}
+	respondWithJSON(w, http.StatusOK, response)
 }

@@ -40,6 +40,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("SubComponentStatus", testSubComponentStatus(client))
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
+	t.Run("User", testUser(client))
 
 	t.Log("All tests passed!")
 }
@@ -819,6 +820,29 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Should return Down (confirmed) not Suspected (unconfirmed)
 			assert.Equal(t, types.StatusDown, allStatuses[0].Status)
 			assert.Len(t, allStatuses[0].ActiveOutages, 2)
+		})
+	}
+}
+
+func testUser(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("GET /api/user returns authenticated user", func(t *testing.T) {
+			resp, err := client.Get("/api/user")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+			var userResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&userResponse)
+			require.NoError(t, err)
+
+			assert.NotEmpty(t, userResponse["user"])
+			// In DEV_MODE, user should be "developer"
+			if os.Getenv("DEV_MODE") == "1" {
+				assert.Equal(t, "developer", userResponse["user"])
+			}
 		})
 	}
 }

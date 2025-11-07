@@ -48,3 +48,5 @@ export const getOutageEndpoint = (
   outageId: number,
 ) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}`
+
+export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
