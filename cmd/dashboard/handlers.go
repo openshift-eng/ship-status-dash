@@ -81,6 +81,7 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 
 // GetComponentsJSON returns the list of configured components.
 func (h *Handlers) GetComponentsJSON(w http.ResponseWriter, r *http.Request) {
+	//TODO: I think this response should contain a bool as to if the current user is an admin of each component
 	respondWithJSON(w, http.StatusOK, h.config.Components)
 }
 

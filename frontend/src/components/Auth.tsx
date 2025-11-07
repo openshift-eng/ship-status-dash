@@ -35,7 +35,9 @@ const Auth = () => {
   const [user, setUser] = useState<{ user?: string } | null>(null)
 
   useEffect(() => {
-    fetch(getUserEndpoint())
+    fetch(getUserEndpoint(), {
+      credentials: 'include',
+    })
       .then((response) => {
         if (response.ok) {
           return response.json()
