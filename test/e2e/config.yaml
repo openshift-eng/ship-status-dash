@@ -12,5 +12,5 @@ components:
         description: The frontend for Prow
         managed: true
         requires_confirmation: false
-    owners:
-      - rover_group: dptp
+admins:
+  - developer
