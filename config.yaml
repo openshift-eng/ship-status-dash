@@ -13,7 +13,7 @@ components:
         managed: true
         requires_confirmation: false
     owners:
-      - rover_group: "dptp"
+      - rover_group: "test-platform-ci-admins"
   - name: "Build Farm"
     description: "Where the CI jobs are run"
     ship_team: "DPTP"
@@ -36,7 +36,7 @@ components:
         managed: true
         requires_confirmation: true
     owners:
-      - rover_group: "dptp"
+      - rover_group: "test-platform-ci-admins"
   - name: "Sippy"
     description: "CI Private Investigator"
     ship_team: "TRT"
@@ -51,5 +51,6 @@ components:
         managed: true
         requires_confirmation: false
     owners:
-      - rover_group: "trt"
-
+      - rover_group: "openshift-technical-release-team"
+admins:
+  - developer

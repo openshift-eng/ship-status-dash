@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/types"
 	"time"
 
@@ -22,18 +23,20 @@ type Server struct {
 	db         *gorm.DB
 	corsOrigin string
 	hmacSecret []byte
+	groupCache *auth.GroupMembershipCache
 	httpServer *http.Server
 }
 
 // NewServer creates a new Server instance
-func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte) *Server {
+func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache) *Server {
 	return &Server{
 		logger:     logger,
 		config:     config,
-		handlers:   NewHandlers(logger, config, db),
+		handlers:   NewHandlers(logger, config, db, groupCache),
 		db:         db,
 		corsOrigin: corsOrigin,
 		hmacSecret: hmacSecret,
+		groupCache: groupCache,
 	}
 }
 

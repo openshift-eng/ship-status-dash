@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"ship-status-dash/pkg/types"
-	"ship-status-dash/pkg/utils"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +16,11 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"k8s.io/apimachinery/pkg/util/sets"
+
+	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 )
 
 // Options contains command-line configuration options for the dashboard server.
@@ -27,6 +30,7 @@ type Options struct {
 	DatabaseDSN    string
 	HMACSecretFile string
 	CORSOrigin     string
+	KubeconfigPath string
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -38,6 +42,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.DatabaseDSN, "dsn", "", "PostgreSQL DSN connection string")
 	flag.StringVar(&opts.HMACSecretFile, "hmac-secret-file", "", "File containing HMAC secret")
 	flag.StringVar(&opts.CORSOrigin, "cors-origin", "*", "CORS allowed origin")
+	flag.StringVar(&opts.KubeconfigPath, "kubeconfig", "", "Path to kubeconfig file (empty string uses in-cluster config)")
 	flag.Parse()
 
 	return opts
@@ -133,6 +138,36 @@ func getHMACSecret(log *logrus.Logger, path string) []byte {
 	return []byte(strings.TrimSpace(string(secret)))
 }
 
+func extractRoverGroups(config *types.Config) []string {
+	groupSet := sets.NewString()
+	for _, component := range config.Components {
+		for _, owner := range component.Owners {
+			if owner.RoverGroup != "" {
+				groupSet.Insert(owner.RoverGroup)
+			}
+		}
+	}
+
+	return groupSet.List()
+}
+
+func loadGroupMembership(log *logrus.Logger, config *types.Config, kubeconfigPath string) *auth.GroupMembershipCache {
+	groupNames := extractRoverGroups(config)
+	if len(groupNames) == 0 {
+		log.Info("No rover_groups configured, skipping group membership loading")
+		return auth.NewGroupMembershipCache(log)
+	}
+
+	log.WithField("group_count", len(groupNames)).Info("Loading group membership from OpenShift")
+	cache := auth.NewGroupMembershipCache(log)
+	if err := cache.LoadGroups(groupNames, kubeconfigPath); err != nil {
+		log.WithField("error", err).Fatal("Failed to load group membership")
+	}
+
+	log.Info("Successfully loaded group membership")
+	return cache
+}
+
 func main() {
 	log := setupLogger()
 	opts := NewOptions()
@@ -144,7 +179,8 @@ func main() {
 	config := loadConfig(log, opts.ConfigPath)
 	db := connectDatabase(log, opts.DatabaseDSN)
 	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
-	server := NewServer(config, db, log, opts.CORSOrigin, hmacSecret)
+	groupCache := loadGroupMembership(log, config, opts.KubeconfigPath)
+	server := NewServer(config, db, log, opts.CORSOrigin, hmacSecret, groupCache)
 
 	addr := ":" + opts.Port
 	// Run server in a goroutine

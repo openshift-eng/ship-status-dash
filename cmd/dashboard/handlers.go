@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/types"
+	"slices"
 	"strconv"
 	"time"
 
@@ -16,17 +18,19 @@ import (
 
 // Handlers contains the HTTP request handlers for the dashboard API.
 type Handlers struct {
-	logger *logrus.Logger
-	config *types.Config
-	db     *gorm.DB
+	logger     *logrus.Logger
+	config     *types.Config
+	db         *gorm.DB
+	groupCache *auth.GroupMembershipCache
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, config *types.Config, db *gorm.DB) *Handlers {
+func NewHandlers(logger *logrus.Logger, config *types.Config, db *gorm.DB, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
-		logger: logger,
-		config: config,
-		db:     db,
+		logger:     logger,
+		config:     config,
+		db:         db,
+		groupCache: groupCache,
 	}
 }
 
@@ -49,6 +53,26 @@ func (h *Handlers) getComponent(componentName string) *types.Component {
 		}
 	}
 	return nil
+}
+
+// IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
+// A user is authorized if they are in the admins list, or if they are a member of at least one rover_group configured for the component.
+func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
+	// Check if user is in the admins list - admins bypass group checks
+	if slices.Contains(h.config.Admins, user) {
+		return true
+	}
+
+	// Check if user is in any of the component's rover_groups
+	for _, owner := range component.Owners {
+		if owner.RoverGroup != "" {
+			if h.groupCache.IsUserInGroup(user, owner.RoverGroup) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (h *Handlers) validateOutage(outage *types.Outage) (string, bool) {
@@ -170,6 +194,12 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"active_user":   activeUser,
+	})
+
 	component := h.getComponent(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
@@ -181,15 +211,19 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to create outage")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
 	var outage types.Outage
 	if err := json.NewDecoder(r.Body).Decode(&outage); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	logger := h.logger.WithFields(logrus.Fields{
-		"component":       componentName,
-		"sub_component":   subComponentName,
+	logger = logger.WithFields(logrus.Fields{
 		"severity":        outage.Severity,
 		"created_by":      outage.CreatedBy,
 		"discovered_from": outage.DiscoveredFrom,
@@ -271,6 +305,12 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	subComponent := component.GetSubComponentBySlug(subComponentName)
 	if subComponent == nil {
 		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to update outage")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
 	}
 
@@ -382,10 +422,17 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 	subComponentName := vars["subComponentName"]
 	outageId := vars["outageId"]
 
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
 	logger := h.logger.WithFields(logrus.Fields{
 		"component":     componentName,
 		"sub_component": subComponentName,
 		"outage_id":     outageId,
+		"active_user":   activeUser,
 	})
 
 	component := h.getComponent(componentName)
@@ -397,6 +444,12 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 	subComponent := component.GetSubComponentBySlug(subComponentName)
 	if subComponent == nil {
 		respondWithError(w, http.StatusNotFound, "Sub-component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to delete outage")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
 	}
 

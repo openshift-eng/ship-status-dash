@@ -3,6 +3,7 @@ package types
 // Config contains the application configuration including component definitions.
 type Config struct {
 	Components []*Component `json:"components" yaml:"components"`
+	Admins     []string     `json:"admins,omitempty" yaml:"admins,omitempty"`
 }
 
 // Component represents a top-level system component with sub-components and ownership information.
