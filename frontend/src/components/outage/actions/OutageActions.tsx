@@ -3,6 +3,7 @@ import { Button, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mu
 import type { MouseEvent } from 'react'
 import { useState } from 'react'
 
+import { useAuth } from '../../../contexts/AuthContext'
 import type { Outage } from '../../../types'
 
 import ConfirmOutage from './ConfirmOutage'
@@ -17,8 +18,15 @@ interface OutageActionsProps {
 }
 
 const OutageActions = ({ outage, onSuccess, onError }: OutageActionsProps) => {
+  const { isComponentAdmin } = useAuth()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+
+  const isAdmin = isComponentAdmin(outage.component_name)
+
+  if (!isAdmin) {
+    return null
+  }
 
   const handleMenuClick = (event: MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)

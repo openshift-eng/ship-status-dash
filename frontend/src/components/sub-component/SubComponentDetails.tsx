@@ -15,6 +15,7 @@ import { DataGrid } from '@mui/x-data-grid'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { useAuth } from '../../contexts/AuthContext'
 import type { Outage } from '../../types'
 import {
   getComponentInfoEndpoint,
@@ -22,6 +23,7 @@ import {
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
 import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
+import { slugify } from '../../utils/slugify'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
@@ -77,6 +79,7 @@ const SubComponentDetails = () => {
     componentName: string
     subComponentName: string
   }>()
+  const { isComponentAdmin } = useAuth()
   const [outages, setOutages] = useState<Outage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +87,9 @@ const SubComponentDetails = () => {
   const [subComponentStatus, setSubComponentStatus] = useState<string>('Unknown')
   const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
     useState<boolean>(false)
+
+  const componentSlug = componentName ? slugify(componentName) : ''
+  const isAdmin = isComponentAdmin(componentSlug)
 
   const fetchData = useCallback(() => {
     if (!componentName || !subComponentName) {
@@ -276,17 +282,23 @@ const SubComponentDetails = () => {
         return <OutageDetailsButton outage={outage} />
       },
     },
-    {
-      field: 'actions',
-      headerName: 'Actions',
-      width: 100,
-      sortable: false,
-      filterable: false,
-      renderCell: (params) => {
-        const outage = params.row as Outage
-        return <OutageActions outage={outage} onSuccess={handleOutageAction} onError={setError} />
-      },
-    },
+    ...(isAdmin
+      ? [
+          {
+            field: 'actions',
+            headerName: 'Actions',
+            width: 100,
+            sortable: false,
+            filterable: false,
+            renderCell: (params: GridRenderCellParams) => {
+              const outage = params.row as Outage
+              return (
+                <OutageActions outage={outage} onSuccess={handleOutageAction} onError={setError} />
+              )
+            },
+          },
+        ]
+      : []),
   ]
 
   // Sort outages: active first, then by start time descending
@@ -316,14 +328,16 @@ const SubComponentDetails = () => {
             {componentName} / {subComponentName} - Outage History
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={<ReportProblem />}
-              onClick={() => setCreateOutageModalOpen(true)}
-            >
-              Report Outage
-            </Button>
+            {isAdmin && (
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<ReportProblem />}
+                onClick={() => setCreateOutageModalOpen(true)}
+              >
+                Report Outage
+              </Button>
+            )}
             <StyledButton variant="contained" onClick={() => navigate(`/${componentName}`)}>
               {componentName} Details
             </StyledButton>

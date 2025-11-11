@@ -1,8 +1,9 @@
 import { Login, Person } from '@mui/icons-material'
-import { Box, Button, styled, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { Box, Button, styled, Tooltip, Typography } from '@mui/material'
 
-import { getProtectedDomain, getUserEndpoint } from '../utils/endpoints'
+import { useAuth } from '../contexts/AuthContext'
+import { getProtectedDomain } from '../utils/endpoints'
+import { deslugify } from '../utils/slugify'
 
 const LoginButton = styled(Button)(({ theme }) => ({
   color: theme.palette.text.primary,
@@ -32,37 +33,32 @@ const UserName = styled(Typography)(({ theme }) => ({
 }))
 
 const Auth = () => {
-  const [user, setUser] = useState<{ user?: string } | null>(null)
-
-  useEffect(() => {
-    fetch(getUserEndpoint(), {
-      credentials: 'include',
-    })
-      .then((response) => {
-        if (response.ok) {
-          return response.json()
-        }
-        return null
-      })
-      .then((userData) => {
-        if (userData) {
-          setUser(userData)
-        }
-      })
-      .catch(() => {
-        setUser(null)
-      })
-  }, [])
+  const { user } = useAuth()
 
   const handleLoginClick = () => {
     window.location.href = `${getProtectedDomain()}/oauth/start`
   }
 
   if (user) {
+    const componentList =
+      user.components.length > 0 ? user.components.map(deslugify).join(', ') : 'No component access'
+
     return (
       <UserDisplay>
         <Person fontSize="small" sx={{ color: 'text.secondary' }} />
-        <UserName>{user.user}</UserName>
+        <Tooltip
+          title={
+            <Box>
+              <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, mb: 0.5 }}>
+                Admin of:
+              </Typography>
+              <Typography variant="caption">{componentList}</Typography>
+            </Box>
+          }
+          arrow
+        >
+          <UserName>{user.username}</UserName>
+        </Tooltip>
       </UserDisplay>
     )
   }

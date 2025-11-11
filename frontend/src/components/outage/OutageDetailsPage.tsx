@@ -264,7 +264,7 @@ const OutageDetailsPage = () => {
           {getBackButtonLabel()}
         </BackButton>
         <TopActionsContainer>
-          <OutageActions outage={outage} onSuccess={fetchOutage} onError={setError} />
+          {outage && <OutageActions outage={outage} onSuccess={fetchOutage} onError={setError} />}
         </TopActionsContainer>
       </Box>
 

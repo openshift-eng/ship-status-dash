@@ -9,6 +9,7 @@ import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
+import { AuthProvider } from './contexts/AuthContext'
 import { getProtectedDomain, getPublicDomain } from './utils/endpoints'
 
 // Create light and dark themes
@@ -72,19 +73,21 @@ function App() {
     <StylesProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <RedirectIfProtected />
-          <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
-          <Routes>
-            <Route path="/" element={<ComponentStatusList />} />
-            <Route path="/:componentName" element={<ComponentDetailsPage />} />
-            <Route path="/:componentName/:subComponentName" element={<SubComponentDetails />} />
-            <Route
-              path="/:componentName/:subComponentName/outages/:outageId"
-              element={<OutageDetailsPage />}
-            />
-          </Routes>
-        </Router>
+        <AuthProvider>
+          <Router>
+            <RedirectIfProtected />
+            <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
+            <Routes>
+              <Route path="/" element={<ComponentStatusList />} />
+              <Route path="/:componentName" element={<ComponentDetailsPage />} />
+              <Route path="/:componentName/:subComponentName" element={<SubComponentDetails />} />
+              <Route
+                path="/:componentName/:subComponentName/outages/:outageId"
+                element={<OutageDetailsPage />}
+              />
+            </Routes>
+          </Router>
+        </AuthProvider>
       </ThemeProvider>
     </StylesProvider>
   )

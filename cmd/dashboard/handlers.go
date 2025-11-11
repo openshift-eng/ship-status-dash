@@ -105,7 +105,6 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 
 // GetComponentsJSON returns the list of configured components.
 func (h *Handlers) GetComponentsJSON(w http.ResponseWriter, r *http.Request) {
-	//TODO: I think this response should contain a bool as to if the current user is an admin of each component
 	respondWithJSON(w, http.StatusOK, h.config.Components)
 }
 
@@ -118,7 +117,6 @@ func (h *Handlers) GetComponentInfoJSON(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
 	}
-	//TODO: I think this response should contain a bool as to if the current user is an admin
 	respondWithJSON(w, http.StatusOK, component)
 }
 
@@ -626,13 +624,36 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	return types.StatusHealthy
 }
 
+type AuthenticatedUser struct {
+	Username   string   `json:"username" yaml:"username"`
+	Components []string `json:"components" yaml:"components"`
+}
+
 func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Request) {
 	user, authenticated := GetUserFromContext(r.Context())
 	if !authenticated {
 		respondWithError(w, http.StatusUnauthorized, "No Authenticated user found")
+		return
 	}
-	response := map[string]string{
-		"user": user,
+
+	response := AuthenticatedUser{
+		Username:   user,
+		Components: []string{},
 	}
+
+	// If user is in admin list, return all components
+	if slices.Contains(h.config.Admins, user) {
+		for _, component := range h.config.Components {
+			response.Components = append(response.Components, component.Slug)
+		}
+	} else {
+		// Otherwise, only return components the user is authorized for
+		for _, component := range h.config.Components {
+			if h.IsUserAuthorizedForComponent(user, component) {
+				response.Components = append(response.Components, component.Slug)
+			}
+		}
+	}
+
 	respondWithJSON(w, http.StatusOK, response)
 }

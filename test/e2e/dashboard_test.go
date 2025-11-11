@@ -834,15 +834,20 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
-			var userResponse map[string]string
+			var userResponse struct {
+				Username   string   `json:"username"`
+				Components []string `json:"components"`
+			}
 			err = json.NewDecoder(resp.Body).Decode(&userResponse)
 			require.NoError(t, err)
 
-			assert.NotEmpty(t, userResponse["user"])
+			assert.NotEmpty(t, userResponse.Username)
 			// In DEV_MODE, user should be "developer"
 			if os.Getenv("DEV_MODE") == "1" {
-				assert.Equal(t, "developer", userResponse["user"])
+				assert.Equal(t, "developer", userResponse.Username)
 			}
+			// Components should be a slice (can be empty)
+			assert.NotNil(t, userResponse.Components)
 		})
 	}
 }
