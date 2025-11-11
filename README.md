@@ -1,12 +1,21 @@
-# component-monitor
+# Ship Status Dashboard
 
 SHIP Status and Availability Dashboard monitor
 
-## Local Development
+## Project Structure
+
+This project consists of multiple components:
+
+- **Dashboard**: Web application for viewing and managing component status, availability, and outages
+  - Backend: Go server (`cmd/dashboard`)
+  - Frontend: React application (`frontend/`)
+- **Component Monitor**: Monitoring service for tracking component health (not yet implemented)
+
+## Dashboard Component
 
 ### Prerequisites
 
-Before starting the local development environment, you must set up a PostgreSQL database:
+Before starting the dashboard, you must set up a PostgreSQL database:
 
 1. Start a PostgreSQL container:
    ```bash
@@ -62,9 +71,15 @@ This script:
 
 The frontend will be available at `http://localhost:3000`.
 
-## End-to-End Tests
+## Component Monitor
 
-Run the e2e test suite:
+The component monitor service is planned but not yet implemented. This component will be responsible for monitoring component health and status.
+
+## Testing
+
+### End-to-End Tests
+
+Run the e2e test suite for the dashboard:
 
 ```bash
 make e2e
