@@ -67,7 +67,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 1)
+		assert.Len(t, components, 2)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
@@ -75,6 +75,14 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Len(t, components[0].Subcomponents, 2)
 		assert.Equal(t, "Tide", components[0].Subcomponents[0].Name)
 		assert.Equal(t, "Deck", components[0].Subcomponents[1].Name)
+
+		assert.Equal(t, "Build Farm", components[1].Name)
+		assert.Equal(t, "Where the CI jobs are run", components[1].Description)
+		assert.Equal(t, "DPTP", components[1].ShipTeam)
+		assert.Equal(t, "#ops-testplatform", components[1].SlackChannel)
+		assert.Len(t, components[1].Subcomponents, 2)
+		assert.Equal(t, "Build01", components[1].Subcomponents[0].Name)
+		assert.Equal(t, "Build02", components[1].Subcomponents[1].Name)
 	}
 }
 
@@ -259,6 +267,21 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 			// This test doesn't need any setup - it should fail regardless of existing data
 			expect404(t, client, fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
 		})
+
+		t.Run("POST to unauthorized component returns 403", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Test outage for unauthorized component",
+				"discovered_from": "e2e-test",
+				"created_by":      "developer",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			expect403(t, client, "POST", fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Build Farm"), utils.Slugify("Build01")), payloadBytes)
+		})
 	}
 }
 
@@ -359,6 +382,17 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.NotNil(t, confirmedOutage.ConfirmedBy, "confirmed_by should be set when confirmed is true")
 		assert.Equal(t, "developer", *confirmedOutage.ConfirmedBy, "confirmed_by should be set to the user from X-Forwarded-User header")
 		assert.True(t, confirmedOutage.ConfirmedAt.Valid, "confirmed_at should be set when confirmed is true")
+
+		t.Run("PATCH to unauthorized component returns 403", func(t *testing.T) {
+			updatePayload := map[string]interface{}{
+				"severity": string(types.SeverityDegraded),
+			}
+
+			updateBytes, err := json.Marshal(updatePayload)
+			require.NoError(t, err)
+
+			expect403(t, client, "PATCH", fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Build Farm"), utils.Slugify("Build01")), updateBytes)
+		})
 	}
 }
 
@@ -410,6 +444,10 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 			defer resp.Body.Close()
 
 			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+		})
+
+		t.Run("DELETE outage from unauthorized component returns 403", func(t *testing.T) {
+			expect403(t, client, "DELETE", fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Build Farm"), utils.Slugify("Build01")), nil)
 		})
 	}
 }
@@ -737,11 +775,25 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 1 component (Prow) based on test config
-			assert.Len(t, allStatuses, 1)
-			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
-			assert.Equal(t, types.StatusHealthy, allStatuses[0].Status)
-			assert.Empty(t, allStatuses[0].ActiveOutages)
+			// Should have exactly 2 components (Prow and Build Farm) based on test config
+			assert.Len(t, allStatuses, 2)
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			var buildFarmStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == "Prow" {
+					prowStatus = &allStatuses[i]
+				}
+				if allStatuses[i].ComponentName == "Build Farm" {
+					buildFarmStatus = &allStatuses[i]
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			require.NotNil(t, buildFarmStatus, "Build Farm component should be present")
+			assert.Equal(t, types.StatusHealthy, prowStatus.Status)
+			assert.Empty(t, prowStatus.ActiveOutages)
+			assert.Equal(t, types.StatusHealthy, buildFarmStatus.Status)
+			assert.Empty(t, buildFarmStatus.ActiveOutages)
 		})
 
 		t.Run("GET status for all components with outages shows correct statuses", func(t *testing.T) {
@@ -758,15 +810,24 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 1 component (Prow)
-			assert.Len(t, allStatuses, 1)
-			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
-			assert.Equal(t, types.StatusDown, allStatuses[0].Status) // Most severe status
-			assert.Len(t, allStatuses[0].ActiveOutages, 2)
+			// Should have exactly 2 components (Prow and Build Farm)
+			assert.Len(t, allStatuses, 2)
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == "Prow" {
+					prowStatus = &allStatuses[i]
+					break
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			assert.Equal(t, "Prow", prowStatus.ComponentName)
+			assert.Equal(t, types.StatusDown, prowStatus.Status) // Most severe status
+			assert.Len(t, prowStatus.ActiveOutages, 2)
 
 			// Verify we have both severities present
 			severities := make(map[string]bool)
-			for _, outage := range allStatuses[0].ActiveOutages {
+			for _, outage := range prowStatus.ActiveOutages {
 				severities[string(outage.Severity)] = true
 			}
 			assert.True(t, severities[string(types.SeverityDown)])
@@ -780,12 +841,21 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 1 component (Prow)
-			assert.Len(t, allStatuses, 1)
-			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
-			assert.Equal(t, types.StatusPartial, allStatuses[0].Status) // Only one sub-component affected
-			assert.Len(t, allStatuses[0].ActiveOutages, 1)
-			assert.Equal(t, string(types.SeverityDegraded), string(allStatuses[0].ActiveOutages[0].Severity))
+			// Should have exactly 2 components (Prow and Build Farm)
+			assert.Len(t, allStatuses, 2)
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == "Prow" {
+					prowStatus = &allStatuses[i]
+					break
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			assert.Equal(t, "Prow", prowStatus.ComponentName)
+			assert.Equal(t, types.StatusPartial, prowStatus.Status) // Only one sub-component affected
+			assert.Len(t, prowStatus.ActiveOutages, 1)
+			assert.Equal(t, string(types.SeverityDegraded), string(prowStatus.ActiveOutages[0].Severity))
 		})
 
 		t.Run("GET status for all components with unconfirmed outages shows Partial", func(t *testing.T) {
@@ -795,12 +865,21 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 1 component (Prow)
-			assert.Len(t, allStatuses, 1)
-			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
-			assert.Equal(t, types.StatusPartial, allStatuses[0].Status)
-			assert.Len(t, allStatuses[0].ActiveOutages, 1)
-			assert.False(t, allStatuses[0].ActiveOutages[0].ConfirmedAt.Valid)
+			// Should have exactly 2 components (Prow and Build Farm)
+			assert.Len(t, allStatuses, 2)
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == "Prow" {
+					prowStatus = &allStatuses[i]
+					break
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			assert.Equal(t, "Prow", prowStatus.ComponentName)
+			assert.Equal(t, types.StatusPartial, prowStatus.Status)
+			assert.Len(t, prowStatus.ActiveOutages, 1)
+			assert.False(t, prowStatus.ActiveOutages[0].ConfirmedAt.Valid)
 		})
 
 		t.Run("GET status for all components with mixed confirmed/unconfirmed outages shows confirmed severity", func(t *testing.T) {
@@ -814,12 +893,21 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 1 component (Prow)
-			assert.Len(t, allStatuses, 1)
-			assert.Equal(t, "Prow", allStatuses[0].ComponentName)
+			// Should have exactly 2 components (Prow and Build Farm)
+			assert.Len(t, allStatuses, 2)
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == "Prow" {
+					prowStatus = &allStatuses[i]
+					break
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			assert.Equal(t, "Prow", prowStatus.ComponentName)
 			// Should return Down (confirmed) not Suspected (unconfirmed)
-			assert.Equal(t, types.StatusDown, allStatuses[0].Status)
-			assert.Len(t, allStatuses[0].ActiveOutages, 2)
+			assert.Equal(t, types.StatusDown, prowStatus.Status)
+			assert.Len(t, prowStatus.ActiveOutages, 2)
 		})
 	}
 }
@@ -841,13 +929,12 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(resp.Body).Decode(&userResponse)
 			require.NoError(t, err)
 
-			assert.NotEmpty(t, userResponse.Username)
-			// In DEV_MODE, user should be "developer"
-			if os.Getenv("DEV_MODE") == "1" {
-				assert.Equal(t, "developer", userResponse.Username)
-			}
+			assert.Equal(t, "developer", userResponse.Username)
 			// Components should be a slice (can be empty)
 			assert.NotNil(t, userResponse.Components)
+			// Developer should only have access to Prow, not Build Farm
+			assert.Contains(t, userResponse.Components, utils.Slugify("Prow"), "developer should have access to Prow")
+			assert.NotContains(t, userResponse.Components, utils.Slugify("Build Farm"), "developer should not have access to Build Farm")
 		})
 	}
 }

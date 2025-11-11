@@ -6,24 +6,11 @@ import (
 	"net/http"
 	"os"
 
+	"ship-status-dash/pkg/auth"
+
 	"github.com/18F/hmacauth"
 	"github.com/sirupsen/logrus"
 )
-
-var oauthSignatureHeaders = []string{
-	"Content-Length",
-	"Content-Md5",
-	"Content-Type",
-	"Date",
-	"Authorization",
-	"X-Forwarded-User",
-	"X-Forwarded-Email",
-	"X-Forwarded-Access-Token",
-	"Cookie",
-	"Gap-Auth",
-}
-
-const gapSignatureHeader = "GAP-Signature"
 
 type contextKey string
 
@@ -40,7 +27,7 @@ func GetUserFromContext(ctx context.Context) (string, bool) {
 func newAuthMiddleware(logger *logrus.Logger, hmacSecret []byte, next http.Handler) http.Handler {
 	// Create HmacAuth instance with the same headers that oauth-proxy uses
 	// These are the headers that oauth-proxy includes in the signature
-	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, gapSignatureHeader, oauthSignatureHeaders)
+	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, auth.GAPSignatureHeader, auth.OAuthSignatureHeaders)
 	return authMiddleware(next, logger, hmacAuth)
 }
 

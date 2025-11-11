@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/types"
-	"slices"
 	"strconv"
 	"time"
 
@@ -56,15 +55,14 @@ func (h *Handlers) getComponent(componentName string) *types.Component {
 }
 
 // IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
-// A user is authorized if they are in the admins list, or if they are a member of at least one rover_group configured for the component.
+// A user is authorized if they match any Owner.User field, or if they are a member of at least one rover_group configured for the component.
 func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
-	// Check if user is in the admins list - admins bypass group checks
-	if slices.Contains(h.config.Admins, user) {
-		return true
-	}
-
-	// Check if user is in any of the component's rover_groups
 	for _, owner := range component.Owners {
+		// Check if user matches the Owner.User field (for development/testing)
+		if owner.User != "" && owner.User == user {
+			return true
+		}
+		// Check if user is in any of the component's rover_groups
 		if owner.RoverGroup != "" {
 			if h.groupCache.IsUserInGroup(user, owner.RoverGroup) {
 				return true
@@ -641,17 +639,10 @@ func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Reque
 		Components: []string{},
 	}
 
-	// If user is in admin list, return all components
-	if slices.Contains(h.config.Admins, user) {
-		for _, component := range h.config.Components {
+	// Return only components the user is authorized for
+	for _, component := range h.config.Components {
+		if h.IsUserAuthorizedForComponent(user, component) {
 			response.Components = append(response.Components, component.Slug)
-		}
-	} else {
-		// Otherwise, only return components the user is authorized for
-		for _, component := range h.config.Components {
-			if h.IsUserAuthorizedForComponent(user, component) {
-				response.Components = append(response.Components, component.Slug)
-			}
 		}
 	}
 

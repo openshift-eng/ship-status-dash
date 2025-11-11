@@ -3,7 +3,6 @@ package types
 // Config contains the application configuration including component definitions.
 type Config struct {
 	Components []*Component `json:"components" yaml:"components"`
-	Admins     []string     `json:"admins,omitempty" yaml:"admins,omitempty"`
 }
 
 // Component represents a top-level system component with sub-components and ownership information.
@@ -39,4 +38,6 @@ type SubComponent struct {
 type Owner struct {
 	RoverGroup     string `json:"rover_group,omitempty" yaml:"rover_group,omitempty"`
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
+	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
+	User string `json:"user,omitempty" yaml:"user,omitempty"`
 }

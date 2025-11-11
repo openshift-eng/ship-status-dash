@@ -111,3 +111,30 @@ func expect404(t *testing.T, client *TestHTTPClient, url string) {
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
+
+// expect403 is a helper function to make a request and expect a 403 Forbidden response
+func expect403(t *testing.T, client *TestHTTPClient, method, url string, body []byte) {
+	var resp *http.Response
+	var err error
+
+	switch method {
+	case "POST":
+		resp, err = client.Post(url, body)
+	case "PATCH":
+		resp, err = client.Patch(url, body)
+	case "DELETE":
+		resp, err = client.Delete(url)
+	default:
+		t.Fatalf("Unsupported method: %s", method)
+	}
+
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	var errorResponse map[string]string
+	err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+	require.NoError(t, err)
+	assert.Contains(t, errorResponse["error"], "not authorized")
+}

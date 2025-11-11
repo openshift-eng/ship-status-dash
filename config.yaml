@@ -52,5 +52,3 @@ components:
         requires_confirmation: false
     owners:
       - rover_group: "openshift-technical-release-team"
-admins:
-  - developer
