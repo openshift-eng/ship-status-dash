@@ -113,8 +113,8 @@ echo "Starting dashboard server..."
 DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-server.log"
 
-# Start dashboard server in background (without DEV_MODE)
-unset DEV_MODE
+# Start dashboard server in background
+unset SKIP_AUTH # make sure we are using authentication
 go run ./cmd/dashboard --config test/e2e/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 

@@ -66,7 +66,7 @@ func (o *Options) Validate() error {
 		return errors.New("database DSN is required (use --dsn flag)")
 	}
 
-	if os.Getenv("DEV_MODE") != "1" {
+	if os.Getenv("SKIP_AUTH") != "1" {
 		if o.HMACSecretFile == "" {
 			return errors.New("hmac secret file is required (use --hmac-secret-file flag)")
 		}
@@ -130,6 +130,9 @@ func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
 }
 
 func getHMACSecret(log *logrus.Logger, path string) []byte {
+	if os.Getenv("SKIP_AUTH") == "1" {
+		return []byte{}
+	}
 	secret, err := os.ReadFile(path)
 	if err != nil {
 		log.WithField("error", err).Warn("Failed to read HMAC secret file")

@@ -16,8 +16,6 @@ type contextKey string
 
 const userContextKey contextKey = "user"
 
-//TODO: should we also store a list of components that the user is an admin of on the context? we would only have to compute it once
-
 // GetUserFromContext retrieves the authenticated user from the request context.
 func GetUserFromContext(ctx context.Context) (string, bool) {
 	user, ok := ctx.Value(userContextKey).(string)
@@ -33,9 +31,9 @@ func newAuthMiddleware(logger *logrus.Logger, hmacSecret []byte, next http.Handl
 
 func authMiddleware(next http.Handler, logger *logrus.Logger, hmacAuth hmacauth.HmacAuth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// In development mode, we skip authentication
-		if os.Getenv("DEV_MODE") == "1" {
-			logger.Info("Skipping authentication in development mode")
+		// If SKIP_AUTH is set, we don't have an oauth-proxy in front of us, so we skip authentication
+		if os.Getenv("SKIP_AUTH") == "1" {
+			logger.Info("Skipping authentication in development mode (SKIP_AUTH is set)")
 			ctx := context.WithValue(r.Context(), userContextKey, "developer")
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return

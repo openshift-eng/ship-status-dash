@@ -2,6 +2,33 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Local Development
+
+Before starting the frontend, ensure the backend services are running:
+
+1. Start the backend services (from the project root):
+   ```bash
+   make local-dev DSN="postgres://user:pass@localhost:5432/ship_status?sslmode=disable"
+   ```
+
+2. Install frontend dependencies (if not already done):
+   ```bash
+   npm install
+   ```
+
+3. Start the development server with required environment variables:
+   ```bash
+   REACT_APP_PUBLIC_DOMAIN=http://localhost:8080 \
+   REACT_APP_PROTECTED_DOMAIN=http://localhost:8443 \
+   npm start
+   ```
+
+The app will open at [http://localhost:3000](http://localhost:3000).
+
+**Note:** The backend provides two routes:
+- Public route (port 8080): No authentication required
+- Protected route (port 8443): Requires basic auth (`developer:password`)
+
 ## Available Scripts
 
 In the project directory, you can run:
