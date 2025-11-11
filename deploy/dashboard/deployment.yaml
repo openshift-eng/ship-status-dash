@@ -28,9 +28,9 @@ spec:
           - --cookie-secret-file=/etc/secrets/session_secret
           - --cookie-samesite=none
           - --cookie-secure=true
-          - --cookie-domain=.apps.ci.l2s4.p1.openshiftapps.com
+          - --cookie-domain=.ci.openshift.org
           - --skip-auth-preflight
-          - --redirect-url=https://dashboard-protected-ship-status.apps.ci.l2s4.p1.openshiftapps.com/oauth/callback
+          - --redirect-url=https://protected.ship-status.ci.openshift.org/oauth/callback
           - --client-id=system:serviceaccount:ship-status:ship-status
           - --client-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
           - '--openshift-sar={"resource": "namespaces", "verb": "get"}'
@@ -64,7 +64,7 @@ spec:
           - "--dsn=$(DATABASE_DSN)"
           - "--port=8080"
           - "--hmac-secret-file=/etc/secrets/hmac-secret/hmac"
-          - "--cors-origin=https://dashboard-public-ship-status.apps.ci.l2s4.p1.openshiftapps.com"
+          - "--cors-origin=https://ship-status.ci.openshift.org"
         ports:
           - containerPort: 8080
             protocol: TCP
