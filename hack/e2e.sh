@@ -10,25 +10,18 @@ DB_NAME="ship_status_test"
 
 cleanup() {
   echo "Cleaning up proxy processes..."
-  if [ ! -z "$PROXY_PID" ]; then
-    kill -TERM $PROXY_PID 2>/dev/null || true
-    sleep 2
-    kill -KILL $PROXY_PID 2>/dev/null || true
-    wait $PROXY_PID 2>/dev/null || true
+  if [ ! -z "$PROXY_PORT" ]; then
+    lsof -ti :$PROXY_PORT | xargs kill -TERM 2>/dev/null || true
+    sleep 1
+    lsof -ti :$PROXY_PORT | xargs kill -KILL 2>/dev/null || true
   fi
-  pkill -f "go run.*cmd/mock-oauth-proxy" 2>/dev/null || true
-  pkill -f "mock-oauth-proxy" 2>/dev/null || true
   
   echo "Cleaning up dashboard processes..."
-  if [ ! -z "$DASHBOARD_PID" ]; then
-    kill -TERM $DASHBOARD_PID 2>/dev/null || true
-    sleep 2
-    kill -KILL $DASHBOARD_PID 2>/dev/null || true
-    wait $DASHBOARD_PID 2>/dev/null || true
+  if [ ! -z "$DASHBOARD_PORT" ]; then
+    lsof -ti :$DASHBOARD_PORT | xargs kill -TERM 2>/dev/null || true
+    sleep 1
+    lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
   fi
-  pkill -f "go run.*cmd/dashboard" 2>/dev/null || true
-  pkill -f "dashboard.*--config.*test/e2e/config.yaml" 2>/dev/null || true
-  sleep 2
   
   echo "Cleaning up test container..."
   podman stop $CONTAINER_NAME 2>/dev/null || true
@@ -136,7 +129,9 @@ for i in {1..30}; do
     echo "Dashboard server failed to start"
     echo "=== Server Log ==="
     cat "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
-    kill $DASHBOARD_PID 2>/dev/null || true
+    if [ ! -z "$DASHBOARD_PORT" ]; then
+      lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
+    fi
     exit 1
   fi
   sleep 1
@@ -161,8 +156,12 @@ for i in {1..30}; do
     echo "Mock oauth-proxy failed to start"
     echo "=== Proxy Log ==="
     cat "$PROXY_LOG" 2>/dev/null || echo "No log found"
-    kill $PROXY_PID 2>/dev/null || true
-    kill $DASHBOARD_PID 2>/dev/null || true
+    if [ ! -z "$PROXY_PORT" ]; then
+      lsof -ti :$PROXY_PORT | xargs kill -KILL 2>/dev/null || true
+    fi
+    if [ ! -z "$DASHBOARD_PORT" ]; then
+      lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
+    fi
     exit 1
   fi
   sleep 1
@@ -176,20 +175,19 @@ TEST_EXIT_CODE=$?
 set -e
 
 echo "Stopping mock oauth-proxy..."
-kill -TERM $PROXY_PID 2>/dev/null || true
-sleep 2
-kill -KILL $PROXY_PID 2>/dev/null || true
-wait $PROXY_PID 2>/dev/null || true
+if [ ! -z "$PROXY_PORT" ]; then
+  lsof -ti :$PROXY_PORT | xargs kill -TERM 2>/dev/null || true
+  sleep 1
+  lsof -ti :$PROXY_PORT | xargs kill -KILL 2>/dev/null || true
+fi
 
 echo "Stopping dashboard server..."
-kill -TERM $DASHBOARD_PID 2>/dev/null || true
-sleep 2
-kill -KILL $DASHBOARD_PID 2>/dev/null || true
-wait $DASHBOARD_PID 2>/dev/null || true
+if [ ! -z "$DASHBOARD_PORT" ]; then
+  lsof -ti :$DASHBOARD_PORT | xargs kill -TERM 2>/dev/null || true
+  sleep 1
+  lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
+fi
 
-echo "=== Proxy Log ==="
-cat "$PROXY_LOG" 2>/dev/null || echo "No log found"
-echo ""
 echo "=== Dashboard Server Log ==="
 cat "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
 

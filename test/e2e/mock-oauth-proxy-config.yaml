@@ -1,5 +1,5 @@
 users:
   - username: developer
-    password_hash: $2y$10$mTQ0mkCkkO/6NEYeCK0tpOnrEaCXWEIb8a7t0GRJIaNLA6YSyoY9e
+    password_hash: $2a$10$lXg2vtUXEE4.kh/Ww.I66eu3dPGFXRf0B4vmR3FfTStKtNN.L3orC
     email: developer@example.com
 

@@ -1,10 +1,13 @@
-.PHONY: run-dashboard e2e test
+.PHONY: run-dashboard e2e test local-dev
 
 run-dashboard:
 	@./hack/run-dashboard.sh
 
 e2e:
 	@./hack/e2e.sh
+
+local-dev:
+	@./hack/local/local-dev.sh $(DSN)
 
 test:
 	@echo "Running unit tests..."

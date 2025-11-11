@@ -18,6 +18,7 @@ import (
 	"ship-status-dash/pkg/auth"
 
 	"github.com/18F/hmacauth"
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -104,38 +105,7 @@ func authenticateUser(username, password string, config *Config) (*User, error) 
 	return nil, fmt.Errorf("user not found")
 }
 
-func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.HmacAuth, logger *logrus.Logger) http.Handler {
-	proxy := httputil.NewSingleHostReverseProxy(upstreamURL)
-
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-
-		username, password, ok := req.BasicAuth()
-		if !ok {
-			return
-		}
-
-		user, err := authenticateUser(username, password, config)
-		if err != nil {
-			return
-		}
-
-		req.Header.Set("X-Forwarded-User", user.Username)
-		req.Header.Set("X-Forwarded-Email", user.Email)
-		req.Header.Set("X-Forwarded-Access-Token", "mock-access-token-"+user.Username)
-
-		if req.Header.Get("Date") == "" {
-			req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-		}
-
-		if req.ContentLength > 0 {
-			req.Header.Set("Content-Length", fmt.Sprintf("%d", req.ContentLength))
-		}
-
-		hmacAuth.SignRequest(req)
-	}
-
+func oauthStartHandler(config *Config, logger *logrus.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
@@ -157,11 +127,154 @@ func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.Hm
 
 		logger.WithFields(logrus.Fields{
 			"username": user.Username,
-			"path":     r.URL.Path,
-		}).Debug("Authenticated user")
+		}).Info("User authenticated, redirecting to callback")
 
-		proxy.ServeHTTP(w, r)
+		http.Redirect(w, r, "/oauth/callback", http.StatusFound)
 	})
+}
+
+func oauthCallbackHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// In local development, redirect to React dev server on port 3000
+		http.Redirect(w, r, "http://localhost:3000/", http.StatusFound)
+	})
+}
+
+func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.HmacAuth, logger *logrus.Logger) http.Handler {
+	proxy := httputil.NewSingleHostReverseProxy(upstreamURL)
+
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+
+		logger.WithFields(logrus.Fields{
+			"method":         req.Method,
+			"url":            req.URL.String(),
+			"host":           req.Host,
+			"content_type":   req.Header.Get("Content-Type"),
+			"content_length": req.ContentLength,
+		}).Info("Director: Preparing request for upstream")
+
+		username, password, ok := req.BasicAuth()
+		if !ok {
+			logger.Warn("Director: No BasicAuth credentials found")
+			return
+		}
+
+		user, err := authenticateUser(username, password, config)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"username": username,
+				"error":    err,
+			}).Warn("Director: Authentication failed")
+			return
+		}
+
+		req.Header.Set("X-Forwarded-User", user.Username)
+		req.Header.Set("X-Forwarded-Email", user.Email)
+		req.Header.Set("X-Forwarded-Access-Token", "mock-access-token-"+user.Username)
+
+		if req.Header.Get("Date") == "" {
+			req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+		}
+
+		if req.ContentLength > 0 {
+			req.Header.Set("Content-Length", fmt.Sprintf("%d", req.ContentLength))
+		}
+
+		hmacAuth.SignRequest(req)
+
+		logger.WithFields(logrus.Fields{
+			"username":       user.Username,
+			"forwarded_user": req.Header.Get("X-Forwarded-User"),
+			"has_signature":  req.Header.Get(auth.GAPSignatureHeader) != "",
+		}).Info("Director: Request prepared with auth headers")
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestLogger := logger.WithFields(logrus.Fields{
+			"method": r.Method,
+			"path":   r.URL.Path,
+			"query":  r.URL.RawQuery,
+		})
+
+		requestLogger.Info("Incoming request")
+
+		// Allow OPTIONS preflight requests to pass through without authentication
+		if r.Method == http.MethodOptions {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "http://localhost:3000" // Default for local dev
+			}
+			requestLogger.WithField("origin", origin).Info("Handling OPTIONS preflight request")
+			// Cannot use "*" with credentials: 'include', must use specific origin
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Forwarded-User, GAP-Signature")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		username, password, ok := r.BasicAuth()
+		if !ok {
+			requestLogger.Warn("No BasicAuth credentials provided")
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		user, err := authenticateUser(username, password, config)
+		if err != nil {
+			requestLogger.WithFields(logrus.Fields{
+				"username": username,
+				"error":    err,
+			}).Warn("Authentication failed")
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		requestLogger.WithFields(logrus.Fields{
+			"username":       user.Username,
+			"content_type":   r.Header.Get("Content-Type"),
+			"content_length": r.ContentLength,
+		}).Info("Authentication successful, forwarding to upstream")
+
+		// Create a response writer wrapper to log the response
+		responseLogger := &responseLoggingWriter{
+			ResponseWriter: w,
+			logger:         requestLogger,
+		}
+
+		proxy.ServeHTTP(responseLogger, r)
+	})
+}
+
+// responseLoggingWriter wraps http.ResponseWriter to log response details
+type responseLoggingWriter struct {
+	http.ResponseWriter
+	logger     *logrus.Entry
+	statusCode int
+}
+
+func (w *responseLoggingWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.logger.WithFields(logrus.Fields{
+		"status_code": code,
+	}).Info("Upstream response received")
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseLoggingWriter) Write(b []byte) (int, error) {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
+	w.logger.WithFields(logrus.Fields{
+		"status_code": w.statusCode,
+		"body_length": len(b),
+	}).Info("Response body written")
+	return w.ResponseWriter.Write(b)
 }
 
 func setupLogger() *logrus.Logger {
@@ -198,11 +311,14 @@ func main() {
 
 	hmacAuth := hmacauth.NewHmacAuth(crypto.SHA256, hmacSecret, auth.GAPSignatureHeader, auth.OAuthSignatureHeaders)
 
-	handler := basicAuthHandler(config, upstreamURL, hmacAuth, logger)
+	router := mux.NewRouter()
+	router.Handle("/oauth/start", oauthStartHandler(config, logger))
+	router.Handle("/oauth/callback", oauthCallbackHandler())
+	router.PathPrefix("/").Handler(basicAuthHandler(config, upstreamURL, hmacAuth, logger))
 
 	server := &http.Server{
 		Addr:    ":" + opts.Port,
-		Handler: handler,
+		Handler: router,
 	}
 
 	go func() {
