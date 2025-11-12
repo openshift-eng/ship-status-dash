@@ -67,7 +67,7 @@ DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-local-dev.log"
 echo "Dashboard server logs: $DASHBOARD_LOG"
 
-go run ./cmd/dashboard --config hack/local/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config hack/local/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" 2>&1 | tee "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 echo "Waiting for dashboard server to be ready..."
@@ -136,6 +136,7 @@ echo "Log files:"
 echo "  Dashboard server: $DASHBOARD_LOG"
 echo "  Mock oauth-proxy: $PROXY_LOG"
 echo ""
+echo "Dashboard server logs will be displayed in the terminal"
 echo "Press Ctrl+C to stop"
 
 wait $DASHBOARD_PID 2>/dev/null || wait $PROXY_PID 2>/dev/null || true

@@ -7,6 +7,8 @@ import {
   Container,
   Paper,
   styled,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -87,6 +89,7 @@ const SubComponentDetails = () => {
   const [subComponentStatus, setSubComponentStatus] = useState<string>('Unknown')
   const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
     useState<boolean>(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
   const componentSlug = componentName ? slugify(componentName) : ''
   const isAdmin = isComponentAdmin(componentSlug)
@@ -130,6 +133,13 @@ const SubComponentDetails = () => {
           const [outagesData, statusData, componentData] = results
           if (outagesData) {
             setOutages(outagesData)
+            // Set default filter to 'ongoing' if there are any ongoing outages
+            const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
+            if (hasOngoing) {
+              setStatusFilter('ongoing')
+            } else {
+              setStatusFilter('all')
+            }
           }
           if (statusData) {
             setSubComponentStatus(statusData.status)
@@ -301,8 +311,19 @@ const SubComponentDetails = () => {
       : []),
   ]
 
+  // Filter outages based on selected filter
+  const filteredOutages = outages.filter((outage) => {
+    if (statusFilter === 'ongoing') {
+      return !outage.end_time.Valid
+    }
+    if (statusFilter === 'resolved') {
+      return outage.end_time.Valid
+    }
+    return true // 'all'
+  })
+
   // Sort outages: active first, then by start time descending
-  const sortedOutages = [...outages].sort((a, b) => {
+  const sortedOutages = [...filteredOutages].sort((a, b) => {
     const aActive = !a.end_time.Valid
     const bActive = !b.end_time.Valid
 
@@ -311,6 +332,15 @@ const SubComponentDetails = () => {
 
     return new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
   })
+
+  const handleFilterChange = (
+    _event: React.MouseEvent<HTMLElement>,
+    newFilter: 'all' | 'ongoing' | 'resolved' | null,
+  ) => {
+    if (newFilter !== null) {
+      setStatusFilter(newFilter)
+    }
+  }
 
   if (!componentName || !subComponentName) {
     return (
@@ -325,7 +355,7 @@ const SubComponentDetails = () => {
       <StyledPaper status={subComponentStatus}>
         <HeaderBox status={subComponentStatus}>
           <Typography variant="h4">
-            {componentName} / {subComponentName} - Outage History
+            {componentName} / {subComponentName} - Outages
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
             {isAdmin && (
@@ -359,19 +389,40 @@ const SubComponentDetails = () => {
         )}
 
         {!loading && !error && (
-          <Box sx={{ height: 600, width: '100%' }}>
-            <StyledDataGrid
-              rows={sortedOutages}
-              columns={columns}
-              pageSizeOptions={[10, 25, 50, 100]}
-              initialState={{
-                pagination: {
-                  paginationModel: { pageSize: 25 },
-                },
-              }}
-              disableRowSelectionOnClick
-              getRowId={(row) => row.id}
-            />
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <ToggleButtonGroup
+                value={statusFilter}
+                exclusive
+                onChange={handleFilterChange}
+                aria-label="outage status filter"
+                size="small"
+              >
+                <ToggleButton value="all" aria-label="all outages">
+                  All
+                </ToggleButton>
+                <ToggleButton value="ongoing" aria-label="ongoing outages">
+                  Ongoing
+                </ToggleButton>
+                <ToggleButton value="resolved" aria-label="resolved outages">
+                  Resolved
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+            <Box sx={{ height: 600, width: '100%' }}>
+              <StyledDataGrid
+                rows={sortedOutages}
+                columns={columns}
+                pageSizeOptions={[10, 25, 50, 100]}
+                initialState={{
+                  pagination: {
+                    paginationModel: { pageSize: 25 },
+                  },
+                }}
+                disableRowSelectionOnClick
+                getRowId={(row) => row.id}
+              />
+            </Box>
           </Box>
         )}
       </StyledPaper>

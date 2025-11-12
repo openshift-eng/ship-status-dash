@@ -1,10 +1,10 @@
 import { Box, Card, CardContent, Typography, styled } from '@mui/material'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { SubComponent } from '../../types'
-import { getComponentInfoEndpoint, getSubComponentStatusEndpoint } from '../../utils/endpoints'
+import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { getStatusBackgroundColor, getStatusChipColor } from '../../utils/helpers'
-import OutageModal from '../outage/OutageModal'
 import { StatusChip } from '../StatusColors'
 
 const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
@@ -85,34 +85,19 @@ const SubComponentCardComponent = ({
   componentName,
   useBackgroundColor = false,
 }: SubComponentCardProps) => {
-  const [modalOpen, setModalOpen] = useState(false)
+  const navigate = useNavigate()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
-  const [requiresConfirmation, setRequiresConfirmation] = useState<boolean>(false)
 
   useEffect(() => {
-    Promise.all([
-      fetch(getSubComponentStatusEndpoint(componentName, subComponent.name)),
-      fetch(getComponentInfoEndpoint(componentName)),
-    ])
-      .then(([statusRes, componentRes]) => {
-        return Promise.all([
-          statusRes.json().catch(() => ({ status: 'Unknown', active_outages: [] })),
-          componentRes.json().catch(() => ({ sub_components: [] })),
-        ])
-      })
-      .then(([subStatus, componentData]) => {
+    fetch(getSubComponentStatusEndpoint(componentName, subComponent.name))
+      .then((res) => res.json().catch(() => ({ status: 'Unknown', active_outages: [] })))
+      .then((subStatus) => {
         setSubComponentWithStatus({
           ...subComponent,
           status: subStatus.status,
           active_outages: subStatus.active_outages,
         })
-
-        // Check if this subcomponent requires confirmation
-        const subComponentConfig = componentData.sub_components.find(
-          (sub: { name: string; requires_confirmation: boolean }) => sub.name === subComponent.name,
-        )
-        setRequiresConfirmation(subComponentConfig?.requires_confirmation || false)
       })
       .finally(() => {
         setLoading(false)
@@ -120,44 +105,42 @@ const SubComponentCardComponent = ({
   }, [componentName, subComponent])
 
   const handleClick = () => {
-    setModalOpen(true)
-  }
+    const status = subComponentWithStatus.status || 'Unknown'
+    const activeOutages = subComponentWithStatus.active_outages || []
+    const isHealthy = status === 'Healthy' || activeOutages.length === 0
 
-  const handleCloseModal = () => {
-    setModalOpen(false)
+    if (isHealthy || activeOutages.length > 1) {
+      navigate(
+        `/${encodeURIComponent(componentName)}/${encodeURIComponent(subComponentWithStatus.name)}`,
+      )
+    } else if (activeOutages.length === 1) {
+      navigate(
+        `/${encodeURIComponent(componentName)}/${encodeURIComponent(subComponentWithStatus.name)}/outages/${activeOutages[0].id}`,
+      )
+    }
   }
 
   return (
-    <>
-      <SubComponentCard
-        status={subComponentWithStatus.status || 'Unknown'}
-        useBackgroundColor={useBackgroundColor}
-        onClick={handleClick}
-      >
-        <StyledCardContent>
-          <CardHeader>
-            <SubComponentTitle>{subComponent.name}</SubComponentTitle>
-            <StatusChipBox>
-              <StatusChip
-                label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}
-                status={subComponentWithStatus.status || 'Unknown'}
-                size="small"
-                variant="outlined"
-              />
-            </StatusChipBox>
-          </CardHeader>
-          <SubComponentDescription>{subComponent.description}</SubComponentDescription>
-        </StyledCardContent>
-      </SubComponentCard>
-
-      <OutageModal
-        open={modalOpen}
-        onClose={handleCloseModal}
-        selectedSubComponent={subComponentWithStatus}
-        componentName={componentName}
-        requiresConfirmation={requiresConfirmation}
-      />
-    </>
+    <SubComponentCard
+      status={subComponentWithStatus.status || 'Unknown'}
+      useBackgroundColor={useBackgroundColor}
+      onClick={handleClick}
+    >
+      <StyledCardContent>
+        <CardHeader>
+          <SubComponentTitle>{subComponent.name}</SubComponentTitle>
+          <StatusChipBox>
+            <StatusChip
+              label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}
+              status={subComponentWithStatus.status || 'Unknown'}
+              size="small"
+              variant="outlined"
+            />
+          </StatusChipBox>
+        </CardHeader>
+        <SubComponentDescription>{subComponent.description}</SubComponentDescription>
+      </StyledCardContent>
+    </SubComponentCard>
   )
 }
 

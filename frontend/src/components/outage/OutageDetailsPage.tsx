@@ -32,12 +32,19 @@ const StyledContainer = styled(Container)(({ theme }) => ({
   marginBottom: theme.spacing(4),
 }))
 
-const HeaderPaper = styled(Paper)<{ severity: string; resolved: boolean }>(({
-  theme,
-  severity,
-  resolved,
-}) => {
-  const severityStatus = resolved ? 'Healthy' : severity
+const HeaderPaper = styled(Paper)<{
+  severity: string
+  resolved: boolean
+  unconfirmed: boolean
+}>(({ theme, severity, resolved, unconfirmed }) => {
+  let severityStatus: string
+  if (resolved) {
+    severityStatus = 'Healthy'
+  } else if (unconfirmed) {
+    severityStatus = 'Suspected'
+  } else {
+    severityStatus = severity
+  }
   const bgColor = getStatusBackgroundColor(theme, severityStatus)
 
   return {
@@ -268,7 +275,12 @@ const OutageDetailsPage = () => {
         </TopActionsContainer>
       </Box>
 
-      <HeaderPaper severity={outage.severity} resolved={isResolved()} elevation={2}>
+      <HeaderPaper
+        severity={outage.severity}
+        resolved={isResolved()}
+        unconfirmed={!outage.confirmed_at.Valid}
+        elevation={2}
+      >
         <HeaderContent>
           <HeaderTitleBox>
             <PageTitle variant="h4">Outage Details</PageTitle>
