@@ -133,7 +133,7 @@ const SubComponentCardComponent = ({
               label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}
               status={subComponentWithStatus.status || 'Unknown'}
               size="small"
-              variant="outlined"
+              variant="filled"
             />
           </StatusChipBox>
         </CardHeader>
