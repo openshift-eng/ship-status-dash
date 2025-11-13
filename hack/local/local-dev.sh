@@ -13,31 +13,43 @@ DSN="$1"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+kill_processes_on_port() {
+  local port=$1
+  local message=${2:-"Stopping processes on port $port..."}
+  
+  PIDS=$(lsof -ti :$port 2>/dev/null)
+  if [ ! -z "$PIDS" ]; then
+    echo "$message"
+    for pid in $PIDS; do
+      kill -TERM "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    PIDS=$(lsof -ti :$port 2>/dev/null)
+    if [ ! -z "$PIDS" ]; then
+      for pid in $PIDS; do
+        kill -KILL "$pid" 2>/dev/null || true
+      done
+    fi
+  fi
+}
+
 cleanup() {
+  set +e
   echo ""
   echo "Cleaning up..."
   
-  if [ ! -z "$PROXY_PID" ]; then
-    echo "Stopping mock oauth-proxy..."
-    kill -TERM $PROXY_PID 2>/dev/null || true
-    sleep 1
-    kill -KILL $PROXY_PID 2>/dev/null || true
-    wait $PROXY_PID 2>/dev/null || true
-  fi
+  PROXY_PORT=${PROXY_PORT:-8443}
+  DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
   
-  if [ ! -z "$DASHBOARD_PID" ]; then
-    echo "Stopping dashboard server..."
-    kill -TERM $DASHBOARD_PID 2>/dev/null || true
-    sleep 1
-    kill -KILL $DASHBOARD_PID 2>/dev/null || true
-    wait $DASHBOARD_PID 2>/dev/null || true
-  fi
+  kill_processes_on_port "$PROXY_PORT"
+  kill_processes_on_port "$DASHBOARD_PORT"
   
   if [ ! -z "$HMAC_SECRET_FILE" ] && [ -f "$HMAC_SECRET_FILE" ]; then
     rm -f "$HMAC_SECRET_FILE"
   fi
   
   echo "Cleanup complete"
+  exit 0
 }
 
 trap cleanup EXIT
@@ -80,7 +92,7 @@ for i in {1..30}; do
     echo "Dashboard server failed to start"
     echo "=== Server Log ==="
     cat "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
-    kill $DASHBOARD_PID 2>/dev/null || true
+    kill_processes_on_port "$DASHBOARD_PORT"
     exit 1
   fi
   sleep 1
@@ -104,8 +116,8 @@ for i in {1..30}; do
     echo "Mock oauth-proxy failed to start"
     echo "=== Proxy Log ==="
     cat "$PROXY_LOG" 2>/dev/null || echo "No log found"
-    kill $PROXY_PID 2>/dev/null || true
-    kill $DASHBOARD_PID 2>/dev/null || true
+    kill_processes_on_port "$PROXY_PORT"
+    kill_processes_on_port "$DASHBOARD_PORT"
     exit 1
   fi
   sleep 1
@@ -139,5 +151,9 @@ echo ""
 echo "Dashboard server logs will be displayed in the terminal"
 echo "Press Ctrl+C to stop"
 
-wait $DASHBOARD_PID 2>/dev/null || wait $PROXY_PID 2>/dev/null || true
+set +e
+while kill -0 $DASHBOARD_PID 2>/dev/null || kill -0 $PROXY_PID 2>/dev/null; do
+  sleep 1
+done
+exit 0
 

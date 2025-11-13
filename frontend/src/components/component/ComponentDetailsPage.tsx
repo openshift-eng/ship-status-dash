@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Container,
   Divider,
@@ -213,30 +214,43 @@ const ComponentDetailsPage = () => {
               </InfoCard>
               <InfoCard>
                 <CardContent>
-                  <InfoTitle>Sub-components</InfoTitle>
-                  <InfoValue>{component.sub_components.length}</InfoValue>
-                </CardContent>
-              </InfoCard>
-              <InfoCard>
-                <CardContent>
                   <InfoTitle>Owners</InfoTitle>
                   <InfoValue>
-                    {component.owners.length > 0
-                      ? component.owners.map((owner, index) => (
-                          <Box key={index} sx={{ marginBottom: 0.5 }}>
-                            {owner.rover_group && (
-                              <Box component="span" sx={{ display: 'block' }}>
-                                Rover Group: {owner.rover_group}
-                              </Box>
-                            )}
-                            {owner.service_account && (
-                              <Box component="span" sx={{ display: 'block' }}>
-                                Service Account: {owner.service_account}
-                              </Box>
-                            )}
-                          </Box>
-                        ))
-                      : 'No owners specified'}
+                    {component.owners.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {component.owners.map((owner, index) => {
+                          const ownerItems: Array<{ label: string; value: string }> = []
+                          if (owner.rover_group) {
+                            ownerItems.push({ label: 'Rover Group', value: owner.rover_group })
+                          }
+                          if (owner.user) {
+                            ownerItems.push({ label: 'User', value: owner.user })
+                          }
+                          if (owner.service_account) {
+                            ownerItems.push({
+                              label: 'Service Account',
+                              value: owner.service_account,
+                            })
+                          }
+
+                          return (
+                            <Box key={index} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                              {ownerItems.map((item, itemIndex) => (
+                                <Chip
+                                  key={itemIndex}
+                                  label={`${item.label}: ${item.value}`}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ fontSize: '0.75rem' }}
+                                />
+                              ))}
+                            </Box>
+                          )
+                        })}
+                      </Box>
+                    ) : (
+                      'No owners specified'
+                    )}
                   </InfoValue>
                 </CardContent>
               </InfoCard>

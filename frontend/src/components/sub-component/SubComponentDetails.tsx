@@ -93,7 +93,7 @@ const SubComponentDetails = () => {
 
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
-  const isAdmin = isComponentAdmin(componentName)
+  const isAdmin = isComponentAdmin(componentSlug || '')
 
   const fetchData = useCallback(() => {
     if (!componentName || !subComponentName) {

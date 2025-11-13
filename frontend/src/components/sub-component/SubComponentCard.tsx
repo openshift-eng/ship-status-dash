@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { getStatusBackgroundColor, getStatusChipColor } from '../../utils/helpers'
-import { slugify } from '../../utils/slugify'
+import { deslugify, slugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 
 const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
@@ -127,7 +127,7 @@ const SubComponentCardComponent = ({
     >
       <StyledCardContent>
         <CardHeader>
-          <SubComponentTitle>{subComponent.name}</SubComponentTitle>
+          <SubComponentTitle>{deslugify(subComponent.name)}</SubComponentTitle>
           <StatusChipBox>
             <StatusChip
               label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}

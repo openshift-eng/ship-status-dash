@@ -43,6 +43,7 @@ export interface Component {
   owners: Array<{
     rover_group?: string
     service_account?: string
+    user?: string
   }>
   status?: string
 }
