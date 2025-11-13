@@ -1,3 +1,4 @@
+import ClearIcon from '@mui/icons-material/Clear'
 import {
   Alert,
   Button,
@@ -9,6 +10,8 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -185,9 +188,9 @@ const UpsertOutageModal = ({
         Valid: true,
       }
     } else if (isUpdateMode && outage?.end_time.Valid) {
-      // If we're updating and the outage previously had an end_time, clear it
+      // If we're updating and the outage previously had an end_time, set Valid to false to mark it as ongoing again
       requestData.end_time = {
-        Time: '',
+        Time: new Date().toISOString(),
         Valid: false,
       }
     }
@@ -297,8 +300,10 @@ const UpsertOutageModal = ({
           type="datetime-local"
           value={formData.start_time}
           onChange={handleInputChange('start_time')}
-          InputLabelProps={{
-            shrink: true,
+          slotProps={{
+            inputLabel: {
+              shrink: true,
+            },
           }}
         />
 
@@ -328,8 +333,27 @@ const UpsertOutageModal = ({
           type="datetime-local"
           value={formData.end_time}
           onChange={handleInputChange('end_time')}
-          InputLabelProps={{
-            shrink: true,
+          slotProps={{
+            inputLabel: {
+              shrink: true,
+            },
+            input: {
+              endAdornment: formData.end_time ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => {
+                      setFormData((prev) => ({ ...prev, end_time: '' }))
+                      setError(null)
+                    }}
+                    edge="end"
+                    size="small"
+                    aria-label="clear end time"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            },
           }}
           helperText={
             isUpdateMode && outage?.end_time.Valid
