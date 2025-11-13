@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { getStatusBackgroundColor, getStatusChipColor } from '../../utils/helpers'
+import { slugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 
 const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
@@ -110,12 +111,10 @@ const SubComponentCardComponent = ({
     const isHealthy = status === 'Healthy' || activeOutages.length === 0
 
     if (isHealthy || activeOutages.length > 1) {
-      navigate(
-        `/${encodeURIComponent(componentName)}/${encodeURIComponent(subComponentWithStatus.name)}`,
-      )
+      navigate(`/${slugify(componentName)}/${slugify(subComponentWithStatus.name)}`)
     } else if (activeOutages.length === 1) {
       navigate(
-        `/${encodeURIComponent(componentName)}/${encodeURIComponent(subComponentWithStatus.name)}/outages/${activeOutages[0].id}`,
+        `/${slugify(componentName)}/${slugify(subComponentWithStatus.name)}/outages/${activeOutages[0].id}`,
       )
     }
   }

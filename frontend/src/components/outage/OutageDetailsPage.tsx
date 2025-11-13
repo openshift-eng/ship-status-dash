@@ -21,7 +21,7 @@ import {
   getStatusChipColor,
   relativeTime,
 } from '../../utils/helpers'
-import { deslugify } from '../../utils/slugify'
+import { deslugify, slugify } from '../../utils/slugify'
 
 import OutageActions from './actions/OutageActions'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
@@ -155,11 +155,13 @@ const TopActionsContainer = styled(Box)(({ theme }) => ({
 
 const OutageDetailsPage = () => {
   const navigate = useNavigate()
-  const { componentName, subComponentName, outageId } = useParams<{
-    componentName: string
-    subComponentName: string
+  const { componentSlug, subComponentSlug, outageId } = useParams<{
+    componentSlug: string
+    subComponentSlug: string
     outageId: string
   }>()
+  const componentName = componentSlug ? deslugify(componentSlug) : ''
+  const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const [outage, setOutage] = useState<Outage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -180,7 +182,7 @@ const OutageDetailsPage = () => {
           // If 404, outage was deleted, navigate back
           if (outageResponse.status === 404) {
             if (componentName && subComponentName) {
-              navigate(`/${componentName}/${subComponentName}`)
+              navigate(`/${slugify(componentName)}/${slugify(subComponentName)}`)
             } else {
               navigate('/')
             }
@@ -220,8 +222,8 @@ const OutageDetailsPage = () => {
   }
 
   const handleBack = () => {
-    if (componentName && subComponentName) {
-      navigate(`/${componentName}/${subComponentName}`)
+    if (componentSlug && subComponentSlug) {
+      navigate(`/${componentSlug}/${subComponentSlug}`)
     } else {
       navigate('/')
     }

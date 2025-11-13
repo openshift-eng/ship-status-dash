@@ -18,6 +18,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { Component } from '../../types'
 import { getComponentsEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
 import { getStatusBackgroundColor } from '../../utils/helpers'
+import { deslugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
@@ -110,18 +111,20 @@ const LoadingBox = styled(Box)(() => ({
 }))
 
 const ComponentDetailsPage = () => {
-  const { componentName } = useParams<{ componentName: string }>()
+  const { componentSlug } = useParams<{ componentSlug: string }>()
   const navigate = useNavigate()
   const [component, setComponent] = useState<Component | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!componentName) {
+    if (!componentSlug) {
       setError('Component name is required')
       setLoading(false)
       return
     }
+
+    const componentName = deslugify(componentSlug)
 
     // Fetch component configuration and its specific status
     Promise.all([
@@ -150,7 +153,7 @@ const ComponentDetailsPage = () => {
       .finally(() => {
         setLoading(false)
       })
-  }, [componentName])
+  }, [componentSlug])
 
   const handleBackClick = () => {
     navigate('/')

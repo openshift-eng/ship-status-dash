@@ -25,7 +25,7 @@ import {
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
 import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
-import { slugify } from '../../utils/slugify'
+import { deslugify } from '../../utils/slugify'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
@@ -77,9 +77,9 @@ const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
 
 const SubComponentDetails = () => {
   const navigate = useNavigate()
-  const { componentName, subComponentName } = useParams<{
-    componentName: string
-    subComponentName: string
+  const { componentSlug, subComponentSlug } = useParams<{
+    componentSlug: string
+    subComponentSlug: string
   }>()
   const { isComponentAdmin } = useAuth()
   const [outages, setOutages] = useState<Outage[]>([])
@@ -91,8 +91,9 @@ const SubComponentDetails = () => {
     useState<boolean>(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
-  const componentSlug = componentName ? slugify(componentName) : ''
-  const isAdmin = isComponentAdmin(componentSlug)
+  const componentName = componentSlug ? deslugify(componentSlug) : ''
+  const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
+  const isAdmin = isComponentAdmin(componentName)
 
   const fetchData = useCallback(() => {
     if (!componentName || !subComponentName) {
@@ -368,7 +369,7 @@ const SubComponentDetails = () => {
                 Report Outage
               </Button>
             )}
-            <StyledButton variant="contained" onClick={() => navigate(`/${componentName}`)}>
+            <StyledButton variant="contained" onClick={() => navigate(`/${componentSlug}`)}>
               {componentName} Details
             </StyledButton>
           </Box>

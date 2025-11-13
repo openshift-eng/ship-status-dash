@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import type { Component } from '../types'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
+import { slugify } from '../utils/slugify'
 
 import ComponentWell from './component/ComponentWell'
 
@@ -139,7 +140,7 @@ const ComponentStatusList = () => {
 
       <ComponentsGrid>
         {components.map((component) => (
-          <ComponentWell key={component.name} component={component} />
+          <ComponentWell key={slugify(component.name)} component={component} />
         ))}
       </ComponentsGrid>
     </StyledContainer>

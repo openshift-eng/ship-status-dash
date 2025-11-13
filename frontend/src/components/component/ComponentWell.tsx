@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 import type { Component, SubComponent } from '../../types'
 import { getStatusBackgroundColor } from '../../utils/helpers'
+import { slugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
@@ -83,7 +84,7 @@ const ComponentWellComponent = ({ component }: ComponentWellProps) => {
   const navigate = useNavigate()
 
   const handleDetailsClick = () => {
-    navigate(`/${encodeURIComponent(component.name)}`)
+    navigate(`/${slugify(component.name)}`)
   }
 
   return (

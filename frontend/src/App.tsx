@@ -79,10 +79,10 @@ function App() {
             <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
             <Routes>
               <Route path="/" element={<ComponentStatusList />} />
-              <Route path="/:componentName" element={<ComponentDetailsPage />} />
-              <Route path="/:componentName/:subComponentName" element={<SubComponentDetails />} />
+              <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
+              <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
               <Route
-                path="/:componentName/:subComponentName/outages/:outageId"
+                path="/:componentSlug/:subComponentSlug/outages/:outageId"
                 element={<OutageDetailsPage />}
               />
             </Routes>
