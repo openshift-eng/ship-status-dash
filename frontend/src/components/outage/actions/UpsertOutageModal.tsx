@@ -104,7 +104,7 @@ const UpsertOutageModal = ({
         triage_notes: '',
         start_time: getCurrentLocalTime(),
         end_time: '',
-        confirmed: false,
+        confirmed: true,
       })
     }
   }, [outage])
@@ -197,6 +197,8 @@ const UpsertOutageModal = ({
 
     if (!isUpdateMode) {
       requestData.discovered_from = 'frontend'
+      // Don't require confirmation for new outages added from the frontend
+      requestData.confirmed = true
     }
 
     const url = isUpdateMode
@@ -230,7 +232,7 @@ const UpsertOutageModal = ({
             triage_notes: '',
             start_time: getCurrentLocalTime(),
             end_time: '',
-            confirmed: false,
+            confirmed: true,
           })
         }
         onSuccess()
@@ -362,16 +364,19 @@ const UpsertOutageModal = ({
           }
         />
 
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={formData.confirmed}
-              onChange={handleCheckboxChange('confirmed')}
-              color="primary"
-            />
-          }
-          label="Confirmed"
-        />
+        {isUpdateMode && (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={formData.confirmed}
+                onChange={handleCheckboxChange('confirmed')}
+                color="primary"
+                disabled={!isUpdateMode}
+              />
+            }
+            label="Confirmed"
+          />
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>

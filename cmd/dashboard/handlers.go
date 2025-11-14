@@ -178,6 +178,22 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 	respondWithJSON(w, http.StatusOK, outages)
 }
 
+// UpsertOutageRequest represents the fields to create or update an outage.
+type UpsertOutageRequest struct {
+	Severity       *string       `json:"severity,omitempty"`
+	StartTime      *time.Time    `json:"start_time,omitempty"`
+	EndTime        *sql.NullTime `json:"end_time,omitempty"`
+	Description    *string       `json:"description,omitempty"`
+	DiscoveredFrom *string       `json:"discovered_from,omitempty"`
+	// CreatedBy should not be passed by the frontend, this is only for use via the component-monitor
+	CreatedBy *string `json:"created_by,omitempty"`
+	// ResolvedBy should not be passed by the frontend, this is only for use via the component-monitor
+	// the value will be obtained from the active user header otherwise
+	ResolvedBy  *string `json:"resolved_by,omitempty"`
+	Confirmed   *bool   `json:"confirmed,omitempty"`
+	TriageNotes *string `json:"triage_notes,omitempty"`
+}
+
 // CreateOutageJSON creates a new outage for a sub-component.
 func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -213,27 +229,44 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var outage types.Outage
-	if err := json.NewDecoder(r.Body).Decode(&outage); err != nil {
+	var outageReq UpsertOutageRequest
+	if err := json.NewDecoder(r.Body).Decode(&outageReq); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	logger = logger.WithFields(logrus.Fields{
-		"severity":        outage.Severity,
-		"created_by":      outage.CreatedBy,
-		"discovered_from": outage.DiscoveredFrom,
+		"severity":        outageReq.Severity,
+		"discovered_from": outageReq.DiscoveredFrom,
 	})
 
-	outage.ComponentName = componentName
-	outage.SubComponentName = subComponentName
-	outage.CreatedBy = activeUser
+	outage := types.Outage{
+		ComponentName:    componentName,
+		SubComponentName: subComponentName,
+		Severity:         types.Severity(*outageReq.Severity),
+		Description:      *outageReq.Description,
+		StartTime:        *outageReq.StartTime,
+		DiscoveredFrom:   *outageReq.DiscoveredFrom,
+		TriageNotes:      outageReq.TriageNotes,
+	}
 
-	// Auto-confirm outages when requires_confirmation is false
-	if !subComponent.RequiresConfirmation {
-		logger.Info("Auto-confirming outage as requires_confirmation is false")
+	if outageReq.CreatedBy != nil && *outageReq.CreatedBy != "" {
+		outage.CreatedBy = *outageReq.CreatedBy
+	} else {
+		outage.CreatedBy = activeUser
+	}
+
+	confirmed := (outageReq.Confirmed != nil && *outageReq.Confirmed)
+	if confirmed || !subComponent.RequiresConfirmation {
 		outage.ConfirmedBy = &activeUser
 		outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+
+	if outageReq.EndTime != nil {
+		outage.EndTime = *outageReq.EndTime
+		if outage.EndTime.Valid && outage.ResolvedBy == nil {
+			outage.ResolvedBy = &activeUser
+		}
 	}
 
 	if message, valid := h.validateOutage(&outage); !valid {
@@ -250,19 +283,6 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	logger.Infof("Successfully created outage: %d", outage.ID)
 
 	respondWithJSON(w, http.StatusCreated, outage)
-}
-
-// UpdateOutageRequest represents the fields that can be updated in a PATCH request.
-type UpdateOutageRequest struct {
-	Severity    *string       `json:"severity,omitempty"`
-	StartTime   *time.Time    `json:"start_time,omitempty"`
-	EndTime     *sql.NullTime `json:"end_time,omitempty"`
-	Description *string       `json:"description,omitempty"`
-	// ResolvedBy should not be passed by the frontend, this is only for use via the component-monitor
-	// the value will be obtained from the active user header otherwise
-	ResolvedBy  *string `json:"resolved_by,omitempty"`
-	Confirmed   *bool   `json:"confirmed,omitempty"`
-	TriageNotes *string `json:"triage_notes,omitempty"`
 }
 
 // UpdateOutageJSON updates an existing outage with the provided fields.
@@ -321,7 +341,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updateReq UpdateOutageRequest
+	var updateReq UpsertOutageRequest
 	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
