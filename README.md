@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Ship Status Dashboard
 
 SHIP Status and Availability Dashboard monitor
@@ -92,3 +93,7 @@ The e2e script:
 - Starts the mock oauth-proxy on a dynamically assigned port (8443-8499)
 - Executes the e2e test suite
 - Cleans up all processes and containers on completion
+=======
+# component-monitor
+SHIP Status and Availability Dashboard monitor
+>>>>>>> 73103c0 (Initial commit)
