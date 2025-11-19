@@ -1,3 +1,4 @@
+//nolint:errcheck,unparam // Test helpers - error handling and unused parameters are acceptable in test code
 package e2e
 
 import (

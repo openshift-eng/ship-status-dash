@@ -36,7 +36,7 @@ func NewHandlers(logger *logrus.Logger, config *types.Config, db *gorm.DB, group
 func respondWithJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data) // Best effort - can't return error after writing headers
 }
 
 func respondWithError(w http.ResponseWriter, statusCode int, message string) {
