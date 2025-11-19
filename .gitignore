@@ -9,8 +9,8 @@
 *.dylib
 
 # Local build artifacts (Go binaries built in repo root)
-dashboard
-component-monitor
+/dashboard
+/component-monitor
 
 # Test binary, built with `go test -c`
 *.test
