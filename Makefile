@@ -15,5 +15,6 @@ test:
 	@go test $(shell go list ./... | grep -v '/test/') -v
 
 lint:
-	@./hack/lint.sh
-
+	@./hack/go-lint.sh --timeout 10m run ./...
+	@cd frontend && npm run lint
+	@cd frontend && npm audit --omit=dev
