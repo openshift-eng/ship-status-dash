@@ -9,6 +9,7 @@ echo "Running golangci-lint..."
 if [ "$CI" = "true" ]; then
     go version
     golangci-lint version -v
+    export GOFLAGS=-mod=vendor
     golangci-lint --timeout 10m run
 else
     DOCKER=${DOCKER:-podman}
@@ -27,6 +28,7 @@ else
     $DOCKER run --rm \
         --volume "${PROJECT_ROOT}:/workspace${VOLUME_OPTION}" \
         --workdir /workspace \
+        --env GOFLAGS=-mod=vendor \
         quay-proxy.ci.openshift.org/openshift/ci-public:ci_golangci-lint_latest \
         golangci-lint --timeout 10m run
 fi
