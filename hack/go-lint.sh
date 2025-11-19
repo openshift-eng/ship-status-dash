@@ -9,8 +9,7 @@ echo "Running golangci-lint..."
 if [ "$CI" = "true" ]; then
     go version
     golangci-lint version -v
-    export GOFLAGS=-mod=vendor
-    golangci-lint --timeout 10m run
+    golangci-lint "${@}"
 else
     DOCKER=${DOCKER:-podman}
 
@@ -28,30 +27,6 @@ else
     $DOCKER run --rm \
         --volume "${PROJECT_ROOT}:/workspace${VOLUME_OPTION}" \
         --workdir /workspace \
-        --env GOFLAGS=-mod=vendor \
         quay-proxy.ci.openshift.org/openshift/ci-public:ci_golangci-lint_latest \
-        golangci-lint --timeout 10m run
+        golangci-lint "${@}"
 fi
-
-echo ""
-echo "Running eslint for frontend..."
-cd "$PROJECT_ROOT/frontend"
-
-if [ ! -f "package.json" ]; then
-    echo "Error: frontend/package.json not found"
-    exit 1
-fi
-
-if [ ! -d "node_modules" ]; then
-    echo "Installing frontend dependencies..."
-    npm install
-fi
-
-npm run lint
-
-echo ""
-echo "Running npm audit for production dependencies..."
-npm audit --omit=dev
-
-echo ""
-echo "✓ All linting checks passed"

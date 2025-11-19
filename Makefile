@@ -1,7 +1,6 @@
-.PHONY: run-dashboard e2e test local-dev lint
+.PHONY: build e2e test local-dev lint npm build-dashboard build-frontend
 
-run-dashboard:
-	@./hack/run-dashboard.sh
+build: build-frontend build-dashboard
 
 e2e:
 	@./hack/e2e.sh
@@ -12,8 +11,21 @@ local-dev:
 test:
 	@echo "Running unit tests..."
 	# Run tests in all packages except the test package, this is where the e2e tests are located
-	@go test $(shell go list ./... | grep -v '/test/') -v
+	@gotestsum -- $(shell go list ./... | grep -v '/test/') -v
 
-lint:
-	@./hack/lint.sh
+lint: npm
+	@./hack/go-lint.sh --timeout 10m run ./...
+	@cd frontend && npm run lint
+	@cd frontend && npm audit --omit=dev
 
+npm:
+	@cd frontend && npm install --no-audit
+
+build-dashboard:
+	@go build -mod=vendor -o dashboard ./cmd/dashboard
+
+build-frontend: npm
+	@cd frontend && \
+	REACT_APP_PUBLIC_DOMAIN=https://ship-status.ci.openshift.org \
+	REACT_APP_PROTECTED_DOMAIN=https://protected.ship-status.ci.openshift.org \
+	npm run build

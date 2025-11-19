@@ -1,39 +1,37 @@
-FROM golang:1.24-alpine
+FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
 
-WORKDIR /app
+# Used for local cross-compilation, empty for ci builds
+ARG CGO_ENABLED=
+ARG GOOS=
+ARG GOARCH=
 
-# Install Node.js 18
-RUN apk add --no-cache nodejs npm
+WORKDIR /go/src/ship-status-dash
 
-# Copy source code and vendor directory
+ENV PATH="/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV CGO_ENABLED=${CGO_ENABLED}
+ENV GOOS=${GOOS}
+ENV GOARCH=${GOARCH}
+
 COPY . .
 
-# Build the dashboard binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o dashboard ./cmd/dashboard
+RUN dnf module enable nodejs:18 -y && \
+    dnf install -y go make npm && \
+    make build-dashboard && \
+    make build-frontend
 
-# Build frontend
-WORKDIR /app/frontend
+FROM registry.access.redhat.com/ubi9/ubi:latest AS base
 
-# Copy source code and node_modules
-COPY frontend/ .
+RUN mkdir -p /app/static
 
-# Set environment variables for React build
-#TODO: can we pass these as flags to the build process?
-#TODO: or is there a better way to do this?
-ENV REACT_APP_PUBLIC_DOMAIN=https://ship-status.ci.openshift.org
-ENV REACT_APP_PROTECTED_DOMAIN=https://protected.ship-status.ci.openshift.org
-
-# Build the application
-RUN npm run build
-
-# Move built files to static directory
-RUN mkdir -p /app/static && cp -r build/* /app/static/
+COPY --from=builder /go/src/ship-status-dash/dashboard /app/dashboard
+COPY --from=builder /go/src/ship-status-dash/frontend/build /app/static
 
 WORKDIR /app
 
-
-# Expose port
 EXPOSE 8080
 
-# Run the dashboard server
+LABEL io.k8s.display-name="SHIP Status Dashboard" \
+      io.openshift.tags="dashboard,ship-status"
+
 CMD ["./dashboard"]
