@@ -1,3 +1,4 @@
+//nolint:errcheck,unparam // Test helpers - error handling and unused parameters are acceptable in test code
 package e2e
 
 import (
@@ -13,6 +14,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	prowComponentName = "Prow"
 )
 
 func TestE2E_Dashboard(t *testing.T) {
@@ -781,7 +786,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
 			for i := range allStatuses {
-				if allStatuses[i].ComponentName == "Prow" {
+				if allStatuses[i].ComponentName == prowComponentName {
 					prowStatus = &allStatuses[i]
 				}
 				if allStatuses[i].ComponentName == "Build Farm" {
@@ -815,7 +820,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
-				if allStatuses[i].ComponentName == "Prow" {
+				if allStatuses[i].ComponentName == prowComponentName {
 					prowStatus = &allStatuses[i]
 					break
 				}
@@ -846,7 +851,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
-				if allStatuses[i].ComponentName == "Prow" {
+				if allStatuses[i].ComponentName == prowComponentName {
 					prowStatus = &allStatuses[i]
 					break
 				}
@@ -870,7 +875,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
-				if allStatuses[i].ComponentName == "Prow" {
+				if allStatuses[i].ComponentName == prowComponentName {
 					prowStatus = &allStatuses[i]
 					break
 				}
@@ -898,7 +903,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
-				if allStatuses[i].ComponentName == "Prow" {
+				if allStatuses[i].ComponentName == prowComponentName {
 					prowStatus = &allStatuses[i]
 					break
 				}
