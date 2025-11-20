@@ -21,7 +21,7 @@ type PrometheusClient struct {
 }
 
 // NewPrometheusClient creates a new Prometheus client configured for OpenShift monitoring.
-func NewPrometheusClient(prometheusURL string) (*PrometheusClient, error) {
+func NewPrometheusClient(_ string) (*PrometheusClient, error) {
 	kubeconfigPath := os.Getenv("KUBECONFIG")
 	if kubeconfigPath == "" {
 		kubeconfigPath = "/etc/kubeconfig/config"
@@ -63,7 +63,7 @@ func NewPrometheusClient(prometheusURL string) (*PrometheusClient, error) {
 }
 
 // QueryMetrics executes a list of Prometheus queries and logs the results.
-func (p *PrometheusClient) QueryMetrics(ctx context.Context, queries []string) error {
+func (p *PrometheusClient) QueryMetrics(ctx context.Context, queries []string) {
 	for _, query := range queries {
 		logrus.Infof("Executing query: %s", query)
 
@@ -94,8 +94,6 @@ func (p *PrometheusClient) QueryMetrics(ctx context.Context, queries []string) e
 			logrus.Infof("Unknown result type: %T", result)
 		}
 	}
-
-	return nil
 }
 
 func main() {
@@ -129,9 +127,7 @@ func main() {
 
 	for {
 		logrus.Info("Executing Prometheus queries...")
-		if err := client.QueryMetrics(ctx, queries); err != nil {
-			logrus.WithField("error", err).Error("Failed to query metrics")
-		}
+		client.QueryMetrics(ctx, queries)
 
 		logrus.Info("Sleeping for 30 seconds...")
 		time.Sleep(30 * time.Second)

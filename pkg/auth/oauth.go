@@ -16,4 +16,3 @@ var OAuthSignatureHeaders = []string{
 
 // GAPSignatureHeader is the name of the header containing the HMAC signature.
 const GAPSignatureHeader = "GAP-Signature"
-

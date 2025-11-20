@@ -1,0 +1,71 @@
+run:
+  timeout: 10m
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  goimports:
+    local-prefixes: ship-status-dash
+  lll:
+    line-length: 120
+  misspell:
+    locale: US
+  nakedret:
+    max-func-lines: 30
+  revive:
+    min-confidence: 0
+    severity: warning
+  staticcheck:
+    checks: ["all"]
+  unconvert:
+    fast: false
+  unparam:
+    check-exported: false
+  whitespace:
+    multi-if: false
+    multi-func: false
+
+linters:
+  disable-all: true
+  enable:
+    - goconst
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - revive
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+issues:
+  exclude-dirs:
+    - vendor
+    - test/e2e
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - goconst
+    - path: vendor
+      text: ".*"
+    - linters:
+        - revive
+      text: "exported (type|function|method|var|const) .* should have comment"
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+

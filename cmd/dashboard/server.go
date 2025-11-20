@@ -5,14 +5,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"ship-status-dash/pkg/auth"
-	"ship-status-dash/pkg/types"
 	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+
+	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/types"
 )
 
 // Server represents the HTTP server for the dashboard API.
@@ -207,7 +208,11 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 func (s *Server) Start(addr string) error {
 	handler := s.setupRoutes()
 	s.logger.Infof("Starting dashboard server on %s", addr)
-	s.httpServer = &http.Server{Addr: addr, Handler: handler}
+	s.httpServer = &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
 	return s.httpServer.ListenAndServe()
 }
 
