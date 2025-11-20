@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"ship-status-dash/pkg/types"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"ship-status-dash/pkg/types"
 )
 
 func main() {
@@ -36,7 +37,7 @@ func main() {
 
 	log.Info("Running migrations...")
 
-	if err := db.AutoMigrate(&types.Outage{}); err != nil {
+	if err = db.AutoMigrate(&types.Outage{}); err != nil {
 		log.WithField("error", err).Fatal("Failed to migrate database")
 	}
 

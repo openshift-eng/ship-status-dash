@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"ship-status-dash/pkg/auth"
-	"ship-status-dash/pkg/types"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+
+	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/types"
 )
 
 // Handlers contains the HTTP request handlers for the dashboard API.

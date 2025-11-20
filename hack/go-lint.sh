@@ -27,6 +27,6 @@ else
     $DOCKER run --rm \
         --volume "${PROJECT_ROOT}:/workspace${VOLUME_OPTION}" \
         --workdir /workspace \
-        quay-proxy.ci.openshift.org/openshift/ci-public:ci_golangci-lint_latest \
+        docker.io/golangci/golangci-lint:v1.64.8 \
         golangci-lint "${@}"
 fi

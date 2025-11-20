@@ -317,8 +317,9 @@ func main() {
 	router.PathPrefix("/").Handler(basicAuthHandler(config, upstreamURL, hmacAuth, logger))
 
 	server := &http.Server{
-		Addr:    ":" + opts.Port,
-		Handler: router,
+		Addr:              ":" + opts.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	go func() {
