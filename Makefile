@@ -10,8 +10,7 @@ local-dev:
 
 test:
 	@echo "Running unit tests..."
-	# Run tests in all packages except the test package, this is where the e2e tests are located
-	@gotestsum -- $(shell go list ./... | grep -v '/test/') -v
+	@gotestsum -- ./pkg/... ./cmd/... -v
 
 lint: npm
 	@./hack/go-lint.sh --timeout 10m run ./...
