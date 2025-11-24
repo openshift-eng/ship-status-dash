@@ -18,7 +18,7 @@ lint: npm
 	@cd frontend && npm audit --omit=dev
 
 npm:
-	@cd frontend && npm install --no-audit
+	@cd frontend && npm ci --no-audit --ignore-scripts
 
 build-dashboard:
 	@go build -mod=vendor -o dashboard ./cmd/dashboard
