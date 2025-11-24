@@ -88,7 +88,7 @@ Both processes use the same HMAC secret:
 
 2. Install dependencies:
    ```bash
-   npm install
+   npm ci --ignore-scripts
    ```
 
 3. Set environment variables (or use the .env.development file) and start the development server:
