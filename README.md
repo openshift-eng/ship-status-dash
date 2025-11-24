@@ -13,82 +13,74 @@ This project consists of multiple components:
 
 ## Dashboard Component
 
-### Prerequisites
+The dashboard is a web application for viewing and managing component status, availability, and outages. It consists of:
+- Backend: Go server (`cmd/dashboard`)
+- Frontend: React application (`frontend/`)
 
-Before starting the dashboard, you must set up a PostgreSQL database:
+For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-1. Start a PostgreSQL container:
-   ```bash
-   podman run -d \
-     --name ship-status-db \
-     -e POSTGRES_PASSWORD=yourpassword \
-     -p 5432:5432 \
-     quay.io/enterprisedb/postgresql:latest
-   ```
+### Production Deployment
 
-2. Create the database:
-   ```bash
-   podman exec ship-status-db psql -U postgres -c "CREATE DATABASE ship_status;"
-   ```
+#### Authentication Architecture
 
-3. Run migrations:
-   ```bash
-   go run ./cmd/migrate --dsn "postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
-   ```
+The production deployment uses a dual ingress architecture with a single backing service:
 
-### Backend Setup
+- **Public Route**: `ship-status.ci.openshift.org` → Service port `8080` → Dashboard container
+- **Protected Route**: `protected.ship-status.ci.openshift.org` → Service port `8443` → OAuth proxy container
 
-Start the local development environment (dashboard server and mock oauth-proxy):
+Both routes point to the same Kubernetes Service (`dashboard`), which exposes two ports:
+- Port `8080`: Direct access to the dashboard container (public routes, no authentication)
+- Port `8443`: Access through the oauth-proxy container (protected routes, requires authentication)
 
-```bash
-make local-dev DSN="postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
+#### Pod Architecture
+
+Each deployment pod contains two containers:
+
+1. **Dashboard Container** (port 8080)
+   - Serves public API endpoints (read-only status endpoints)
+   - Validates HMAC signatures for protected endpoints
+   - Expects `X-Forwarded-User` header and `GAP-Signature` header from oauth-proxy
+
+2. **OAuth Proxy Container** (port 8443)
+   - Handles OpenShift OAuth authentication
+   - Proxies authenticated requests to `localhost:8080` (dashboard container)
+   - Adds authentication headers:
+     - `X-Forwarded-User`: Authenticated username
+     - `X-Forwarded-Access-Token`: OAuth access token
+     - Other headers that we don't currently care about
+   - Signs requests with HMAC using shared secret
+   - Adds `GAP-Signature` header for request verification
+
+#### Authentication Flow
+
+**Public Routes** (no authentication):
+```
+Client → Ingress (ship-status.ci.openshift.org) → Service:8080 → Dashboard Container
 ```
 
-This script:
-- Starts the dashboard server on port 8080 (public route, no auth)
-- Starts the mock oauth-proxy on port 8443 (protected route, requires basic auth)
-- Sets up a user with credentials: `developer:password`
-- Generates a temporary HMAC secret for request signing
+**Protected Routes** (authentication required):
+```
+Client → Ingress (protected.ship-status.ci.openshift.org) → Service:8443 → OAuth Proxy
+  → Dashboard Container (localhost:8080)
+```
 
-### Frontend Setup
+The dashboard container validates protected requests by:
+1. Checking for `X-Forwarded-User` header
+2. Verifying the `GAP-Signature` HMAC signature using the shared secret
+3. Extracting user identity from headers for authorization checks
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
+#### HMAC Signature
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+Both oauth-proxy and dashboard share the same HMAC secret. The signature includes:
+- Content-Length, Content-MD5, Content-Type
+- Date
+- Authorization
+- X-Forwarded-User, X-Forwarded-Email, X-Forwarded-Access-Token
+- Cookie, Gap-Auth
 
-3. Set environment variables (or use the .env.development file) and start the development server:
-   ```bash
-   REACT_APP_PUBLIC_DOMAIN=http://localhost:8080 \
-   REACT_APP_PROTECTED_DOMAIN=http://localhost:8443 \
-   npm start
-   ```
-
-The frontend will be available at `http://localhost:3000`.
+Each of these headers are included when the OpenShift Oauth Proxy creates it's signature, and we must provide complete parity.
+See [SignatureHeaders](https://github.com/openshift/oauth-proxy/blob/master/oauthproxy.go).
 
 ## Component Monitor
 
 The component monitor service is planned but not yet implemented. This component will be responsible for monitoring component health and status.
-
-## Testing
-
-### End-to-End Tests
-
-Run the e2e test suite for the dashboard:
-
-```bash
-make e2e
-```
-
-The e2e script:
-- Starts a PostgreSQL test container using podman
-- Runs database migrations
-- Starts the dashboard server on a dynamically assigned port (8080-8099)
-- Starts the mock oauth-proxy on a dynamically assigned port (8443-8499)
-- Executes the e2e test suite
-- Cleans up all processes and containers on completion
