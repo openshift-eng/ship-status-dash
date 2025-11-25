@@ -25,13 +25,15 @@ func TestE2E_Dashboard(t *testing.T) {
 		t.Skip("Skipping e2e test in short mode")
 	}
 
-	// Get server port from environment variable
-	serverPort := os.Getenv("TEST_SERVER_PORT")
-	if serverPort == "" {
-		serverPort = "8888" // fallback to default
+	// Get server URL from environment variable, or construct from port
+	serverURL := os.Getenv("TEST_SERVER_URL")
+	if serverURL == "" {
+		serverPort := os.Getenv("TEST_SERVER_PORT")
+		if serverPort == "" {
+			t.Fatalf("TEST_SERVER_PORT and TEST_SERVER_URL are not set")
+		}
+		serverURL = "http://localhost:" + serverPort
 	}
-
-	serverURL := "http://localhost:" + serverPort
 	client, err := NewTestHTTPClient(serverURL)
 	require.NoError(t, err)
 

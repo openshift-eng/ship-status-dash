@@ -1,1 +1,1 @@
-run "make e2e"
+run "make local-e2e"
