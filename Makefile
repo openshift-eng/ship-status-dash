@@ -2,7 +2,7 @@
 
 build: build-frontend build-dashboard
 
-e2e:
+local-e2e:
 	@./hack/e2e.sh
 
 local-dev:
