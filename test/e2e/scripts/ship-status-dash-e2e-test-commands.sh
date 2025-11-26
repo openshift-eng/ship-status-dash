@@ -1,0 +1,84 @@
+#!/bin/bash
+
+set -o nounset
+set -o errexit
+set -o pipefail
+
+echo "************ ship-status-dash e2e test command ************"
+
+# Set up test environment
+KUBECTL_CMD="${KUBECTL_CMD:=oc}"
+
+# Get the dashboard and mock-oauth-proxy service ports for port forwarding
+DASHBOARD_PORT=$(${KUBECTL_CMD} -n ship-status-e2e get svc dashboard -o jsonpath='{.spec.ports[0].port}')
+PROXY_PORT=$(${KUBECTL_CMD} -n ship-status-e2e get svc mock-oauth-proxy -o jsonpath='{.spec.ports[0].port}')
+
+# Set up port forwarding to the dashboard
+echo "Setting up port forwarding to dashboard service..."
+${KUBECTL_CMD} -n ship-status-e2e port-forward svc/dashboard ${DASHBOARD_PORT}:${DASHBOARD_PORT} &
+DASHBOARD_PORT_FORWARD_PID=$!
+
+# Set up port forwarding to the mock-oauth-proxy
+echo "Setting up port forwarding to mock-oauth-proxy service..."
+${KUBECTL_CMD} -n ship-status-e2e port-forward svc/mock-oauth-proxy ${PROXY_PORT}:${PROXY_PORT} &
+PROXY_PORT_FORWARD_PID=$!
+
+# Wait for port forwarding to establish
+sleep 5
+
+# Test connection to dashboard
+echo "Testing connection to public dashboard..."
+DASHBOARD_HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${DASHBOARD_PORT}/health" --max-time 5 || echo "000")
+echo "Dashboard HTTP status code: ${DASHBOARD_HTTP_STATUS}"
+
+# Test connection to mock-oauth-proxy with basic auth
+echo "Testing connection to mock-oauth-proxy with developer:developer credentials..."
+PROXY_HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "developer:developer" "http://localhost:${PROXY_PORT}/health" --max-time 5 || echo "000")
+echo "Mock oauth-proxy HTTP status code: ${PROXY_HTTP_STATUS}"
+
+if [ "${PROXY_HTTP_STATUS}" = "200" ]; then
+  echo "Authentication successful"
+elif [ "${PROXY_HTTP_STATUS}" = "401" ]; then
+  echo "Authentication failed - check credentials"
+else
+  echo "Connection issue (status: ${PROXY_HTTP_STATUS})"
+fi
+
+export TEST_SERVER_URL="http://localhost:${DASHBOARD_PORT}"
+export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:${PROXY_PORT}"
+
+set +e
+go test ./test/e2e/... -count 1 -p 1
+TEST_EXIT_CODE=$?
+set -e
+
+echo "E2E tests completed with exit code: ${TEST_EXIT_CODE}"
+
+# Save logs from both services to artifacts for debugging
+echo "Saving service logs to artifacts..."
+export ARTIFACT_DIR="${ARTIFACT_DIR:=/tmp/ship_status_artifacts}"
+mkdir -p $ARTIFACT_DIR
+
+echo "Saving mock-oauth-proxy logs..."
+${KUBECTL_CMD} -n ship-status-e2e logs mock-oauth-proxy > ${ARTIFACT_DIR}/mock-oauth-proxy-test.log || echo "Failed to get mock-oauth-proxy logs"
+
+echo "Saving dashboard logs..."
+${KUBECTL_CMD} -n ship-status-e2e logs dashboard > ${ARTIFACT_DIR}/dashboard-test.log || echo "Failed to get dashboard logs"
+
+echo "Logs saved to ${ARTIFACT_DIR}/"
+
+# Clean up port forwarding
+if [ ! -z "${DASHBOARD_PORT_FORWARD_PID:-}" ]; then
+  echo "Cleaning up dashboard port forwarding..."
+  kill $DASHBOARD_PORT_FORWARD_PID 2>/dev/null || true
+fi
+if [ ! -z "${PROXY_PORT_FORWARD_PID:-}" ]; then
+  echo "Cleaning up mock-oauth-proxy port forwarding..."
+  kill $PROXY_PORT_FORWARD_PID 2>/dev/null || true
+fi
+
+# Cleanup: Delete the test namespace
+echo "Cleaning up test namespace..."
+${KUBECTL_CMD} delete namespace ship-status-e2e --ignore-not-found=true --wait=false || echo "Failed to delete namespace, continuing..."
+
+exit ${TEST_EXIT_CODE}

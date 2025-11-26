@@ -69,7 +69,7 @@ DSN="postgres://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME?sslmode=disabl
 export TEST_DATABASE_DSN="$DSN"
 
 echo "Running migration..."
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$PROJECT_ROOT"
 go run ./cmd/migrate --dsn "$DSN"
 
@@ -115,7 +115,7 @@ DASHBOARD_LOG="/tmp/dashboard-server.log"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config test/e2e/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config test/e2e/scripts/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
@@ -142,7 +142,7 @@ PROXY_PID=""
 PROXY_LOG="/tmp/mock-oauth-proxy.log"
 
 # Start mock oauth-proxy in background
-go run ./cmd/mock-oauth-proxy --config test/e2e/mock-oauth-proxy-config.yaml --port $PROXY_PORT --upstream "http://localhost:$DASHBOARD_PORT" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$PROXY_LOG" &
+go run ./cmd/mock-oauth-proxy --config test/e2e/scripts/mock-oauth-proxy-config.yaml --port $PROXY_PORT --upstream "http://localhost:$DASHBOARD_PORT" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$PROXY_LOG" &
 PROXY_PID=$!
 
 # Wait for proxy to be ready
@@ -168,7 +168,8 @@ for i in {1..30}; do
 done
 
 echo "Running e2e tests..."
-export TEST_SERVER_PORT="$PROXY_PORT"
+export TEST_SERVER_URL="http://localhost:$DASHBOARD_PORT"
+export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:$PROXY_PORT"
 set +e
 gotestsum ./test/e2e/... -count 1 -p 1
 TEST_EXIT_CODE=$?
