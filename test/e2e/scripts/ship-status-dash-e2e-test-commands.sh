@@ -36,14 +36,6 @@ echo "Testing connection to mock-oauth-proxy with developer:developer credential
 PROXY_HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "developer:developer" "http://localhost:${PROXY_PORT}/health" --max-time 5 || echo "000")
 echo "Mock oauth-proxy HTTP status code: ${PROXY_HTTP_STATUS}"
 
-if [ "${PROXY_HTTP_STATUS}" = "200" ]; then
-  echo "Authentication successful"
-elif [ "${PROXY_HTTP_STATUS}" = "401" ]; then
-  echo "Authentication failed - check credentials"
-else
-  echo "Connection issue (status: ${PROXY_HTTP_STATUS})"
-fi
-
 export TEST_SERVER_URL="http://localhost:${DASHBOARD_PORT}"
 export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:${PROXY_PORT}"
 
