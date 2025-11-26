@@ -3,7 +3,7 @@
 build: build-frontend build-dashboard
 
 local-e2e:
-	@./hack/e2e.sh
+	@./test/e2e/scripts/local-e2e.sh
 
 local-dev:
 	@./hack/local/local-dev.sh $(DSN)

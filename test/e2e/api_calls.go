@@ -21,7 +21,7 @@ func getStatus(t *testing.T, client *TestHTTPClient, componentName, subComponent
 		url += fmt.Sprintf("/%s", utils.Slugify(subComponentName))
 	}
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(url, false)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -37,7 +37,7 @@ func getStatus(t *testing.T, client *TestHTTPClient, componentName, subComponent
 
 // getComponents is a helper function to get all components and do basic assertions
 func getComponents(t *testing.T, client *TestHTTPClient) []types.Component {
-	resp, err := client.Get("/api/components")
+	resp, err := client.Get("/api/components", false)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -53,7 +53,7 @@ func getComponents(t *testing.T, client *TestHTTPClient) []types.Component {
 
 // getComponent is a helper function to get a specific component and do basic assertions
 func getComponent(t *testing.T, client *TestHTTPClient, componentName string) types.Component {
-	resp, err := client.Get(fmt.Sprintf("/api/components/%s", utils.Slugify(componentName)))
+	resp, err := client.Get(fmt.Sprintf("/api/components/%s", utils.Slugify(componentName)), false)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -75,7 +75,7 @@ func getOutages(t *testing.T, client *TestHTTPClient, componentName, subComponen
 	}
 	url += "/outages"
 
-	resp, err := client.Get(url)
+	resp, err := client.Get(url, false)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -90,7 +90,7 @@ func getOutages(t *testing.T, client *TestHTTPClient, componentName, subComponen
 
 // getAllComponentsStatus is a helper function to get all components status and do basic assertions
 func getAllComponentsStatus(t *testing.T, client *TestHTTPClient) []types.ComponentStatus {
-	resp, err := client.Get("/api/status")
+	resp, err := client.Get("/api/status", false)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -105,8 +105,8 @@ func getAllComponentsStatus(t *testing.T, client *TestHTTPClient) []types.Compon
 }
 
 // expect404 is a helper function to make a GET request and expect a 404 response
-func expect404(t *testing.T, client *TestHTTPClient, url string) {
-	resp, err := client.Get(url)
+func expect404(t *testing.T, client *TestHTTPClient, url string, protected bool) {
+	resp, err := client.Get(url, protected)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

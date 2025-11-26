@@ -25,16 +25,15 @@ func TestE2E_Dashboard(t *testing.T) {
 		t.Skip("Skipping e2e test in short mode")
 	}
 
-	// Get server URL from environment variable, or construct from port
 	serverURL := os.Getenv("TEST_SERVER_URL")
 	if serverURL == "" {
-		serverPort := os.Getenv("TEST_SERVER_PORT")
-		if serverPort == "" {
-			t.Fatalf("TEST_SERVER_PORT and TEST_SERVER_URL are not set")
-		}
-		serverURL = "http://localhost:" + serverPort
+		t.Fatalf("TEST_SERVER_URL is not set")
 	}
-	client, err := NewTestHTTPClient(serverURL)
+	mockOauthProxyURL := os.Getenv("TEST_MOCK_OAUTH_PROXY_URL")
+	if mockOauthProxyURL == "" {
+		t.Fatalf("TEST_MOCK_OAUTH_PROXY_URL is not set")
+	}
+	client, err := NewTestHTTPClient(serverURL, mockOauthProxyURL)
 	require.NoError(t, err)
 
 	t.Run("Health", testHealth(client))
@@ -48,13 +47,11 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
 	t.Run("User", testUser(client))
-
-	t.Log("All tests passed!")
 }
 
 func testHealth(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		resp, err := client.Get("/health")
+		resp, err := client.Get("/health", false)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -108,7 +105,7 @@ func testComponentInfo(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET component info for non-existent component returns 404", func(t *testing.T) {
-			expect404(t, client, "/api/components/"+utils.Slugify("NonExistentComponent"))
+			expect404(t, client, "/api/components/"+utils.Slugify("NonExistentComponent"), false)
 		})
 	}
 }
@@ -272,7 +269,7 @@ func testOutages(client *TestHTTPClient) func(*testing.T) {
 
 		t.Run("GET on non-existent sub-component fails", func(t *testing.T) {
 			// This test doesn't need any setup - it should fail regardless of existing data
-			expect404(t, client, fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
+			expect404(t, client, fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")), false)
 		})
 
 		t.Run("POST to unauthorized component returns 403", func(t *testing.T) {
@@ -413,7 +410,7 @@ func testDeleteOutage(client *TestHTTPClient) func(*testing.T) {
 			deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
 
 			// Verify the outage is deleted by trying to get it
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -467,7 +464,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			defer deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
 
 			// Get the outage
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -486,7 +483,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET non-existent outage returns 404", func(t *testing.T) {
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/99999", utils.Slugify("Prow"), utils.Slugify("Tide")))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/99999", utils.Slugify("Prow"), utils.Slugify("Tide")), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -494,7 +491,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent component returns 404", func(t *testing.T) {
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("NonExistentComponent"), utils.Slugify("Tide")))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("NonExistentComponent"), utils.Slugify("Tide")), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -502,7 +499,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET outage from non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Prow"), utils.Slugify("NonExistentSub")), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -515,7 +512,7 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 
 			// Try to get it as if it were a Deck outage
-			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Deck"), tideOutage.ID))
+			resp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Deck"), tideOutage.ID), false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -569,11 +566,11 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("NonExistent"), utils.Slugify("Deck")))
+			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("NonExistent"), utils.Slugify("Deck")), false)
 		})
 
 		t.Run("GET status for non-existent sub-component returns 404", func(t *testing.T) {
-			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("Prow"), utils.Slugify("NonExistent")))
+			expect404(t, client, fmt.Sprintf("/api/status/%s/%s", utils.Slugify("Prow"), utils.Slugify("NonExistent")), false)
 		})
 
 		t.Run("GET status for sub-component with future end_time still considers outage active", func(t *testing.T) {
@@ -745,7 +742,7 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
-			expect404(t, client, "/api/status/"+utils.Slugify("NonExistent"))
+			expect404(t, client, "/api/status/"+utils.Slugify("NonExistent"), false)
 		})
 	}
 }
@@ -922,7 +919,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 func testUser(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET /api/user returns authenticated user", func(t *testing.T) {
-			resp, err := client.Get("/api/user")
+			resp, err := client.Get("/api/user", true)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 

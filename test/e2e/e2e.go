@@ -8,18 +8,20 @@ import (
 
 // HTTP client helper with HTTP Basic Auth for mock oauth-proxy
 type TestHTTPClient struct {
-	serverURL string
-	client    *http.Client
-	username  string
-	password  string
+	publicURL    string
+	protectedURL string
+	client       *http.Client
+	username     string
+	password     string
 }
 
-func NewTestHTTPClient(serverURL string) (*TestHTTPClient, error) {
+func NewTestHTTPClient(publicURL string, protectedURL string) (*TestHTTPClient, error) {
 	return &TestHTTPClient{
-		serverURL: serverURL,
-		client:    &http.Client{},
-		username:  "developer",
-		password:  "developer",
+		publicURL:    publicURL,
+		protectedURL: protectedURL,
+		client:       &http.Client{},
+		username:     "developer",
+		password:     "developer",
 	}, nil
 }
 
@@ -31,17 +33,23 @@ func (c *TestHTTPClient) setAuthHeader(req *http.Request) {
 	}
 }
 
-func (c *TestHTTPClient) Get(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", c.serverURL+url, nil)
+func (c *TestHTTPClient) Get(url string, protected bool) (*http.Response, error) {
+	fullURL := c.publicURL + url
+	if protected {
+		fullURL = c.protectedURL + url
+	}
+	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	c.setAuthHeader(req)
+	if protected {
+		c.setAuthHeader(req)
+	}
 	return c.client.Do(req)
 }
 
 func (c *TestHTTPClient) Post(url string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest("POST", c.serverURL+url, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", c.protectedURL+url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +59,7 @@ func (c *TestHTTPClient) Post(url string, body []byte) (*http.Response, error) {
 }
 
 func (c *TestHTTPClient) Put(url string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest("PUT", c.serverURL+url, bytes.NewBuffer(body))
+	req, err := http.NewRequest("PUT", c.protectedURL+url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +69,7 @@ func (c *TestHTTPClient) Put(url string, body []byte) (*http.Response, error) {
 }
 
 func (c *TestHTTPClient) Patch(url string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest("PATCH", c.serverURL+url, bytes.NewBuffer(body))
+	req, err := http.NewRequest("PATCH", c.protectedURL+url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +79,7 @@ func (c *TestHTTPClient) Patch(url string, body []byte) (*http.Response, error) 
 }
 
 func (c *TestHTTPClient) Delete(url string) (*http.Response, error) {
-	req, err := http.NewRequest("DELETE", c.serverURL+url, nil)
+	req, err := http.NewRequest("DELETE", c.protectedURL+url, nil)
 	if err != nil {
 		return nil, err
 	}
