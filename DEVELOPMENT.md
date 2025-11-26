@@ -115,7 +115,7 @@ The e2e test suite (`make e2e`) uses the same architecture as local development:
 Run the e2e test suite for the dashboard:
 
 ```bash
-make e2e
+make local-e2e
 ```
 
 The e2e script:
