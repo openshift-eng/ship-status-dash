@@ -140,10 +140,10 @@ echo "Creating ${DB_NAME} database..."
 ${KUBECTL_CMD} -n ship-status-e2e exec postgres -- psql -U postgres -c "CREATE DATABASE ${DB_NAME};" || echo "Database might already exist"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+TEST_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 echo "SCRIPT_DIR: ${SCRIPT_DIR}"
-echo "PROJECT_ROOT: ${PROJECT_ROOT}"
-cd "$PROJECT_ROOT"
+echo "TEST_DIR: ${TEST_DIR}"
+cd "$TEST_DIR"
 
 CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
 MOCK_OAUTH_PROXY_CONFIG_FILE="${SCRIPT_DIR}/mock-oauth-proxy-config.yaml"
