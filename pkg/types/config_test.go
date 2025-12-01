@@ -89,3 +89,81 @@ func TestComponent_GetSubComponentBySlug(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_GetComponentBySlug(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         Config
+		componentSlug  string
+		expectedResult *Component
+	}{
+		{
+			name: "component found - single component",
+			config: Config{
+				Components: []*Component{
+					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+				},
+			},
+			componentSlug:  "prow",
+			expectedResult: &Component{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+		},
+		{
+			name: "component found - multiple components",
+			config: Config{
+				Components: []*Component{
+					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+					{Name: "Build Farm", Slug: "build-farm", Description: "Build infrastructure"},
+					{Name: "Registry", Slug: "registry", Description: "Container registry"},
+				},
+			},
+			componentSlug:  "build-farm",
+			expectedResult: &Component{Name: "Build Farm", Slug: "build-farm", Description: "Build infrastructure"},
+		},
+		{
+			name: "component not found",
+			config: Config{
+				Components: []*Component{
+					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+					{Name: "Build Farm", Slug: "build-farm", Description: "Build infrastructure"},
+				},
+			},
+			componentSlug:  "nonexistent",
+			expectedResult: nil,
+		},
+		{
+			name: "empty components list",
+			config: Config{
+				Components: []*Component{},
+			},
+			componentSlug:  "any-component",
+			expectedResult: nil,
+		},
+		{
+			name: "case sensitive matching",
+			config: Config{
+				Components: []*Component{
+					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
+				},
+			},
+			componentSlug:  "Prow", // name, not slug
+			expectedResult: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.GetComponentBySlug(tt.componentSlug)
+
+			if tt.expectedResult == nil {
+				assert.Nil(t, result)
+			} else {
+				if result == nil {
+					t.Fatalf("got nil result, want non-nil: %+v", tt.expectedResult)
+				}
+				if diff := cmp.Diff(*tt.expectedResult, *result); diff != "" {
+					t.Errorf("GetComponentBySlug mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+	}
+}

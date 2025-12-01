@@ -5,6 +5,15 @@ type Config struct {
 	Components []*Component `json:"components" yaml:"components"`
 }
 
+func (c *Config) GetComponentBySlug(slug string) *Component {
+	for i := range c.Components {
+		if c.Components[i].Slug == slug {
+			return c.Components[i]
+		}
+	}
+	return nil
+}
+
 // Component represents a top-level system component with sub-components and ownership information.
 type Component struct {
 	Name          string         `json:"name" yaml:"name"`
