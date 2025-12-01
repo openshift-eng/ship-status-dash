@@ -86,3 +86,12 @@ func (c *TestHTTPClient) Delete(url string) (*http.Response, error) {
 	c.setAuthHeader(req)
 	return c.client.Do(req)
 }
+
+func (c *TestHTTPClient) PostUnprotected(url string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequest("POST", c.publicURL+url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.client.Do(req)
+}

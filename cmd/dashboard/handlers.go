@@ -18,19 +18,21 @@ import (
 
 // Handlers contains the HTTP request handlers for the dashboard API.
 type Handlers struct {
-	logger     *logrus.Logger
-	config     *types.Config
-	db         *gorm.DB
-	groupCache *auth.GroupMembershipCache
+	logger                 *logrus.Logger
+	config                 *types.Config
+	db                     *gorm.DB
+	groupCache             *auth.GroupMembershipCache
+	monitorReportProcessor *ComponentMonitorReportProcessor
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
 func NewHandlers(logger *logrus.Logger, config *types.Config, db *gorm.DB, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
-		logger:     logger,
-		config:     config,
-		db:         db,
-		groupCache: groupCache,
+		logger:                 logger,
+		config:                 config,
+		db:                     db,
+		groupCache:             groupCache,
+		monitorReportProcessor: NewComponentMonitorReportProcessor(db, config, logger),
 	}
 }
 
@@ -46,9 +48,9 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 	})
 }
 
-func (h *Handlers) getComponent(componentName string) *types.Component {
+func (h *Handlers) getComponent(componentSlug string) *types.Component {
 	for _, component := range h.config.Components {
-		if component.Slug == componentName {
+		if component.Slug == componentSlug {
 			return component
 		}
 	}
@@ -137,7 +139,7 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -170,29 +172,13 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
 	}
 
 	respondWithJSON(w, http.StatusOK, outages)
-}
-
-// UpsertOutageRequest represents the fields to create or update an outage.
-type UpsertOutageRequest struct {
-	Severity       *string       `json:"severity,omitempty"`
-	StartTime      *time.Time    `json:"start_time,omitempty"`
-	EndTime        *sql.NullTime `json:"end_time,omitempty"`
-	Description    *string       `json:"description,omitempty"`
-	DiscoveredFrom *string       `json:"discovered_from,omitempty"`
-	// CreatedBy should not be passed by the frontend, this is only for use via the component-monitor
-	CreatedBy *string `json:"created_by,omitempty"`
-	// ResolvedBy should not be passed by the frontend, this is only for use via the component-monitor
-	// the value will be obtained from the active user header otherwise
-	ResolvedBy  *string `json:"resolved_by,omitempty"`
-	Confirmed   *bool   `json:"confirmed,omitempty"`
-	TriageNotes *string `json:"triage_notes,omitempty"`
 }
 
 // CreateOutageJSON creates a new outage for a sub-component.
@@ -230,24 +216,32 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var outageReq UpsertOutageRequest
+	var outageReq types.UpsertOutageRequest
 	if err := json.NewDecoder(r.Body).Decode(&outageReq); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
+	severity := ""
+	if outageReq.Severity != nil {
+		severity = *outageReq.Severity
+	}
+	discoveredFrom := ""
+	if outageReq.DiscoveredFrom != nil {
+		discoveredFrom = *outageReq.DiscoveredFrom
+	}
 	logger = logger.WithFields(logrus.Fields{
-		"severity":        outageReq.Severity,
-		"discovered_from": outageReq.DiscoveredFrom,
+		"severity":        severity,
+		"discovered_from": discoveredFrom,
 	})
 
 	outage := types.Outage{
 		ComponentName:    componentName,
 		SubComponentName: subComponentName,
-		Severity:         types.Severity(*outageReq.Severity),
+		Severity:         types.Severity(severity),
 		Description:      *outageReq.Description,
 		StartTime:        *outageReq.StartTime,
-		DiscoveredFrom:   *outageReq.DiscoveredFrom,
+		DiscoveredFrom:   discoveredFrom,
 		TriageNotes:      outageReq.TriageNotes,
 	}
 
@@ -342,7 +336,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updateReq UpsertOutageRequest
+	var updateReq types.UpsertOutageRequest
 	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -423,7 +417,7 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -646,6 +640,47 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	}
 
 	return types.StatusHealthy
+}
+
+func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http.Request) {
+	var req types.ComponentMonitorReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.ComponentMonitor == "" {
+		respondWithError(w, http.StatusBadRequest, "component_monitor is required")
+		return
+	}
+
+	if len(req.Statuses) == 0 {
+		respondWithError(w, http.StatusBadRequest, "statuses cannot be empty")
+		return
+	}
+
+	for _, status := range req.Statuses {
+		component := h.getComponent(status.ComponentSlug)
+		if component == nil {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Component not found: %s", status.ComponentSlug))
+			return
+		}
+
+		subComponent := component.GetSubComponentBySlug(status.SubComponentSlug)
+		if subComponent == nil {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Sub-component not found: %s/%s", status.ComponentSlug, status.SubComponentSlug))
+			return
+		}
+	}
+
+	err := h.monitorReportProcessor.Process(&req, h.validateOutage)
+	if err != nil {
+		h.logger.WithField("error", err).Error("Failed to process component monitor report")
+		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 }
 
 type AuthenticatedUser struct {

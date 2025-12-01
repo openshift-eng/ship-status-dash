@@ -6,12 +6,18 @@ components:
     sub_components:
       - name: "Tide"
         description: "Automated merging of PRs"
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: false
       - name: "Deck"
         description: "Dashboard for Prow"
-        managed: true
         requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
     owners:
       - user: "developer"
       - service_account: "app-ci-component-monitor"
@@ -22,20 +28,32 @@ components:
     sub_components:
       - name: "Build01"
         description: "AWS build farm cluster"
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
       - name: "Build02"
         description: "GCP build farm cluster"
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
       - name: "Build03"
         description: "AWS build farm cluster"
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
       - name: "Build04"
         description: "GCP build farm cluster"
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
     owners:
       - user: "developer"
       - service_account: "app-ci-component-monitor"
@@ -46,12 +64,18 @@ components:
     sub_components:
       - name: "Sippy"
         description: "The non-auth variant of Sippy"
-        managed: true
         requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "dpcr-component-monitor"
+          auto_resolve: true
       - name: "Sippy-Auth"
         description: "The auth variant of Sippy"
-        managed: true
         requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "dpcr-component-monitor"
+          auto_resolve: true
     owners:
       - user: "someone-else"
       - service_account: "dpcr-component-monitor"

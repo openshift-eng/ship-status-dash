@@ -291,7 +291,6 @@ const UpsertOutageModal = ({
           >
             <MenuItem value="Down">Down</MenuItem>
             <MenuItem value="Degraded">Degraded</MenuItem>
-            <MenuItem value="Suspected">Suspected</MenuItem>
           </Select>
         </StyledFormControl>
 

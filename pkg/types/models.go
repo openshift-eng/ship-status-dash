@@ -10,8 +10,9 @@ import (
 type Severity string
 
 const (
-	SeverityDown      Severity = "Down"
-	SeverityDegraded  Severity = "Degraded"
+	SeverityDown     Severity = "Down"
+	SeverityDegraded Severity = "Degraded"
+	//TODO: Suspected might be useful in the future (for the down-detector type voting), but it isn't used anywhere yet.
 	SeveritySuspected Severity = "Suspected"
 )
 
@@ -54,22 +55,35 @@ func GetSeverityLevel(severity Severity) int {
 
 // Outage represents a component outage with tracking information for incident management.
 type Outage struct {
-	ID               uint           `json:"id" gorm:"primarykey"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
-	ComponentName    string         `json:"component_name" gorm:"column:component_name;not null;index"`
-	SubComponentName string         `json:"sub_component_name" gorm:"column:sub_component_name;not null;index"`
-	Severity         Severity       `json:"severity" gorm:"column:severity;not null"`
-	StartTime        time.Time      `json:"start_time" gorm:"column:start_time;not null;index"`
-	EndTime          sql.NullTime   `json:"end_time" gorm:"column:end_time;index"`
-	AutoResolve      bool           `json:"auto_resolve" gorm:"column:auto_resolve;not null;default:true"`
-	Description      string         `json:"description" gorm:"column:description;type:text"`
-	DiscoveredFrom   string         `json:"discovered_from" gorm:"column:discovered_from;not null"`
-	CreatedBy        string         `json:"created_by" gorm:"column:created_by;not null"`
-	ResolvedBy       *string        `json:"resolved_by,omitempty" gorm:"column:resolved_by"`
-	ConfirmedBy      *string        `json:"confirmed_by,omitempty" gorm:"column:confirmed_by"`
-	ConfirmedAt      sql.NullTime   `json:"confirmed_at" gorm:"column:confirmed_at"`
-	TriageNotes      *string        `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
+	gorm.Model
+	ComponentName    string       `json:"component_name" gorm:"column:component_name;not null;index"`
+	SubComponentName string       `json:"sub_component_name" gorm:"column:sub_component_name;not null;index"`
+	Severity         Severity     `json:"severity" gorm:"column:severity;not null"`
+	StartTime        time.Time    `json:"start_time" gorm:"column:start_time;not null;index"`
+	EndTime          sql.NullTime `json:"end_time" gorm:"column:end_time;index"`
+	Description      string       `json:"description" gorm:"column:description;type:text"`
+	// DiscoveredFrom describes where this outage was created: frontend, component-monitor, MCP, API
+	DiscoveredFrom string       `json:"discovered_from" gorm:"column:discovered_from;not null"`
+	CreatedBy      string       `json:"created_by" gorm:"column:created_by;not null"`
+	ResolvedBy     *string      `json:"resolved_by,omitempty" gorm:"column:resolved_by"`
+	ConfirmedBy    *string      `json:"confirmed_by,omitempty" gorm:"column:confirmed_by"`
+	ConfirmedAt    sql.NullTime `json:"confirmed_at" gorm:"column:confirmed_at"`
+	TriageNotes    *string      `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
+	ReasonID       *uint        `json:"-" gorm:"column:reason_id"`
+	// Reason is the Reason record that describes the reason for the outage
+	// this is utilized only by the component-monitor
+	Reason *Reason `json:"reason,omitempty" gorm:"foreignKey:ReasonID"`
 	//TODO: Add optional link to jira card, and incident slack thread link for outage
+}
+
+type Reason struct {
+	gorm.Model
+	// Type defines the type of monitoring check that was performed
+	// either: prometheus, or http
+	Type string `json:"type"`
+	// Check defines the specific check that was performed
+	// a prometheus check will have a query, and a http check will have a url
+	Check string `json:"check"`
+	// Results summarizes the results of the check
+	Results string `json:"results"`
 }
