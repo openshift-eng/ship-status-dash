@@ -47,6 +47,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
 	t.Run("User", testUser(client))
+	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 }
 
 func testHealth(client *TestHTTPClient) func(*testing.T) {
@@ -939,6 +940,497 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 			// Developer should only have access to Prow, not Build Farm
 			assert.Contains(t, userResponse.Components, utils.Slugify("Prow"), "developer should have access to Prow")
 			assert.NotContains(t, userResponse.Components, utils.Slugify("Build Farm"), "developer should not have access to Build Farm")
+		})
+	}
+}
+
+func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("POST report with Down status creates outage", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var response map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&response)
+			require.NoError(t, err)
+			assert.Equal(t, "processed", response["status"])
+
+			// Verify outage was created
+			outages := getOutages(t, client, "Prow", "Deck")
+			var foundOutage *types.Outage
+			for i := range outages {
+				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" {
+					foundOutage = &outages[i]
+					break
+				}
+			}
+			require.NotNil(t, foundOutage, "Outage should be created")
+			assert.Equal(t, string(types.SeverityDown), string(foundOutage.Severity))
+			assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
+			assert.Equal(t, "app-ci-component-monitor", foundOutage.CreatedBy)
+			assert.NotNil(t, foundOutage.Reason)
+			assert.Equal(t, "prometheus", foundOutage.Reason.Type)
+			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reason.Check)
+			assert.Equal(t, "No healthy instances found", foundOutage.Reason.Results)
+
+			// Cleanup
+			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
+		})
+
+		t.Run("POST report with Degraded status creates outage", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDegraded),
+						"reason": map[string]interface{}{
+							"type":    "http",
+							"check":   "https://deck.example.com/health",
+							"results": "Response time > 5s",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Verify outage was created
+			outages := getOutages(t, client, "Prow", "Deck")
+			var foundOutage *types.Outage
+			for i := range outages {
+				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "http" {
+					foundOutage = &outages[i]
+					break
+				}
+			}
+			require.NotNil(t, foundOutage, "Outage should be created")
+			assert.Equal(t, string(types.SeverityDegraded), string(foundOutage.Severity))
+
+			// Cleanup
+			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
+		})
+
+		t.Run("POST report does not create duplicate outage for same Reason.Type", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			// First report
+			resp1, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			resp1.Body.Close()
+			assert.Equal(t, http.StatusOK, resp1.StatusCode)
+
+			// Get the created outage
+			outages1 := getOutages(t, client, "Prow", "Deck")
+			var firstOutage *types.Outage
+			for i := range outages1 {
+				if outages1[i].DiscoveredFrom == "component-monitor" && outages1[i].Reason != nil && outages1[i].Reason.Type == "prometheus" {
+					firstOutage = &outages1[i]
+					break
+				}
+			}
+			require.NotNil(t, firstOutage, "First outage should be created")
+
+			// Second report with same Reason.Type
+			resp2, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			// Verify no duplicate was created
+			outages2 := getOutages(t, client, "Prow", "Deck")
+			count := 0
+			for i := range outages2 {
+				if outages2[i].DiscoveredFrom == "component-monitor" && outages2[i].Reason != nil && outages2[i].Reason.Type == "prometheus" && outages2[i].EndTime.Valid == false {
+					count++
+				}
+			}
+			assert.Equal(t, 1, count, "Should only have one active outage with same Reason.Type")
+
+			// Cleanup
+			deleteOutage(t, client, "Prow", "Deck", firstOutage.ID)
+		})
+
+		t.Run("POST report with Healthy status auto-resolves outage when auto_resolve is true", func(t *testing.T) {
+			// Create an outage first
+			downReport := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"), // Deck has auto_resolve: true
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			downBytes, err := json.Marshal(downReport)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", downBytes)
+			require.NoError(t, err)
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Get the created outage
+			outages := getOutages(t, client, "Prow", "Deck")
+			var outage *types.Outage
+			for i := range outages {
+				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" && !outages[i].EndTime.Valid {
+					outage = &outages[i]
+					break
+				}
+			}
+			require.NotNil(t, outage, "Outage should be created")
+			assert.False(t, outage.EndTime.Valid, "Outage should be active")
+
+			// Now report healthy status
+			healthyReport := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusHealthy),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "All instances healthy",
+						},
+					},
+				},
+			}
+
+			healthyBytes, err := json.Marshal(healthyReport)
+			require.NoError(t, err)
+
+			resp2, err := client.PostUnprotected("/api/component-monitor/report", healthyBytes)
+			require.NoError(t, err)
+			resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			// Verify outage was resolved
+			outages2 := getOutages(t, client, "Prow", "Deck")
+			var resolvedOutage *types.Outage
+			for i := range outages2 {
+				if outages2[i].ID == outage.ID {
+					resolvedOutage = &outages2[i]
+					break
+				}
+			}
+			require.NotNil(t, resolvedOutage, "Outage should still exist")
+			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
+			assert.NotNil(t, resolvedOutage.ResolvedBy)
+			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
+		})
+
+		t.Run("POST report with Healthy status does not resolve when auto_resolve is false", func(t *testing.T) {
+			// Create an outage first for Tide (which has auto_resolve: false)
+			downReport := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Tide"), // Tide has auto_resolve: false
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"tide\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			downBytes, err := json.Marshal(downReport)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", downBytes)
+			require.NoError(t, err)
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Get the created outage
+			outages := getOutages(t, client, "Prow", "Tide")
+			var outage *types.Outage
+			for i := range outages {
+				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" && !outages[i].EndTime.Valid {
+					outage = &outages[i]
+					break
+				}
+			}
+			require.NotNil(t, outage, "Outage should be created")
+
+			// Now report healthy status
+			healthyReport := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Tide"),
+						"status":             string(types.StatusHealthy),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"tide\"} == 0",
+							"results": "All instances healthy",
+						},
+					},
+				},
+			}
+
+			healthyBytes, err := json.Marshal(healthyReport)
+			require.NoError(t, err)
+
+			resp2, err := client.PostUnprotected("/api/component-monitor/report", healthyBytes)
+			require.NoError(t, err)
+			resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			// Verify outage was NOT resolved
+			outages2 := getOutages(t, client, "Prow", "Tide")
+			var stillActiveOutage *types.Outage
+			for i := range outages2 {
+				if outages2[i].ID == outage.ID {
+					stillActiveOutage = &outages2[i]
+					break
+				}
+			}
+			require.NotNil(t, stillActiveOutage, "Outage should still exist")
+			assert.False(t, stillActiveOutage.EndTime.Valid, "Outage should still be active")
+
+			// Cleanup
+			deleteOutage(t, client, "Prow", "Tide", outage.ID)
+		})
+
+		t.Run("POST report with invalid component returns 400", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("NonExistentComponent"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Contains(t, errorResponse["error"], "Component not found")
+		})
+
+		t.Run("POST report with invalid sub-component returns 400", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("NonExistentSub"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Contains(t, errorResponse["error"], "Sub-component not found")
+		})
+
+		t.Run("POST report with multiple statuses processes all", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Tide"),
+						"status":             string(types.StatusDegraded),
+						"reason": map[string]interface{}{
+							"type":    "http",
+							"check":   "https://tide.example.com/health",
+							"results": "Response time > 5s",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Verify both outages were created
+			deckOutages := getOutages(t, client, "Prow", "Deck")
+			var deckOutage *types.Outage
+			for i := range deckOutages {
+				if deckOutages[i].DiscoveredFrom == "component-monitor" && deckOutages[i].Reason != nil && deckOutages[i].Reason.Type == "prometheus" {
+					deckOutage = &deckOutages[i]
+					break
+				}
+			}
+			require.NotNil(t, deckOutage, "Deck outage should be created")
+
+			tideOutages := getOutages(t, client, "Prow", "Tide")
+			var tideOutage *types.Outage
+			for i := range tideOutages {
+				if tideOutages[i].DiscoveredFrom == "component-monitor" && tideOutages[i].Reason != nil && tideOutages[i].Reason.Type == "http" {
+					tideOutage = &tideOutages[i]
+					break
+				}
+			}
+			require.NotNil(t, tideOutage, "Tide outage should be created")
+
+			// Cleanup
+			deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+		})
+
+		t.Run("POST report with empty component_monitor returns 400", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "",
+				"statuses": []map[string]interface{}{
+					{
+						"component_name":     utils.Slugify("Prow"),
+						"sub_component_name": utils.Slugify("Deck"),
+						"status":             string(types.StatusDown),
+						"reason": map[string]interface{}{
+							"type":    "prometheus",
+							"check":   "up{job=\"deck\"} == 0",
+							"results": "No healthy instances found",
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Contains(t, errorResponse["error"], "component_monitor is required")
+		})
+
+		t.Run("POST report with empty statuses returns 400", func(t *testing.T) {
+			reportPayload := map[string]interface{}{
+				"component_monitor": "app-ci-component-monitor",
+				"statuses":          []map[string]interface{}{},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Contains(t, errorResponse["error"], "statuses cannot be empty")
 		})
 	}
 }

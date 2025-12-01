@@ -6,12 +6,18 @@ components:
     sub_components:
       - name: Tide
         description: Merges PRs
-        managed: true
         requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: false
       - name: Deck
         description: The frontend for Prow
-        managed: true
         requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
     owners:
       - user: developer
   - name: Build Farm
@@ -21,7 +27,13 @@ components:
     sub_components:
       - name: Build01
         description: AWS build farm cluster
-        managed: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
       - name: Build02
         description: GCP build farm cluster
-        managed: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true

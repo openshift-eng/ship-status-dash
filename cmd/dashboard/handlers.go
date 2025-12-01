@@ -137,7 +137,7 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -170,7 +170,7 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 	}
 
 	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -236,18 +236,26 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	severity := ""
+	if outageReq.Severity != nil {
+		severity = *outageReq.Severity
+	}
+	discoveredFrom := ""
+	if outageReq.DiscoveredFrom != nil {
+		discoveredFrom = *outageReq.DiscoveredFrom
+	}
 	logger = logger.WithFields(logrus.Fields{
-		"severity":        outageReq.Severity,
-		"discovered_from": outageReq.DiscoveredFrom,
+		"severity":        severity,
+		"discovered_from": discoveredFrom,
 	})
 
 	outage := types.Outage{
 		ComponentName:    componentName,
 		SubComponentName: subComponentName,
-		Severity:         types.Severity(*outageReq.Severity),
+		Severity:         types.Severity(severity),
 		Description:      *outageReq.Description,
 		StartTime:        *outageReq.StartTime,
-		DiscoveredFrom:   *outageReq.DiscoveredFrom,
+		DiscoveredFrom:   discoveredFrom,
 		TriageNotes:      outageReq.TriageNotes,
 	}
 
@@ -423,7 +431,7 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
+	if err := h.db.Preload("Reason").Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -646,6 +654,157 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	}
 
 	return types.StatusHealthy
+}
+
+type ComponentMonitorReportRequest struct {
+	ComponentMonitor string                                  `json:"component_monitor"`
+	Statuses         []ComponentMonitorReportComponentStatus `json:"statuses"`
+}
+
+type ComponentMonitorReportComponentStatus struct {
+	ComponentName    string       `json:"component_name"`
+	SubComponentName string       `json:"sub_component_name"`
+	Status           types.Status `json:"status"`
+	Reason           types.Reason `json:"reason"`
+}
+
+func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http.Request) {
+	var req ComponentMonitorReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.ComponentMonitor == "" {
+		respondWithError(w, http.StatusBadRequest, "component_monitor is required")
+		return
+	}
+
+	if len(req.Statuses) == 0 {
+		respondWithError(w, http.StatusBadRequest, "statuses cannot be empty")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component_monitor": req.ComponentMonitor,
+		"status_count":      len(req.Statuses),
+	})
+
+	for _, status := range req.Statuses {
+		statusLogger := logger.WithFields(logrus.Fields{
+			"component":     status.ComponentName,
+			"sub_component": status.SubComponentName,
+			"status":        string(status.Status),
+		})
+
+		component := h.getComponent(status.ComponentName)
+		if component == nil {
+			statusLogger.Error("Component not found")
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Component not found: %s", status.ComponentName))
+			return
+		}
+
+		subComponent := component.GetSubComponentBySlug(status.SubComponentName)
+		if subComponent == nil {
+			statusLogger.Error("Sub-component not found")
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Sub-component not found: %s/%s", status.ComponentName, status.SubComponentName))
+			return
+		}
+
+		var activeOutages []types.Outage
+		err := h.db.
+			Joins("JOIN reasons ON outages.reason_id = reasons.id").
+			Where("outages.component_name = ? AND outages.sub_component_name = ? AND outages.end_time IS NULL AND outages.discovered_from = ? AND reasons.type = ?",
+				status.ComponentName, status.SubComponentName, "component-monitor", status.Reason.Type).
+			Find(&activeOutages).Error
+
+		if err != nil {
+			statusLogger.WithField("error", err).Error("Failed to query active outages")
+			continue
+		}
+
+		if status.Status == types.StatusHealthy {
+			if !subComponent.Monitoring.AutoResolve {
+				statusLogger.Debug("Auto-resolve disabled, skipping healthy status processing")
+				continue
+			}
+
+			if len(activeOutages) == 0 {
+				statusLogger.Debug("No matching active outages to resolve")
+				continue
+			}
+
+			now := time.Now()
+			resolvedBy := req.ComponentMonitor
+			for i := range activeOutages {
+				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
+				activeOutages[i].ResolvedBy = &resolvedBy
+				if err := h.db.Save(&activeOutages[i]).Error; err != nil {
+					statusLogger.WithFields(logrus.Fields{
+						"outage_id": activeOutages[i].ID,
+						"error":     err,
+					}).Error("Failed to resolve outage")
+					continue
+				}
+				statusLogger.WithField("outage_id", activeOutages[i].ID).Info("Successfully auto-resolved outage")
+			}
+		} else {
+			severity := status.Status.ToSeverity()
+			if severity == "" {
+				statusLogger.Warn("Invalid status for severity conversion, skipping")
+				continue
+			}
+
+			if len(activeOutages) > 0 {
+				statusLogger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage with matching reason type already exists, skipping creation")
+				continue
+			}
+
+			err = h.db.Transaction(func(tx *gorm.DB) error {
+				reason := types.Reason{
+					Type:    status.Reason.Type,
+					Check:   status.Reason.Check,
+					Results: status.Reason.Results,
+				}
+				if err := tx.Create(&reason).Error; err != nil {
+					return err
+				}
+
+				description := fmt.Sprintf("Component monitor detected outage via %s - check: %s, results: %s", status.Reason.Type, status.Reason.Check, status.Reason.Results)
+				outage := types.Outage{
+					ComponentName:    status.ComponentName,
+					SubComponentName: status.SubComponentName,
+					Severity:         severity,
+					StartTime:        time.Now(),
+					EndTime:          sql.NullTime{Valid: false},
+					Description:      description,
+					DiscoveredFrom:   "component-monitor",
+					CreatedBy:        req.ComponentMonitor,
+					ReasonID:         &reason.ID,
+				}
+
+				if !subComponent.RequiresConfirmation {
+					outage.ConfirmedBy = &req.ComponentMonitor
+					outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
+				}
+
+				if message, valid := h.validateOutage(&outage); !valid {
+					return fmt.Errorf("validation failed: %s", message)
+				}
+
+				return tx.Create(&outage).Error
+			})
+
+			if err != nil {
+				statusLogger.WithField("error", err).Error("Failed to create outage and reason")
+				continue
+			}
+
+			statusLogger.Info("Successfully created outage with reason")
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 }
 
 type AuthenticatedUser struct {

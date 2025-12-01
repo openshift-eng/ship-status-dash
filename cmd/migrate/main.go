@@ -38,7 +38,11 @@ func main() {
 	log.Info("Running migrations...")
 
 	if err = db.AutoMigrate(&types.Outage{}); err != nil {
-		log.WithField("error", err).Fatal("Failed to migrate database")
+		log.WithField("error", err).Fatal("Failed to migrate Outage table")
+	}
+
+	if err = db.AutoMigrate(&types.Reason{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate Reason table")
 	}
 
 	log.Info("Migration completed successfully")
