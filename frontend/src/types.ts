@@ -1,9 +1,9 @@
 export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' | 'Unknown'
 
 export interface Outage {
-  id: number
-  created_at: string
-  updated_at: string
+  ID: number
+  CreatedAt: string
+  UpdatedAt: string
   component_name: string
   sub_component_name: string
   severity: string

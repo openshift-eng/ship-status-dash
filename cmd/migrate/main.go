@@ -35,6 +35,16 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to connect to database")
 	}
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to get database instance")
+	}
+
+	// Explicitly set client encoding (required for simple protocol queries)
+	if _, err := sqlDB.Exec("SET client_encoding = 'UTF8'"); err != nil {
+		log.WithField("error", err).Fatal("Failed to set client encoding")
+	}
+
 	log.Info("Running migrations...")
 
 	if err = db.AutoMigrate(&types.Outage{}); err != nil {
@@ -46,11 +56,6 @@ func main() {
 	}
 
 	log.Info("Migration completed successfully")
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.WithField("error", err).Fatal("Failed to get database instance")
-	}
 
 	var tableCount int64
 	db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'").Scan(&tableCount)

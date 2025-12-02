@@ -17,7 +17,7 @@ const ConfirmOutage = ({ outage, onConfirmSuccess, onError }: ConfirmOutageProps
   const handleConfirmClick = () => {
     setIsLoading(true)
 
-    fetch(modifyOutageEndpoint(outage.component_name, outage.sub_component_name, outage.id), {
+    fetch(modifyOutageEndpoint(outage.component_name, outage.sub_component_name, outage.ID), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',

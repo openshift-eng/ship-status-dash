@@ -12,7 +12,7 @@ const OutageDetailsButton = ({ outage }: OutageDetailsButtonProps) => {
   const navigate = useNavigate()
 
   const handleDetailsClick = () => {
-    navigate(`/${outage.component_name}/${outage.sub_component_name}/outages/${outage.id}`)
+    navigate(`/${outage.component_name}/${outage.sub_component_name}/outages/${outage.ID}`)
   }
 
   return (

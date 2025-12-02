@@ -114,7 +114,7 @@ const SubComponentCardComponent = ({
       navigate(`/${slugify(componentName)}/${slugify(subComponentWithStatus.name)}`)
     } else if (activeOutages.length === 1) {
       navigate(
-        `/${slugify(componentName)}/${slugify(subComponentWithStatus.name)}/outages/${activeOutages[0].id}`,
+        `/${slugify(componentName)}/${slugify(subComponentWithStatus.name)}/outages/${activeOutages[0].ID}`,
       )
     }
   }
