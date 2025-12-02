@@ -356,9 +356,9 @@ const OutageDetailsPage = () => {
         <FullWidthGridItem>
           <Section icon={<Settings />} title="System Information">
             <SystemGrid>
-              <Field label="Outage ID" value={outage.id} valueVariant="monospace" />
-              <Field label="Created At" value={formatDateTime(outage.created_at)} />
-              <Field label="Updated At" value={formatDateTime(outage.updated_at)} />
+              <Field label="Outage ID" value={outage.ID} valueVariant="monospace" />
+              <Field label="Created At" value={formatDateTime(outage.CreatedAt)} />
+              <Field label="Updated At" value={formatDateTime(outage.UpdatedAt)} />
             </SystemGrid>
           </Section>
         </FullWidthGridItem>

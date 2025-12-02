@@ -202,7 +202,7 @@ const UpsertOutageModal = ({
     }
 
     const url = isUpdateMode
-      ? modifyOutageEndpoint(componentName, subComponentName, outage?.id)
+      ? modifyOutageEndpoint(componentName, subComponentName, outage?.ID)
       : createOutageEndpoint(componentName, subComponentName)
 
     const method = isUpdateMode ? 'PATCH' : 'POST'

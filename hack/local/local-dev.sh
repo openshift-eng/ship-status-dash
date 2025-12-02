@@ -68,6 +68,12 @@ fi
 DASHBOARD_PORT=8080
 PROXY_PORT=8443
 
+echo "Running database migrations..."
+if ! go run ./cmd/migrate --dsn "$DSN"; then
+  echo "Error: Database migration failed"
+  exit 1
+fi
+
 echo "Generating HMAC secret..."
 HMAC_SECRET=$(openssl rand -hex 32)
 HMAC_SECRET_FILE=$(mktemp)

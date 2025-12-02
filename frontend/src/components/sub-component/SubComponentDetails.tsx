@@ -421,7 +421,7 @@ const SubComponentDetails = () => {
                   },
                 }}
                 disableRowSelectionOnClick
-                getRowId={(row) => row.id}
+                getRowId={(row) => row.ID}
               />
             </Box>
           </Box>
