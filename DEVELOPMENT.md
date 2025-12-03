@@ -30,7 +30,7 @@ Before starting the dashboard, you must set up a PostgreSQL database:
 Start the local development environment (dashboard server and mock oauth-proxy):
 
 ```bash
-make local-dev DSN="postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
+make local-dashboard-dev: DSN="postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
 ```
 
 This script:
@@ -41,7 +41,7 @@ This script:
 
 ### Authentication Architecture
 
-The `make local-dev` target mimics the production architecture using `mock-oauth-proxy`:
+The `make local-dashboard-dev:` target mimics the production architecture using `mock-oauth-proxy`:
 
 #### Setup
 

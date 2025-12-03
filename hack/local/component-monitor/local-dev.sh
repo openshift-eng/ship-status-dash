@@ -19,7 +19,7 @@ echo "Starting component-monitor..."
 COMPONENT_MONITOR_LOG="/tmp/component-monitor-local-dev.log"
 echo "Component-monitor logs: $COMPONENT_MONITOR_LOG"
 
-go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml 2>&1 | tee "$COMPONENT_MONITOR_LOG" &
+go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml --dashboard-url http://localhost:8080 --name local-component-monitor 2>&1 | tee "$COMPONENT_MONITOR_LOG" &
 COMPONENT_MONITOR_PID=$!
 
 echo ""
