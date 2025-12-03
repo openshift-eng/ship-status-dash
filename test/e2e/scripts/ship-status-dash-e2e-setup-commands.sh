@@ -145,7 +145,7 @@ echo "SCRIPT_DIR: ${SCRIPT_DIR}"
 echo "TEST_DIR: ${TEST_DIR}"
 cd "$TEST_DIR"
 
-CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+CONFIG_FILE="${SCRIPT_DIR}/dashboard-config.yaml"
 MOCK_OAUTH_PROXY_CONFIG_FILE="${SCRIPT_DIR}/mock-oauth-proxy-config.yaml"
 
 echo "Creating configmaps and secrets..."
@@ -156,7 +156,7 @@ metadata:
   name: dashboard-config
   namespace: ship-status-e2e
 data:
-  config.yaml: |
+  dashboard-config.yaml: |
 $(sed 's/^/    /' "${CONFIG_FILE}")
 END
 
@@ -236,7 +236,7 @@ spec:
     - containerPort: 8080
     command: ["./dashboard"]
     args:
-      - "--config=/etc/config/config.yaml"
+      - "--config=/etc/config/dashboard-config.yaml"
       - "--port=8080"
       - "--dsn=${DSN}"
       - "--hmac-secret-file=/etc/hmac/secret"

@@ -27,13 +27,17 @@ components:
     sub_components:
       - name: Build01
         description: AWS build farm cluster
-        monitoring:
-          frequency: 5m
-          component_monitor: "app-ci-component-monitor"
-          auto_resolve: true
       - name: Build02
         description: GCP build farm cluster
+  # The Sippy component is used during the component monitor e2e tests
+  - name: Sippy
+    description: CI private investigator
+    ship_team: TRT
+    slack_channel: "#trt-alert"
+    sub_components:
+      - name: Sippy
+        description: CI private investigator
         monitoring:
-          frequency: 5m
-          component_monitor: "app-ci-component-monitor"
+          frequency: 30s
+          component_monitor: "e2e-component-monitor"
           auto_resolve: true

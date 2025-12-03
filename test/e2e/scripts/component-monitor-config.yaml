@@ -1,0 +1,8 @@
+frequency: 10s
+components:
+  - component_slug: "sippy"
+    sub_component_slug: "sippy"
+    http_monitor:
+      url: "http://localhost:9000/health"
+      code: 200
+      retry_after: 2s

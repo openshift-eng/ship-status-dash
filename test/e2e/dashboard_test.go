@@ -72,7 +72,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 2)
+		assert.Len(t, components, 3)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
@@ -88,6 +88,13 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Len(t, components[1].Subcomponents, 2)
 		assert.Equal(t, "Build01", components[1].Subcomponents[0].Name)
 		assert.Equal(t, "Build02", components[1].Subcomponents[1].Name)
+
+		assert.Equal(t, "Sippy", components[2].Name)
+		assert.Equal(t, "CI private investigator", components[2].Description)
+		assert.Equal(t, "TRT", components[2].ShipTeam)
+		assert.Equal(t, "#trt-alert", components[2].SlackChannel)
+		assert.Len(t, components[2].Subcomponents, 1)
+		assert.Equal(t, "Sippy", components[2].Subcomponents[0].Name)
 	}
 }
 
@@ -780,8 +787,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 2 components (Prow and Build Farm) based on test config
-			assert.Len(t, allStatuses, 2)
+			// Should have exactly 3 components (Prow, Build Farm, and Sippy) based on test config
+			assert.Len(t, allStatuses, 3)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
@@ -815,8 +822,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 2 components (Prow and Build Farm)
-			assert.Len(t, allStatuses, 2)
+			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
+			assert.Len(t, allStatuses, 3)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -846,8 +853,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 2 components (Prow and Build Farm)
-			assert.Len(t, allStatuses, 2)
+			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
+			assert.Len(t, allStatuses, 3)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -870,8 +877,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 2 components (Prow and Build Farm)
-			assert.Len(t, allStatuses, 2)
+			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
+			assert.Len(t, allStatuses, 3)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -898,8 +905,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 2 components (Prow and Build Farm)
-			assert.Len(t, allStatuses, 2)
+			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
+			assert.Len(t, allStatuses, 3)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -983,7 +990,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Deck")
 			var foundOutage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypePrometheus {
 					foundOutage = &outages[i]
 					break
 				}
@@ -993,7 +1000,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
 			assert.Equal(t, "app-ci-component-monitor", foundOutage.CreatedBy)
 			require.Len(t, foundOutage.Reasons, 1)
-			assert.Equal(t, "prometheus", foundOutage.Reasons[0].Type)
+			assert.Equal(t, types.CheckTypePrometheus, foundOutage.Reasons[0].Type)
 			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reasons[0].Check)
 			assert.Equal(t, "No healthy instances found", foundOutage.Reasons[0].Results)
 
@@ -1033,7 +1040,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Deck")
 			var foundOutage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "http" {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypeHTTP {
 					foundOutage = &outages[i]
 					break
 				}

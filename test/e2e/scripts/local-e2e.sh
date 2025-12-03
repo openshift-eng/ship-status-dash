@@ -9,6 +9,20 @@ DB_PASSWORD="testpass"
 DB_NAME="ship_status_test"
 
 cleanup() {
+  echo "Cleaning up component-monitor processes..."
+  if [ ! -z "$COMPONENT_MONITOR_PID" ]; then
+    kill -TERM $COMPONENT_MONITOR_PID 2>/dev/null || true
+    sleep 1
+    kill -KILL $COMPONENT_MONITOR_PID 2>/dev/null || true
+  fi
+  
+  echo "Cleaning up mock-monitored-component processes..."
+  if [ ! -z "$MOCK_MONITORED_COMPONENT_PORT" ]; then
+    lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -TERM 2>/dev/null || true
+    sleep 1
+    lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -KILL 2>/dev/null || true
+  fi
+  
   echo "Cleaning up proxy processes..."
   if [ ! -z "$PROXY_PORT" ]; then
     lsof -ti :$PROXY_PORT | xargs kill -TERM 2>/dev/null || true
@@ -106,8 +120,15 @@ if [ -z "$PROXY_PORT" ]; then
   exit 1
 fi
 
+MOCK_MONITORED_COMPONENT_PORT="9000"
+if lsof -i :$MOCK_MONITORED_COMPONENT_PORT > /dev/null 2>&1; then
+  echo "Port $MOCK_MONITORED_COMPONENT_PORT is already in use for mock-monitored-component"
+  exit 1
+fi
+
 echo "Using port $DASHBOARD_PORT for dashboard server"
 echo "Using port $PROXY_PORT for mock oauth-proxy"
+echo "Using port $MOCK_MONITORED_COMPONENT_PORT for mock-monitored-component"
 
 echo "Starting dashboard server..."
 DASHBOARD_PID=""
@@ -115,7 +136,7 @@ DASHBOARD_LOG="/tmp/dashboard-server.log"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config test/e2e/scripts/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config test/e2e/scripts/dashboard-config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
@@ -159,21 +180,58 @@ for i in {1..30}; do
     if [ ! -z "$PROXY_PORT" ]; then
       lsof -ti :$PROXY_PORT | xargs kill -KILL 2>/dev/null || true
     fi
-    if [ ! -z "$DASHBOARD_PORT" ]; then
-      lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
-    fi
     exit 1
   fi
   sleep 1
 done
 
+echo "Starting mock-monitored-component..."
+# Start mock-monitored-component in background
+go run ./cmd/mock-monitored-component --port $MOCK_MONITORED_COMPONENT_PORT > /dev/null 2>&1 &
+
+# Wait for mock-monitored-component to be ready
+echo "Waiting for mock-monitored-component to be ready..."
+for i in {1..30}; do
+  if curl -s http://localhost:$MOCK_MONITORED_COMPONENT_PORT/health > /dev/null 2>&1; then
+    echo "Mock-monitored-component is ready on port $MOCK_MONITORED_COMPONENT_PORT"
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "Mock-monitored-component failed to start"
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "Starting component-monitor..."
+COMPONENT_MONITOR_LOG="/tmp/component-monitor.log"
+
+# Start component-monitor in background
+go run ./cmd/component-monitor --config-path test/e2e/scripts/component-monitor-config.yaml --dashboard-url "http://localhost:$DASHBOARD_PORT" --name "e2e-component-monitor" 2> "$COMPONENT_MONITOR_LOG" &
+COMPONENT_MONITOR_PID=$!
+
 echo "Running e2e tests..."
 export TEST_SERVER_URL="http://localhost:$DASHBOARD_PORT"
 export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:$PROXY_PORT"
+export TEST_MOCK_MONITORED_COMPONENT_URL="http://localhost:$MOCK_MONITORED_COMPONENT_PORT"
 set +e
 gotestsum ./test/e2e/... -count 1 -p 1
 TEST_EXIT_CODE=$?
 set -e
+
+echo "Stopping component-monitor..."
+if [ ! -z "$COMPONENT_MONITOR_PID" ]; then
+  kill -TERM $COMPONENT_MONITOR_PID 2>/dev/null || true
+  sleep 1
+  kill -KILL $COMPONENT_MONITOR_PID 2>/dev/null || true
+fi
+
+echo "Stopping mock-monitored-component..."
+if [ ! -z "$MOCK_MONITORED_COMPONENT_PORT" ]; then
+  lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -TERM 2>/dev/null || true
+  sleep 1
+  lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -KILL 2>/dev/null || true
+fi
 
 echo "Stopping mock oauth-proxy..."
 if [ ! -z "$PROXY_PORT" ]; then
@@ -189,6 +247,10 @@ if [ ! -z "$DASHBOARD_PORT" ]; then
   lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
 fi
 
+echo "=== Component Monitor Log ==="
+cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || echo "No log found"
+
+echo ""
 echo "=== Dashboard Server Log ==="
 cat "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
 
