@@ -6,6 +6,12 @@ components:
       url: "https://prow.ci.openshift.org/"
       code: 200
       retry_after: 5s
+  - component_slug: "mocked"
+    sub_component_slug: "frontend"
+    http_monitor:
+      url: "http://localhost:8081/health"
+      code: 200
+      retry_after: 5s
   # - component_slug: "prow"
   #   sub_component_slug: "tide"
   #   prometheus_monitor:

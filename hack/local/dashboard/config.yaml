@@ -79,3 +79,15 @@ components:
     owners:
       - user: "someone-else"
       - service_account: "dpcr-component-monitor"
+  - name: "Mocked"
+    description: "Mocked component for component-monitor local development"
+    ship_team: "TRT"
+    slack_channel: "#trt-alert"
+    sub_components:
+      - name: "Frontend"
+        description: "Mocked frontend monitored via http component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
