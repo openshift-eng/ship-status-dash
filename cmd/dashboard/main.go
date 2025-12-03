@@ -87,7 +87,7 @@ func setupLogger() *logrus.Logger {
 	return log
 }
 
-func loadConfig(log *logrus.Logger, configPath string) *types.Config {
+func loadConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
@@ -98,7 +98,7 @@ func loadConfig(log *logrus.Logger, configPath string) *types.Config {
 		}).Fatal("Failed to read config file")
 	}
 
-	var config types.Config
+	var config types.DashboardConfig
 	if err := yaml.Unmarshal(configFile, &config); err != nil {
 		log.WithFields(logrus.Fields{
 			"config_path": configPath,
@@ -141,7 +141,7 @@ func getHMACSecret(log *logrus.Logger, path string) []byte {
 	return []byte(strings.TrimSpace(string(secret)))
 }
 
-func extractRoverGroups(config *types.Config) []string {
+func extractRoverGroups(config *types.DashboardConfig) []string {
 	groupSet := sets.NewString()
 	for _, component := range config.Components {
 		for _, owner := range component.Owners {
@@ -154,7 +154,7 @@ func extractRoverGroups(config *types.Config) []string {
 	return groupSet.List()
 }
 
-func loadGroupMembership(log *logrus.Logger, config *types.Config, kubeconfigPath string) *auth.GroupMembershipCache {
+func loadGroupMembership(log *logrus.Logger, config *types.DashboardConfig, kubeconfigPath string) *auth.GroupMembershipCache {
 	groupNames := extractRoverGroups(config)
 	if len(groupNames) == 0 {
 		log.Info("No rover_groups configured, skipping group membership loading")

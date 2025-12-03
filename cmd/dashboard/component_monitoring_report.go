@@ -19,12 +19,12 @@ const (
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
 	repo   OutageRepository
-	config *types.Config
+	config *types.DashboardConfig
 	logger *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.Config, logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
 		repo:   NewGORMOutageRepository(db),
 		config: config,

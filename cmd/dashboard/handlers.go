@@ -19,14 +19,14 @@ import (
 // Handlers contains the HTTP request handlers for the dashboard API.
 type Handlers struct {
 	logger                 *logrus.Logger
-	config                 *types.Config
+	config                 *types.DashboardConfig
 	db                     *gorm.DB
 	groupCache             *auth.GroupMembershipCache
 	monitorReportProcessor *ComponentMonitorReportProcessor
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, config *types.Config, db *gorm.DB, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, config *types.DashboardConfig, db *gorm.DB, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		config:                 config,
@@ -46,15 +46,6 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 	respondWithJSON(w, statusCode, map[string]string{
 		"error": message,
 	})
-}
-
-func (h *Handlers) getComponent(componentSlug string) *types.Component {
-	for _, component := range h.config.Components {
-		if component.Slug == componentSlug {
-			return component
-		}
-	}
-	return nil
 }
 
 // IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
@@ -113,7 +104,7 @@ func (h *Handlers) GetComponentsJSON(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetComponentInfoJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -128,7 +119,7 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 
 	logger := h.logger.WithField("component", componentName)
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -159,7 +150,7 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 		"sub_component": subComponentName,
 	})
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -199,7 +190,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		"active_user":   activeUser,
 	})
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -307,7 +298,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	})
 	logger.Info("Updating outage")
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -404,7 +395,7 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 		"outage_id":     outageId,
 	})
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -451,7 +442,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		"active_user":   activeUser,
 	})
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -501,7 +492,7 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		"sub_component": subComponentName,
 	})
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -540,7 +531,7 @@ func (h *Handlers) GetComponentStatusJSON(w http.ResponseWriter, r *http.Request
 
 	logger := h.logger.WithField("component", componentName)
 
-	component := h.getComponent(componentName)
+	component := h.config.GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
 		return
@@ -660,7 +651,7 @@ func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http
 	}
 
 	for _, status := range req.Statuses {
-		component := h.getComponent(status.ComponentSlug)
+		component := h.config.GetComponentBySlug(status.ComponentSlug)
 		if component == nil {
 			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Component not found: %s", status.ComponentSlug))
 			return

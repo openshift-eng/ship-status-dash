@@ -53,6 +53,14 @@ func GetSeverityLevel(severity Severity) int {
 	}
 }
 
+// CheckType represents the type of monitoring check to perform.
+type CheckType string
+
+const (
+	CheckTypePrometheus CheckType = "prometheus"
+	CheckTypeHTTP       CheckType = "http"
+)
+
 // Outage represents a component outage with tracking information for incident management.
 type Outage struct {
 	gorm.Model
@@ -80,7 +88,7 @@ type Reason struct {
 	OutageID uint `json:"-" gorm:"column:outage_id;not null;index"`
 	// Type defines the type of monitoring check that was performed
 	// either: prometheus, or http
-	Type string `json:"type"`
+	Type CheckType `json:"type"`
 	// Check defines the specific check that was performed
 	// a prometheus check will have a query, and a http check will have a url
 	Check string `json:"check"`

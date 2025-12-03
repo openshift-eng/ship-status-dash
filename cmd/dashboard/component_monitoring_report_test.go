@@ -74,13 +74,13 @@ func (m *mockOutageRepository) Transaction(fn func(OutageRepository) error) erro
 	return fn(m)
 }
 
-func testConfig(autoResolve, requiresConfirmation bool) *types.Config {
+func testConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 	subComponent := types.SubComponent{
 		Slug:                 "test-subcomponent",
 		Monitoring:           types.Monitoring{AutoResolve: autoResolve},
 		RequiresConfirmation: requiresConfirmation,
 	}
-	return &types.Config{
+	return &types.DashboardConfig{
 		Components: []*types.Component{
 			{
 				Slug:          "test-component",
@@ -96,7 +96,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 
 	tests := []struct {
 		name                     string
-		config                   *types.Config
+		config                   *types.DashboardConfig
 		request                  *types.ComponentMonitorReportRequest
 		setupRepo                func(*mockOutageRepository)
 		wantErr                  bool
@@ -113,7 +113,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -131,7 +131,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -161,7 +161,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -188,7 +188,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
-								Type:    "prometheus",
+								Type:    types.CheckTypePrometheus,
 								Check:   "query",
 								Results: "error",
 							},
@@ -207,7 +207,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdReasons, 1)
-				assert.Equal(t, "prometheus", repo.createdReasons[0].Type)
+				assert.Equal(t, types.CheckTypePrometheus, repo.createdReasons[0].Type)
 				assert.Len(t, repo.createdOutages, 1)
 				assert.Equal(t, "test-component", repo.createdOutages[0].ComponentName)
 				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
@@ -227,7 +227,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
-								Type:    "prometheus",
+								Type:    types.CheckTypePrometheus,
 								Check:   "query",
 								Results: "error",
 							},
@@ -261,7 +261,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -285,7 +285,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "nonexistent",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -303,7 +303,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "nonexistent",
 						Status:           types.StatusDown,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -321,7 +321,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -341,7 +341,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 				},
 			},
@@ -362,7 +362,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: "prometheus"}},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 					},
 					{
 						ComponentSlug:    "test-component",
@@ -370,7 +370,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
-								Type:    "http",
+								Type:    types.CheckTypeHTTP,
 								Check:   "url",
 								Results: "timeout",
 							},
@@ -389,7 +389,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdReasons, 1)
-				assert.Equal(t, "http", repo.createdReasons[0].Type)
+				assert.Equal(t, types.CheckTypeHTTP, repo.createdReasons[0].Type)
 				assert.Len(t, repo.createdOutages, 1)
 				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
 			},

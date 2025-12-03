@@ -1,11 +1,11 @@
 package types
 
-// Config contains the application configuration including component definitions.
-type Config struct {
+// DashboardConfig contains the dashboardapplication configuration including component definitions.
+type DashboardConfig struct {
 	Components []*Component `json:"components" yaml:"components"`
 }
 
-func (c *Config) GetComponentBySlug(slug string) *Component {
+func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {
 	for i := range c.Components {
 		if c.Components[i].Slug == slug {
 			return c.Components[i]
@@ -58,4 +58,36 @@ type Owner struct {
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
 	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
 	User string `json:"user,omitempty" yaml:"user,omitempty"`
+}
+
+// ComponentMonitorConfig contains the configuration for the component monitor.
+type ComponentMonitorConfig struct {
+	Components []MonitoringComponent `json:"components" yaml:"components"`
+	Frequency  string                `json:"frequency" yaml:"frequency"`
+}
+
+// MonitoringComponent contains the configuration for a sub-component monitor in the component monitor.
+type MonitoringComponent struct {
+	ComponentSlug    string `json:"component_slug" yaml:"component_slug"`
+	SubComponentSlug string `json:"sub_component_slug" yaml:"sub_component_slug"`
+	// PrometheusMonitor is the configuration for the Prometheus monitor
+	PrometheusMonitor *PrometheusMonitor `json:"prometheus_monitor,omitempty" yaml:"prometheus_monitor,omitempty"`
+	// HTTPMonitor is the configuration for the HTTP monitor
+	HTTPMonitor *HTTPMonitor `json:"http_monitor,omitempty" yaml:"http_monitor,omitempty"`
+}
+
+type PrometheusMonitor struct {
+	// URL is the URL of the Prometheus server to query
+	URL string `json:"url" yaml:"url"`
+	// Query is the Prometheus query to perform
+	Query string `json:"query" yaml:"query"`
+}
+
+type HTTPMonitor struct {
+	// URL is the URL to probe
+	URL string `json:"url" yaml:"url"`
+	// Code is the expected HTTP status code
+	Code int `json:"code" yaml:"code"`
+	// RetryAfter is the duration to wait before retrying the probe only when the status code is not as expected
+	RetryAfter string `json:"retry_after" yaml:"retry_after"`
 }

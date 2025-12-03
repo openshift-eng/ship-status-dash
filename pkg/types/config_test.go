@@ -93,13 +93,13 @@ func TestComponent_GetSubComponentBySlug(t *testing.T) {
 func TestConfig_GetComponentBySlug(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         Config
+		config         DashboardConfig
 		componentSlug  string
 		expectedResult *Component
 	}{
 		{
 			name: "component found - single component",
-			config: Config{
+			config: DashboardConfig{
 				Components: []*Component{
 					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 				},
@@ -109,7 +109,7 @@ func TestConfig_GetComponentBySlug(t *testing.T) {
 		},
 		{
 			name: "component found - multiple components",
-			config: Config{
+			config: DashboardConfig{
 				Components: []*Component{
 					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 					{Name: "Build Farm", Slug: "build-farm", Description: "Build infrastructure"},
@@ -121,7 +121,7 @@ func TestConfig_GetComponentBySlug(t *testing.T) {
 		},
 		{
 			name: "component not found",
-			config: Config{
+			config: DashboardConfig{
 				Components: []*Component{
 					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 					{Name: "Build Farm", Slug: "build-farm", Description: "Build infrastructure"},
@@ -132,7 +132,7 @@ func TestConfig_GetComponentBySlug(t *testing.T) {
 		},
 		{
 			name: "empty components list",
-			config: Config{
+			config: DashboardConfig{
 				Components: []*Component{},
 			},
 			componentSlug:  "any-component",
@@ -140,7 +140,7 @@ func TestConfig_GetComponentBySlug(t *testing.T) {
 		},
 		{
 			name: "case sensitive matching",
-			config: Config{
+			config: DashboardConfig{
 				Components: []*Component{
 					{Name: "Prow", Slug: "prow", Description: "CI/CD system"},
 				},
