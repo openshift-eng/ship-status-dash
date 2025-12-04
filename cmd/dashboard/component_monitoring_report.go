@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -58,7 +59,9 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			return fmt.Errorf("sub-component not found: %s/%s", status.ComponentSlug, status.SubComponentSlug)
 		}
 
-		activeOutages, err := p.repo.GetActiveOutages(status.ComponentSlug, status.SubComponentSlug, ComponentMonitor, status.Reason.Type)
+		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
+		// It will result in multiple outages if users (or other systems) have created outages for this component/sub-component.
+		activeOutages, err := p.repo.GetActiveOutagesFromSource(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
 		if err != nil {
 			statusLogger.WithField("error", err).Error("Failed to query active outages")
 			return err
@@ -97,21 +100,22 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			}
 
 			if len(activeOutages) > 0 {
-				statusLogger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage with matching reason type already exists, skipping creation")
+				statusLogger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage from this component-monitor already exists, skipping creation")
+				continue
+			}
+
+			if len(status.Reasons) == 0 {
+				statusLogger.Warn("No reasons provided for unhealthy status, skipping")
 				continue
 			}
 
 			err = p.repo.Transaction(func(repo OutageRepository) error {
-				reason := types.Reason{
-					Type:    status.Reason.Type,
-					Check:   status.Reason.Check,
-					Results: status.Reason.Results,
+				var descriptionParts []string
+				for _, reason := range status.Reasons {
+					descriptionParts = append(descriptionParts, fmt.Sprintf("%s - check: %s, results: %s", reason.Type, reason.Check, reason.Results))
 				}
-				if err := repo.CreateReason(&reason); err != nil {
-					return err
-				}
+				description := fmt.Sprintf("Component monitor detected outage via %s", strings.Join(descriptionParts, "; "))
 
-				description := fmt.Sprintf("Component monitor detected outage via %s - check: %s, results: %s", status.Reason.Type, status.Reason.Check, status.Reason.Results)
 				outage := types.Outage{
 					ComponentName:    status.ComponentSlug,
 					SubComponentName: status.SubComponentSlug,
@@ -121,7 +125,6 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					Description:      description,
 					DiscoveredFrom:   ComponentMonitor,
 					CreatedBy:        req.ComponentMonitor,
-					ReasonID:         &reason.ID,
 				}
 
 				if !subComponent.RequiresConfirmation {
@@ -133,15 +136,30 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					return fmt.Errorf("validation failed: %s", message)
 				}
 
-				return repo.CreateOutage(&outage)
+				if err := repo.CreateOutage(&outage); err != nil {
+					return err
+				}
+
+				for _, reasonData := range status.Reasons {
+					reason := types.Reason{
+						OutageID: outage.ID,
+						Type:     reasonData.Type,
+						Check:    reasonData.Check,
+						Results:  reasonData.Results,
+					}
+					if err := repo.CreateReason(&reason); err != nil {
+						return err
+					}
+				}
+				return nil
 			})
 
 			if err != nil {
-				statusLogger.WithField("error", err).Error("Failed to create outage and reason")
+				statusLogger.WithField("error", err).Error("Failed to create outage and reasons")
 				continue
 			}
 
-			statusLogger.Info("Successfully created outage with reason")
+			statusLogger.WithField("reason_count", len(status.Reasons)).Info("Successfully created outage with reasons")
 		}
 	}
 

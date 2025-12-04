@@ -8,7 +8,7 @@ import (
 
 // OutageRepository defines the interface for outage and reason database operations.
 type OutageRepository interface {
-	GetActiveOutages(componentSlug, subComponentSlug, discoveredFrom, reasonType string) ([]types.Outage, error)
+	GetActiveOutagesFromSource(componentSlug, subComponentSlug, source string) ([]types.Outage, error)
 	SaveOutage(outage *types.Outage) error
 	CreateReason(reason *types.Reason) error
 	CreateOutage(outage *types.Outage) error
@@ -25,15 +25,14 @@ func NewGORMOutageRepository(db *gorm.DB) OutageRepository {
 	return &gormOutageRepository{db: db}
 }
 
-// GetActiveOutages retrieves all active outages for a specific component and sub-component
-// that match the given discoveredFrom source and reason type.
+// GetActiveOutagesFromSource retrieves all active outages for a specific component and sub-component
+// that were created by the given component monitor. Note that the reasons are not considered here.
 // An outage is considered active if its end_time is NULL.
-func (r *gormOutageRepository) GetActiveOutages(componentSlug, subComponentSlug, discoveredFrom, reasonType string) ([]types.Outage, error) {
+func (r *gormOutageRepository) GetActiveOutagesFromSource(componentSlug, subComponentSlug, source string) ([]types.Outage, error) {
 	var activeOutages []types.Outage
 	err := r.db.
-		Joins("JOIN reasons ON outages.reason_id = reasons.id").
-		Where("outages.component_name = ? AND outages.sub_component_name = ? AND outages.end_time IS NULL AND outages.discovered_from = ? AND reasons.type = ?",
-			componentSlug, subComponentSlug, discoveredFrom, reasonType).
+		Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND created_by = ?",
+			componentSlug, subComponentSlug, source).
 		Find(&activeOutages).Error
 	return activeOutages, err
 }

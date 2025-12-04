@@ -29,7 +29,7 @@ type mockOutageRepository struct {
 	saveCount      int
 }
 
-func (m *mockOutageRepository) GetActiveOutages(componentSlug, subComponentSlug, discoveredFrom, reasonType string) ([]types.Outage, error) {
+func (m *mockOutageRepository) GetActiveOutagesFromSource(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
 	if m.activeOutagesError != nil {
 		return nil, m.activeOutagesError
 	}
@@ -113,7 +113,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -131,7 +131,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -161,7 +161,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -186,10 +186,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason: types.Reason{
-							Type:    "prometheus",
-							Check:   "query",
-							Results: "error",
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "query",
+								Results: "error",
+							},
 						},
 					},
 				},
@@ -223,10 +225,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason: types.Reason{
-							Type:    "prometheus",
-							Check:   "query",
-							Results: "error",
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "query",
+								Results: "error",
+							},
 						},
 					},
 				},
@@ -257,7 +261,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -281,7 +285,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "nonexistent",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -299,7 +303,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "nonexistent",
 						Status:           types.StatusDown,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -317,7 +321,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -337,7 +341,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 				},
 			},
@@ -358,16 +362,18 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusHealthy,
-						Reason:           types.Reason{Type: "prometheus"},
+						Reasons:          []types.Reason{{Type: "prometheus"}},
 					},
 					{
 						ComponentSlug:    "test-component",
 						SubComponentSlug: "test-subcomponent",
 						Status:           types.StatusDown,
-						Reason: types.Reason{
-							Type:    "http",
-							Check:   "url",
-							Results: "timeout",
+						Reasons: []types.Reason{
+							{
+								Type:    "http",
+								Check:   "url",
+								Results: "timeout",
+							},
 						},
 					},
 				},
@@ -386,6 +392,53 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Equal(t, "http", repo.createdReasons[0].Type)
 				assert.Len(t, repo.createdOutages, 1)
 				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
+			},
+		},
+		{
+			name:   "unhealthy status creates outage with multiple reasons",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
+							{
+								Type:    "http",
+								Check:   "https://deck.example.com/health",
+								Results: "Response time > 5s",
+							},
+							{
+								Type:    "prometheus",
+								Check:   "error_rate > 0.1",
+								Results: "Error rate exceeded threshold",
+							},
+						},
+					},
+				},
+			},
+			setupRepo: func(repo *mockOutageRepository) {
+				repo.activeOutages = []types.Outage{}
+				repo.createOutageFn = func(o *types.Outage) {
+					o.ID = 1
+				}
+				repo.transactionFn = func(fn func(OutageRepository) error) error {
+					return fn(repo)
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
+				assert.Len(t, repo.createdOutages, 1)
+				assert.Equal(t, "test-component", repo.createdOutages[0].ComponentName)
+				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
+
+				assert.Len(t, repo.createdReasons, 3, "Should create all three reasons")
 			},
 		},
 	}

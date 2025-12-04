@@ -947,17 +947,19 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("POST report with Down status creates outage", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -981,7 +983,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Deck")
 			var foundOutage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" {
 					foundOutage = &outages[i]
 					break
 				}
@@ -990,27 +992,29 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, string(types.SeverityDown), string(foundOutage.Severity))
 			assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
 			assert.Equal(t, "app-ci-component-monitor", foundOutage.CreatedBy)
-			assert.NotNil(t, foundOutage.Reason)
-			assert.Equal(t, "prometheus", foundOutage.Reason.Type)
-			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reason.Check)
-			assert.Equal(t, "No healthy instances found", foundOutage.Reason.Results)
+			require.Len(t, foundOutage.Reasons, 1)
+			assert.Equal(t, "prometheus", foundOutage.Reasons[0].Type)
+			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reasons[0].Check)
+			assert.Equal(t, "No healthy instances found", foundOutage.Reasons[0].Results)
 
 			// Cleanup
 			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
 		})
 
 		t.Run("POST report with Degraded status creates outage", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDegraded),
-						"reason": map[string]interface{}{
-							"type":    "http",
-							"check":   "https://deck.example.com/health",
-							"results": "Response time > 5s",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDegraded,
+						Reasons: []types.Reason{
+							{
+								Type:    "http",
+								Check:   "https://deck.example.com/health",
+								Results: "Response time > 5s",
+							},
 						},
 					},
 				},
@@ -1029,7 +1033,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Deck")
 			var foundOutage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "http" {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "http" {
 					foundOutage = &outages[i]
 					break
 				}
@@ -1042,17 +1046,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report does not create duplicate outage for same Reason.Type", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1071,7 +1077,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages1 := getOutages(t, client, "Prow", "Deck")
 			var firstOutage *types.Outage
 			for i := range outages1 {
-				if outages1[i].DiscoveredFrom == "component-monitor" && outages1[i].Reason != nil && outages1[i].Reason.Type == "prometheus" {
+				if outages1[i].DiscoveredFrom == "component-monitor" && len(outages1[i].Reasons) > 0 && outages1[i].Reasons[0].Type == "prometheus" {
 					firstOutage = &outages1[i]
 					break
 				}
@@ -1088,11 +1094,11 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages2 := getOutages(t, client, "Prow", "Deck")
 			count := 0
 			for i := range outages2 {
-				if outages2[i].DiscoveredFrom == "component-monitor" && outages2[i].Reason != nil && outages2[i].Reason.Type == "prometheus" && outages2[i].EndTime.Valid == false {
+				if outages2[i].DiscoveredFrom == "component-monitor" && len(outages2[i].Reasons) > 0 && outages2[i].Reasons[0].Type == "prometheus" && outages2[i].EndTime.Valid == false {
 					count++
 				}
 			}
-			assert.Equal(t, 1, count, "Should only have one active outage with same Reason.Type")
+			assert.Equal(t, 1, count, "Should only have one active outage created by the same component-monitor")
 
 			// Cleanup
 			deleteOutage(t, client, "Prow", "Deck", firstOutage.ID)
@@ -1100,17 +1106,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 
 		t.Run("POST report with Healthy status auto-resolves outage when auto_resolve is true", func(t *testing.T) {
 			// Create an outage first
-			downReport := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			downReport := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"), // Deck has auto_resolve: true
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"), // Deck has auto_resolve: true
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1128,7 +1136,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Deck")
 			var outage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" && !outages[i].EndTime.Valid {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
 					outage = &outages[i]
 					break
 				}
@@ -1137,17 +1145,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.False(t, outage.EndTime.Valid, "Outage should be active")
 
 			// Now report healthy status
-			healthyReport := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			healthyReport := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusHealthy),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "All instances healthy",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "All instances healthy",
+							},
 						},
 					},
 				},
@@ -1178,17 +1188,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 
 		t.Run("POST report with Healthy status does not resolve when auto_resolve is false", func(t *testing.T) {
 			// Create an outage first for Tide (which has auto_resolve: false)
-			downReport := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			downReport := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Tide"), // Tide has auto_resolve: false
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"tide\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Tide"), // Tide has auto_resolve: false
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"tide\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1206,7 +1218,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			outages := getOutages(t, client, "Prow", "Tide")
 			var outage *types.Outage
 			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && outages[i].Reason != nil && outages[i].Reason.Type == "prometheus" && !outages[i].EndTime.Valid {
+				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
 					outage = &outages[i]
 					break
 				}
@@ -1214,17 +1226,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			require.NotNil(t, outage, "Outage should be created")
 
 			// Now report healthy status
-			healthyReport := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			healthyReport := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Tide"),
-						"status":             string(types.StatusHealthy),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"tide\"} == 0",
-							"results": "All instances healthy",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Tide"),
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"tide\"} == 0",
+								Results: "All instances healthy",
+							},
 						},
 					},
 				},
@@ -1255,17 +1269,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with invalid component returns 400", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("NonExistentComponent"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("NonExistentComponent"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1287,17 +1303,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with invalid sub-component returns 400", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("NonExistentSub"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("NonExistentSub"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1319,27 +1337,31 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with multiple statuses processes all", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Tide"),
-						"status":             string(types.StatusDegraded),
-						"reason": map[string]interface{}{
-							"type":    "http",
-							"check":   "https://tide.example.com/health",
-							"results": "Response time > 5s",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Tide"),
+						Status:           types.StatusDegraded,
+						Reasons: []types.Reason{
+							{
+								Type:    "http",
+								Check:   "https://tide.example.com/health",
+								Results: "Response time > 5s",
+							},
 						},
 					},
 				},
@@ -1358,7 +1380,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			deckOutages := getOutages(t, client, "Prow", "Deck")
 			var deckOutage *types.Outage
 			for i := range deckOutages {
-				if deckOutages[i].DiscoveredFrom == "component-monitor" && deckOutages[i].Reason != nil && deckOutages[i].Reason.Type == "prometheus" {
+				if deckOutages[i].DiscoveredFrom == "component-monitor" && len(deckOutages[i].Reasons) > 0 && deckOutages[i].Reasons[0].Type == "prometheus" {
 					deckOutage = &deckOutages[i]
 					break
 				}
@@ -1368,7 +1390,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			tideOutages := getOutages(t, client, "Prow", "Tide")
 			var tideOutage *types.Outage
 			for i := range tideOutages {
-				if tideOutages[i].DiscoveredFrom == "component-monitor" && tideOutages[i].Reason != nil && tideOutages[i].Reason.Type == "http" {
+				if tideOutages[i].DiscoveredFrom == "component-monitor" && len(tideOutages[i].Reasons) > 0 && tideOutages[i].Reasons[0].Type == "http" {
 					tideOutage = &tideOutages[i]
 					break
 				}
@@ -1381,17 +1403,19 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with empty component_monitor returns 400", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "",
-				"statuses": []map[string]interface{}{
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
-						"component_name":     utils.Slugify("Prow"),
-						"sub_component_name": utils.Slugify("Deck"),
-						"status":             string(types.StatusDown),
-						"reason": map[string]interface{}{
-							"type":    "prometheus",
-							"check":   "up{job=\"deck\"} == 0",
-							"results": "No healthy instances found",
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
 						},
 					},
 				},
@@ -1413,9 +1437,9 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with empty statuses returns 400", func(t *testing.T) {
-			reportPayload := map[string]interface{}{
-				"component_monitor": "app-ci-component-monitor",
-				"statuses":          []map[string]interface{}{},
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses:         []types.ComponentMonitorReportComponentStatus{},
 			}
 
 			payloadBytes, err := json.Marshal(reportPayload)
