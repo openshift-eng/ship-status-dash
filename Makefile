@@ -5,12 +5,6 @@ build: build-frontend build-dashboard
 local-e2e:
 	@./test/e2e/scripts/local-e2e.sh
 
-local-dashboard-dev:
-	@./hack/local/dashboard/local-dev.sh $(DSN)
-
-local-component-monitor-dev:
-	@./hack/local/component-monitor/local-dev.sh
-
 test:
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
