@@ -69,15 +69,15 @@ type Outage struct {
 	ConfirmedBy    *string      `json:"confirmed_by,omitempty" gorm:"column:confirmed_by"`
 	ConfirmedAt    sql.NullTime `json:"confirmed_at" gorm:"column:confirmed_at"`
 	TriageNotes    *string      `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
-	ReasonID       *uint        `json:"-" gorm:"column:reason_id"`
-	// Reason is the Reason record that describes the reason for the outage
+	// Reasons are the Reason records that describe the reason for the outage
 	// this is utilized only by the component-monitor
-	Reason *Reason `json:"reason,omitempty" gorm:"foreignKey:ReasonID"`
+	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
 	//TODO: Add optional link to jira card, and incident slack thread link for outage
 }
 
 type Reason struct {
 	gorm.Model
+	OutageID uint `json:"-" gorm:"column:outage_id;not null;index"`
 	// Type defines the type of monitoring check that was performed
 	// either: prometheus, or http
 	Type string `json:"type"`

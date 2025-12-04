@@ -139,7 +139,7 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outages []types.Outage
-	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reasons").Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -172,7 +172,7 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 	}
 
 	var outages []types.Outage
-	if err := h.db.Preload("Reason").Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
+	if err := h.db.Preload("Reasons").Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -417,7 +417,7 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var outage types.Outage
-	if err := h.db.Preload("Reason").Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
+	if err := h.db.Preload("Reasons").Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return

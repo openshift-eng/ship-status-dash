@@ -29,8 +29,8 @@ type ComponentMonitorReportRequest struct {
 
 // ComponentMonitorReportComponentStatus represents the status of a component/sub-component in a monitor report.
 type ComponentMonitorReportComponentStatus struct {
-	ComponentSlug    string `json:"component_name"`
-	SubComponentSlug string `json:"sub_component_name"`
-	Status           Status `json:"status"`
-	Reason           Reason `json:"reason"`
+	ComponentSlug    string   `json:"component_name"`
+	SubComponentSlug string   `json:"sub_component_name"`
+	Status           Status   `json:"status"`
+	Reasons          []Reason `json:"reasons"`
 }
