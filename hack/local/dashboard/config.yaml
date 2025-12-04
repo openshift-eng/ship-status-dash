@@ -98,3 +98,13 @@ components:
           frequency: 20s
           component_monitor: "local-component-monitor"
           auto_resolve: true
+      - name: "Data Load"
+        description: "Mocked data load monitored via prometheus (vector) component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "developer"
+      - service_account: "local-component-monitor"

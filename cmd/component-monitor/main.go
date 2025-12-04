@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -108,82 +109,6 @@ func loadAndValidateComponentsAndFrequency(log *logrus.Logger, configPath string
 	return config.Components, frequency
 }
 
-// // NewPrometheusClient creates a new Prometheus client configured for OpenShift monitoring.
-// func NewPrometheusClient() (*PrometheusClient, error) {
-// 	kubeconfigPath := os.Getenv("KUBECONFIG")
-// 	if kubeconfigPath == "" {
-// 		kubeconfigPath = "/etc/kubeconfig/config"
-// 	}
-
-// 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	routeClient, err := routeclientset.NewForConfig(config)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	route, err := routeClient.Routes("openshift-monitoring").Get(context.Background(), "prometheus-k8s", metav1.GetOptions{})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var addr string
-// 	if route.Spec.TLS != nil {
-// 		addr = "https://" + route.Spec.Host
-// 	} else {
-// 		addr = "http://" + route.Spec.Host
-// 	}
-
-// 	client, err := api.NewClient(api.Config{
-// 		Address:      addr,
-// 		RoundTripper: transport.NewBearerAuthRoundTripper(config.BearerToken, api.DefaultRoundTripper),
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &PrometheusClient{
-// 		api: v1.NewAPI(client),
-// 	}, nil
-// }
-
-// // QueryMetrics executes a list of Prometheus queries and logs the results.
-// func (p *PrometheusClient) QueryMetrics(ctx context.Context, queries []string) {
-// 	for _, query := range queries {
-// 		logrus.Infof("Executing query: %s", query)
-
-// 		result, warnings, err := p.api.Query(ctx, query, time.Now())
-// 		if err != nil {
-// 			logrus.Errorf("Query failed: %v", err)
-// 			continue
-// 		}
-
-// 		if len(warnings) > 0 {
-// 			logrus.Warnf("Query warnings: %v", warnings)
-// 		}
-
-// 		switch v := result.(type) {
-// 		case model.Vector:
-// 			logrus.Infof("Vector result: %d samples", len(v))
-// 			for _, sample := range v {
-// 				logrus.Infof("Sample: %s = %f", sample.Metric, float64(sample.Value))
-// 			}
-// 		case *model.Scalar:
-// 			logrus.Infof("Scalar result: %f", float64(v.Value))
-// 		case model.Matrix:
-// 			logrus.Infof("Matrix result: %d series", len(v))
-// 			for _, series := range v {
-// 				logrus.Infof("Series: %s (%d points)", series.Metric, len(series.Values))
-// 			}
-// 		default:
-// 			logrus.Infof("Unknown result type: %T", result)
-// 		}
-// 	}
-// }
-
 func main() {
 	log := logrus.New()
 	log.SetLevel(logrus.InfoLevel)
@@ -210,7 +135,12 @@ func main() {
 		cancel()
 	}()
 
-	probers := []Prober{}
+	prometheusClients, err := createPrometheusClients(components)
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to create prometheus clients")
+	}
+
+	var probers []Prober
 	for _, component := range components {
 		componentLogger := log.WithFields(logrus.Fields{
 			"component":     component.ComponentSlug,
@@ -227,16 +157,7 @@ func main() {
 			probers = append(probers, prober)
 		}
 		if component.PrometheusMonitor != nil {
-			//TODO: eventually we will only create one client per url and reuse it for each relevant prober
-			client, err := promapi.NewClient(promapi.Config{
-				Address: component.PrometheusMonitor.URL,
-			})
-			if err != nil {
-				componentLogger.WithField("error", err).Fatal("Failed to create Prometheus client")
-			}
-
-			prometheusAPI := promclientv1.NewAPI(client)
-			prometheusProber := NewPrometheusProber(component.ComponentSlug, component.SubComponentSlug, prometheusAPI, component.PrometheusMonitor.Queries)
+			prometheusProber := NewPrometheusProber(component.ComponentSlug, component.SubComponentSlug, prometheusClients[component.PrometheusMonitor.URL], component.PrometheusMonitor.Queries)
 			componentLogger.Info("Added Prometheus prober for component")
 			probers = append(probers, prometheusProber)
 		}
@@ -249,4 +170,26 @@ func main() {
 
 	orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, log)
 	orchestrator.Run(ctx)
+}
+
+func createPrometheusClients(components []types.MonitoringComponent) (map[string]promclientv1.API, error) {
+	clients := make(map[string]promclientv1.API)
+	for _, component := range components {
+		prometheusMonitor := component.PrometheusMonitor
+		if prometheusMonitor != nil {
+			_, exists := clients[prometheusMonitor.URL]
+			if !exists {
+				client, err := promapi.NewClient(promapi.Config{
+					Address: prometheusMonitor.URL,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("failed to create prometheus client for component %s: %w", component.ComponentSlug, err)
+				}
+				prometheusAPI := promclientv1.NewAPI(client)
+				clients[prometheusMonitor.URL] = prometheusAPI
+			}
+		}
+	}
+
+	return clients, nil
 }

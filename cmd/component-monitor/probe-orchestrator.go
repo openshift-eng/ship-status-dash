@@ -70,10 +70,11 @@ func (o *ProbeOrchestrator) startProbes(ctx context.Context) {
 }
 
 func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.ComponentMonitorReportComponentStatus {
+	probesCompleted := 0
 	results := []types.ComponentMonitorReportComponentStatus{}
 	timeout := time.After(o.frequency)
 
-	for len(results) < len(o.probers) {
+	for probesCompleted < len(o.probers) {
 		select {
 		case result := <-o.results:
 			o.log.WithFields(logrus.Fields{
@@ -83,9 +84,10 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.Com
 				"results":       result.Reason.Results,
 			}).Info("Component monitor probe result received")
 			results = append(results, result)
+			probesCompleted++
 		case err := <-o.errChan:
 			o.log.Errorf("Error: %v", err)
-			//TODO: I think this is okay, because we always add a result to the channel for each error, but verify
+			probesCompleted++
 		case <-ctx.Done():
 			o.log.Warn("Context cancelled during probe collection, exiting")
 			return results

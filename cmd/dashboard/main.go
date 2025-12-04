@@ -87,7 +87,7 @@ func setupLogger() *logrus.Logger {
 	return log
 }
 
-func loadConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
+func loadAndValidateConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
@@ -104,6 +104,14 @@ func loadConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
 			"config_path": configPath,
 			"error":       err,
 		}).Fatal("Failed to parse config file")
+	}
+
+	for _, component := range config.Components {
+		if len(component.Owners) == 0 {
+			log.WithFields(logrus.Fields{
+				"component": component.Name,
+			}).Fatal("Component must have at least one owner")
+		}
 	}
 
 	// We need to compute and store all the slugs to match by them later
@@ -179,7 +187,7 @@ func main() {
 		log.WithField("error", err).Fatal("Invalid command-line options")
 	}
 
-	config := loadConfig(log, opts.ConfigPath)
+	config := loadAndValidateConfig(log, opts.ConfigPath)
 	db := connectDatabase(log, opts.DatabaseDSN)
 	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
 	groupCache := loadGroupMembership(log, config, opts.KubeconfigPath)

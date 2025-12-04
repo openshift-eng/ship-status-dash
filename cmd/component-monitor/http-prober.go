@@ -46,19 +46,6 @@ func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComp
 	}
 }
 
-func (p *HTTPProber) makeErrorStatus(err error, context string) types.ComponentMonitorReportComponentStatus {
-	return types.ComponentMonitorReportComponentStatus{
-		ComponentSlug:    p.componentSlug,
-		SubComponentSlug: p.subComponentSlug,
-		Status:           types.StatusDown,
-		Reason: types.Reason{
-			Type:    types.CheckTypeHTTP,
-			Check:   p.url,
-			Results: fmt.Sprintf("%s: %s", context, err.Error()),
-		},
-	}
-}
-
 func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
@@ -71,7 +58,6 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		results <- p.makeErrorStatus(err, "Network error")
 		errChan <- err
 		return
 	}
@@ -82,6 +68,7 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 		return
 	}
 
+	// Wait for the confirmAfter duration to see if the status code changes
 	select {
 	case <-ctx.Done():
 		errChan <- ctx.Err()
@@ -97,7 +84,6 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 
 	resp, err = client.Do(req)
 	if err != nil {
-		results <- p.makeErrorStatus(err, "Network error on retry")
 		errChan <- err
 		return
 	}
