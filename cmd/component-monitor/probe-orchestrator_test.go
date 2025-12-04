@@ -60,7 +60,7 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 			log := logrus.New()
 			log.SetLevel(logrus.ErrorLevel)
 
-			probers := make([]*HTTPProber, tt.numProbers)
+			probers := make([]Prober, tt.numProbers)
 			for i := 0; i < tt.numProbers; i++ {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
@@ -153,7 +153,7 @@ func TestProbeOrchestrator_drainChannels(t *testing.T) {
 			log.SetLevel(logrus.ErrorLevel)
 
 			orchestrator := NewProbeOrchestrator(
-				[]*HTTPProber{},
+				[]Prober{},
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
@@ -218,7 +218,7 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 			log.SetLevel(logrus.ErrorLevel)
 
 			orchestrator := NewProbeOrchestrator(
-				[]*HTTPProber{},
+				[]Prober{},
 				tt.frequency,
 				"http://test",
 				"test-monitor",

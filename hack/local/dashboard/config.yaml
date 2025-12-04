@@ -91,3 +91,10 @@ components:
           frequency: 20s
           component_monitor: "local-component-monitor"
           auto_resolve: true
+      - name: "API Success Rate"
+        description: "Mocked API success rate monitored via prometheus (scalar) component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true

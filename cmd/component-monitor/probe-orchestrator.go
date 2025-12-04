@@ -9,9 +9,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Prober is an interface for component probes.
+type Prober interface {
+	Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error)
+}
+
 // ProbeOrchestrator manages the execution of component probes.
 type ProbeOrchestrator struct {
-	probers      []*HTTPProber
+	probers      []Prober
 	results      chan types.ComponentMonitorReportComponentStatus
 	errChan      chan error
 	frequency    time.Duration
@@ -20,7 +25,7 @@ type ProbeOrchestrator struct {
 }
 
 // NewProbeOrchestrator creates a new ProbeOrchestrator.
-func NewProbeOrchestrator(probers []*HTTPProber, frequency time.Duration, dashboardURL string, componentMonitorName string, log *logrus.Logger) *ProbeOrchestrator {
+func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardURL string, componentMonitorName string, log *logrus.Logger) *ProbeOrchestrator {
 	return &ProbeOrchestrator{
 		probers:      probers,
 		results:      make(chan types.ComponentMonitorReportComponentStatus),

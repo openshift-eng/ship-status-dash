@@ -12,8 +12,10 @@ components:
       url: "http://localhost:8081/health"
       code: 200
       retry_after: 5s
-  # - component_slug: "prow"
-  #   sub_component_slug: "tide"
-  #   prometheus_monitor:
-  #     url: "https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9091"
-  #     query: "up{job=\"tide\"}"
+  - component_slug: "mocked"
+    sub_component_slug: "api-success-rate"
+    prometheus_monitor:
+      url: "http://localhost:9090"
+      queries:
+        - query: "success_rate >= 0.9"
+          failure_query: "success_rate"

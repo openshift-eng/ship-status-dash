@@ -70,8 +70,8 @@ type ComponentMonitorConfig struct {
 type MonitoringComponent struct {
 	ComponentSlug    string `json:"component_slug" yaml:"component_slug"`
 	SubComponentSlug string `json:"sub_component_slug" yaml:"sub_component_slug"`
-	// PrometheusMonitor is the configuration for the Prometheus monitor
-	PrometheusMonitor *PrometheusMonitor `json:"prometheus_monitor,omitempty" yaml:"prometheus_monitor,omitempty"`
+	// PrometheusMonitors is the configuration for the Prometheus monitor
+	PrometheusMonitor *PrometheusMonitor `json:"prometheus_monitor" yaml:"prometheus_monitor"`
 	// HTTPMonitor is the configuration for the HTTP monitor
 	HTTPMonitor *HTTPMonitor `json:"http_monitor,omitempty" yaml:"http_monitor,omitempty"`
 }
@@ -79,8 +79,16 @@ type MonitoringComponent struct {
 type PrometheusMonitor struct {
 	// URL is the URL of the Prometheus server to query
 	URL string `json:"url" yaml:"url"`
+	// Queries is the list of Prometheus queries to perform
+	Queries []PrometheusQuery `json:"queries" yaml:"queries"`
+}
+
+type PrometheusQuery struct {
 	// Query is the Prometheus query to perform
 	Query string `json:"query" yaml:"query"`
+	// FailureQuery is the Prometheus query that runs when the Query returns no results
+	// It will provide a more information as to the reason for the resulting Outage
+	FailureQuery string `json:"failure_query" yaml:"failure_query"`
 }
 
 type HTTPMonitor struct {
