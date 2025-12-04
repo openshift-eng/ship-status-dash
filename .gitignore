@@ -11,6 +11,8 @@
 # Local build artifacts (Go binaries built in repo root)
 /dashboard
 /component-monitor
+/mock-monitored-component
+/mock-oauth-proxy
 
 # Test binary, built with `go test -c`
 *.test
