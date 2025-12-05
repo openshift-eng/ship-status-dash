@@ -77,9 +77,9 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 		assert.Equal(t, string(types.SeverityDown), string(foundOutage.Severity))
 		assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
 		assert.Equal(t, "e2e-component-monitor", foundOutage.CreatedBy)
-		assert.NotNil(t, foundOutage.Reason, "Outage should have a reason")
-		assert.Equal(t, types.CheckTypeHTTP, foundOutage.Reason.Type)
-		assert.Contains(t, foundOutage.Reason.Check, "http://localhost:9000/health")
+		require.NotEmpty(t, foundOutage.Reasons, "Outage should have reasons")
+		assert.Equal(t, types.CheckTypeHTTP, foundOutage.Reasons[0].Type)
+		assert.Contains(t, foundOutage.Reasons[0].Check, "http://localhost:9000/health")
 		assert.False(t, foundOutage.EndTime.Valid, "Outage should not be resolved yet")
 
 		// Bring service back up

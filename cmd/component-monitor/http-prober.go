@@ -38,11 +38,11 @@ func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComp
 		ComponentSlug:    p.componentSlug,
 		SubComponentSlug: p.subComponentSlug,
 		Status:           status,
-		Reason: types.Reason{
+		Reasons: []types.Reason{{
 			Type:    types.CheckTypeHTTP,
 			Check:   p.url,
 			Results: fmt.Sprintf("Status code %d (expected %d)", statusCode, p.expectedStatusCode),
-		},
+		}},
 	}
 }
 

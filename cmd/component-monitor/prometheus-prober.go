@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"ship-status-dash/pkg/types"
-	"strings"
 	"time"
 
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -68,74 +66,48 @@ func (p *PrometheusProber) makeStatus(ctx context.Context, successfulQueries []t
 	status := types.ComponentMonitorReportComponentStatus{
 		ComponentSlug:    p.componentSlug,
 		SubComponentSlug: p.subComponentSlug,
-		Reason:           types.Reason{Type: types.CheckTypePrometheus},
 	}
 	if len(failedQueries) == 0 {
 		status.Status = types.StatusHealthy
-		//TODO: we will want to have a Reason added for each successful query, that way an outage can be properly cleared
-		// either that or there is no need to send one at all when all queries are successful
-		status.Reason.Check = summarizeQueries(successfulQueries)
-		status.Reason.Results = "queries returned successfully"
+		for _, query := range successfulQueries {
+			status.Reasons = append(status.Reasons, types.Reason{
+				Type:    types.CheckTypePrometheus,
+				Check:   query.Query,
+				Results: "query returned successfully",
+			})
+		}
 	} else {
-		//TODO: should the data model and API support multiple Reasons for an Outage? For now, let's aggregate all failures into one
-		summary := p.summarizeFailures(ctx, failedQueries)
+		var reasons []types.Reason
+		for _, query := range failedQueries {
+			resultStr := "query returned unsuccessful"
+			if query.FailureQuery != "" {
+				result, err := p.runQuery(ctx, query.FailureQuery)
+				if err != nil {
+					//This is best-effort to improve the outage description, if we have an error here, we just move on without
+					logrus.WithError(err).WithField("failure_query", query.FailureQuery).Errorf("Failed to run failure query, will proceed without extra info in outage description")
+				} else if result != nil {
+					//TODO: result.String() isn't really that readable, we should probably do better here
+					resultStr = result.String()
+				} else {
+					resultStr = "no failure query result"
+				}
+			}
+			reasons = append(reasons, types.Reason{
+				Type:    types.CheckTypePrometheus,
+				Check:   query.Query,
+				Results: resultStr,
+			})
+		}
 
 		if len(successfulQueries) == 0 {
 			status.Status = types.StatusDown
-			status.Reason.Check = summary
-			status.Reason.Results = "all queries returned unsuccessful"
 		} else {
 			status.Status = types.StatusDegraded
-			status.Reason.Check = summary
-			status.Reason.Results = "some queries returned unsuccessful"
 		}
+		status.Reasons = reasons
 	}
 
 	return status
-}
-
-func (p *PrometheusProber) summarizeFailures(ctx context.Context, failedQueries []types.PrometheusQuery) string {
-	var summaryParts []string
-	for _, query := range failedQueries {
-		var resultStr string
-		if query.FailureQuery != "" {
-			result, err := p.runQuery(ctx, query.FailureQuery)
-			if err != nil {
-				//This is best-effort to improve the outage description, if we have an error here, we just move on without
-				logrus.WithError(err).WithField("failure_query", query.FailureQuery).Errorf("Failed to run failure query, will proceed without extra info in outage description")
-			} else if result != nil {
-				resultStr = result.String()
-			} else {
-				resultStr = "no result"
-			}
-			summaryParts = append(summaryParts, fmt.Sprintf("%s (failure query result: %s)", query.Query, resultStr))
-		} else {
-			summaryParts = append(summaryParts, query.Query)
-		}
-	}
-
-	if len(summaryParts) == 1 {
-		return summaryParts[0]
-	}
-	return strings.Join(summaryParts, "; ")
-}
-
-func summarizeQueries(queries []types.PrometheusQuery) string {
-	if len(queries) == 0 {
-		return ""
-	}
-	if len(queries) == 1 {
-		return queries[0].Query
-	}
-
-	var b strings.Builder
-	for i, q := range queries {
-		if i > 0 {
-			b.WriteString("; ")
-		}
-		b.WriteString(q.Query)
-	}
-	return b.String()
 }
 
 func (p *PrometheusProber) succeeded(result model.Value) bool {

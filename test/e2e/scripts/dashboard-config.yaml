@@ -29,6 +29,8 @@ components:
         description: AWS build farm cluster
       - name: Build02
         description: GCP build farm cluster
+    owners:
+      - user: other-developer
   # The Sippy component is used during the component monitor e2e tests
   - name: Sippy
     description: CI private investigator
@@ -41,3 +43,5 @@ components:
           frequency: 30s
           component_monitor: "e2e-component-monitor"
           auto_resolve: true
+    owners:
+      - service_account: e2e-component-monitor

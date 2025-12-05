@@ -81,7 +81,6 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.Com
 				"component":     result.ComponentSlug,
 				"sub_component": result.SubComponentSlug,
 				"status":        result.Status,
-				"results":       result.Reason.Results,
 			}).Info("Component monitor probe result received")
 			results = append(results, result)
 			probesCompleted++

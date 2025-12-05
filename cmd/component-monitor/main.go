@@ -12,17 +12,11 @@ import (
 
 	promapi "github.com/prometheus/client_golang/api"
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
 	"ship-status-dash/pkg/types"
 )
-
-// PrometheusClient wraps the Prometheus API client for querying metrics.
-type PrometheusClient struct {
-	api v1.API
-}
 
 // Options contains command-line configuration options for the component monitor.
 type Options struct {

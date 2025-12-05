@@ -134,8 +134,10 @@ func TestHTTPProber_Probe(t *testing.T) {
 			case result := <-results:
 				assert.Equal(t, "test-component", result.ComponentSlug)
 				assert.Equal(t, "test-subcomponent", result.SubComponentSlug)
-				assert.Equal(t, tt.expectedReasonType, result.Reason.Type)
-				assert.Equal(t, server.URL, result.Reason.Check)
+				//HTTP Prober should only return one reason
+				assert.Len(t, result.Reasons, 1)
+				assert.Equal(t, tt.expectedReasonType, result.Reasons[0].Type)
+				assert.Equal(t, server.URL, result.Reasons[0].Check)
 
 				if tt.expectHealthy {
 					assert.Equal(t, types.StatusHealthy, result.Status)
