@@ -34,13 +34,13 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- types.Compo
 			errChan <- err
 		}
 
-		if p.succeeded(result) {
+		if succeeded(result) {
 			successful = append(successful, prometheusQuery)
 		} else {
 			failed = append(failed, prometheusQuery)
 		}
 	}
-	results <- p.makeStatus(ctx, successful, failed)
+	results <- p.createStatusFromQueryResults(ctx, successful, failed)
 }
 
 func (p *PrometheusProber) runQuery(ctx context.Context, query string) (model.Value, error) {
@@ -62,7 +62,7 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string) (model.Va
 	return result, nil
 }
 
-func (p *PrometheusProber) makeStatus(ctx context.Context, successfulQueries []types.PrometheusQuery, failedQueries []types.PrometheusQuery) types.ComponentMonitorReportComponentStatus {
+func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, successfulQueries []types.PrometheusQuery, failedQueries []types.PrometheusQuery) types.ComponentMonitorReportComponentStatus {
 	status := types.ComponentMonitorReportComponentStatus{
 		ComponentSlug:    p.componentSlug,
 		SubComponentSlug: p.subComponentSlug,
@@ -86,8 +86,7 @@ func (p *PrometheusProber) makeStatus(ctx context.Context, successfulQueries []t
 					//This is best-effort to improve the outage description, if we have an error here, we just move on without
 					logrus.WithError(err).WithField("failure_query", query.FailureQuery).Errorf("Failed to run failure query, will proceed without extra info in outage description")
 				} else if result != nil {
-					//TODO: result.String() isn't really that readable, we should probably do better here
-					resultStr = result.String()
+					resultStr = extractValue(result)
 				} else {
 					resultStr = "no failure query result"
 				}
@@ -110,7 +109,38 @@ func (p *PrometheusProber) makeStatus(ctx context.Context, successfulQueries []t
 	return status
 }
 
-func (p *PrometheusProber) succeeded(result model.Value) bool {
+func extractValue(result model.Value) string {
+	if result == nil {
+		return "no result"
+	}
+
+	switch v := result.(type) {
+	case model.Vector:
+		if len(v) == 0 {
+			return "empty vector"
+		}
+		return v[0].Value.String()
+	case *model.Scalar:
+		if v == nil {
+			return "nil scalar"
+		}
+		return v.Value.String()
+	case model.Matrix:
+		if len(v) == 0 || len(v[0].Values) == 0 {
+			return "empty matrix"
+		}
+		return v[0].Values[len(v[0].Values)-1].Value.String()
+	case *model.String:
+		if v == nil {
+			return "nil string"
+		}
+		return v.Value
+	default:
+		return result.String()
+	}
+}
+
+func succeeded(result model.Value) bool {
 	if result == nil {
 		return false
 	}

@@ -43,5 +43,17 @@ components:
           frequency: 30s
           component_monitor: "e2e-component-monitor"
           auto_resolve: true
+      - name: api
+        description: API success rate
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
+      - name: data-load
+        description: Data load
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
     owners:
       - service_account: e2e-component-monitor

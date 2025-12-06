@@ -93,8 +93,10 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "CI private investigator", components[2].Description)
 		assert.Equal(t, "TRT", components[2].ShipTeam)
 		assert.Equal(t, "#trt-alert", components[2].SlackChannel)
-		assert.Len(t, components[2].Subcomponents, 1)
+		assert.Len(t, components[2].Subcomponents, 3)
 		assert.Equal(t, "Sippy", components[2].Subcomponents[0].Name)
+		assert.Equal(t, "api", components[2].Subcomponents[1].Name)
+		assert.Equal(t, "data-load", components[2].Subcomponents[2].Name)
 	}
 }
 

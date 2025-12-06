@@ -2,7 +2,8 @@
 
 set -e
 
-CONTAINER_NAME="ship-status-test-db"
+POSTGRES_CONTAINER_NAME="ship-status-test-db"
+PROMETHEUS_CONTAINER_NAME="prometheus-e2e"
 DB_PORT="5433"
 DB_USER="postgres"
 DB_PASSWORD="testpass"
@@ -14,6 +15,13 @@ cleanup() {
     kill -TERM $COMPONENT_MONITOR_PID 2>/dev/null || true
     sleep 1
     kill -KILL $COMPONENT_MONITOR_PID 2>/dev/null || true
+  fi
+
+  # It seems important to stop the Prometheus container prior to stopping the mock-monitored-component, apparently podman can crash otherwise.
+  echo "Stopping Prometheus container..."
+  if podman ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^${PROMETHEUS_CONTAINER_NAME}$" 2>/dev/null; then
+    podman stop "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
+    podman rm -f "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
   fi
   
   echo "Cleaning up mock-monitored-component processes..."
@@ -37,47 +45,52 @@ cleanup() {
     lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
   fi
   
-  echo "Cleaning up test container..."
-  podman stop $CONTAINER_NAME 2>/dev/null || true
-  podman rm $CONTAINER_NAME 2>/dev/null || true
+  echo "Cleaning up postgres container..."
+  podman rm -f $POSTGRES_CONTAINER_NAME > /dev/null 2>&1 || true
   
   echo "Cleaning up temporary files..."
   if [ ! -z "$HMAC_SECRET_FILE" ] && [ -f "$HMAC_SECRET_FILE" ]; then
     rm -f "$HMAC_SECRET_FILE"
   fi
+  if [ ! -z "$COMPONENT_MONITOR_CONFIG" ]; then
+    rm -f "$COMPONENT_MONITOR_CONFIG" 2>/dev/null || true
+  fi
 }
 
 trap cleanup EXIT
 
-echo "Cleaning up any existing test postgres container..."
-podman stop $CONTAINER_NAME 2>/dev/null || true
-podman rm $CONTAINER_NAME 2>/dev/null || true
-
 echo "Starting PostgreSQL container..."
+# Remove any existing container first
+if podman ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^${POSTGRES_CONTAINER_NAME}$" 2>/dev/null; then
+  podman rm -f $POSTGRES_CONTAINER_NAME > /dev/null 2>&1 || true
+fi
+
 podman run -d \
-  --name $CONTAINER_NAME \
+  --name $POSTGRES_CONTAINER_NAME \
   -e POSTGRES_PASSWORD=$DB_PASSWORD \
   -p $DB_PORT:5432 \
   quay.io/enterprisedb/postgresql:latest
 
 echo "Waiting for PostgreSQL to be ready..."
 for i in {1..30}; do
-  if podman exec $CONTAINER_NAME pg_isready -U $DB_USER > /dev/null 2>&1; then
+  if podman exec $POSTGRES_CONTAINER_NAME pg_isready -U $DB_USER > /dev/null 2>&1; then
     echo "PostgreSQL is ready"
     break
   fi
   if [ $i -eq 30 ]; then
     echo "PostgreSQL failed to start"
-    podman logs $CONTAINER_NAME
-    podman stop $CONTAINER_NAME
-    podman rm $CONTAINER_NAME
+    podman logs $POSTGRES_CONTAINER_NAME 2>/dev/null || true
+    podman stop $POSTGRES_CONTAINER_NAME 2>/dev/null || true
+    podman rm $POSTGRES_CONTAINER_NAME 2>/dev/null || true
     exit 1
   fi
   sleep 1
 done
 
 echo "Creating test database..."
-podman exec $CONTAINER_NAME psql -U $DB_USER -c "CREATE DATABASE $DB_NAME;"
+if ! podman exec $POSTGRES_CONTAINER_NAME psql -U $DB_USER -c "CREATE DATABASE $DB_NAME;" > /dev/null 2>&1; then
+  echo "Failed to create test database (may already exist, continuing...)"
+fi
 
 DSN="postgres://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME?sslmode=disable&client_encoding=UTF8"
 export TEST_DATABASE_DSN="$DSN"
@@ -126,9 +139,23 @@ if lsof -i :$MOCK_MONITORED_COMPONENT_PORT > /dev/null 2>&1; then
   exit 1
 fi
 
+PROMETHEUS_PORT=""
+for port in {9090..9119}; do
+  if ! lsof -i :$port > /dev/null 2>&1; then
+    PROMETHEUS_PORT=$port
+    break
+  fi
+done
+
+if [ -z "$PROMETHEUS_PORT" ]; then
+  echo "No available port found in range 9090-9119 for Prometheus"
+  exit 1
+fi
+
 echo "Using port $DASHBOARD_PORT for dashboard server"
 echo "Using port $PROXY_PORT for mock oauth-proxy"
 echo "Using port $MOCK_MONITORED_COMPONENT_PORT for mock-monitored-component"
+echo "Using port $PROMETHEUS_PORT for Prometheus"
 
 echo "Starting dashboard server..."
 DASHBOARD_PID=""
@@ -203,58 +230,73 @@ for i in {1..30}; do
   sleep 1
 done
 
+echo "Starting Prometheus in podman container..."
+PROMETHEUS_CONFIG_PATH="$(cd "$(dirname "$0")" && pwd)/prometheus.yml"
+# Remove any existing container first
+if podman ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^${PROMETHEUS_CONTAINER_NAME}$" 2>/dev/null; then
+  podman rm -f "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
+fi
+
+podman run -d \
+  --name "$PROMETHEUS_CONTAINER_NAME" \
+  -p $PROMETHEUS_PORT:9090 \
+  -v "$PROMETHEUS_CONFIG_PATH:/etc/prometheus/prometheus.yml:ro" \
+  quay.io/prometheus/prometheus:latest \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/prometheus \
+  --web.console.libraries=/usr/share/prometheus/console_libraries \
+  --web.console.templates=/usr/share/prometheus/consoles \
+  --web.enable-lifecycle \
+  > /dev/null 2>&1
+
+echo "Waiting for Prometheus to complete initial scrape..."
+for i in {1..60}; do
+  if curl -s "http://localhost:$PROMETHEUS_PORT/api/v1/query?query=success_rate" | grep -q "success_rate"; then
+    echo "Prometheus has completed initial scrape"
+    break
+  fi
+  if [ $i -eq 60 ]; then
+    echo "Prometheus failed to complete initial scrape within 60 seconds"
+    podman logs "$PROMETHEUS_CONTAINER_NAME" 2>/dev/null || true
+    exit 1
+  fi
+  sleep 1
+done
+
 echo "Starting component-monitor..."
 COMPONENT_MONITOR_LOG="/tmp/component-monitor.log"
 
-# Start component-monitor in background
-go run ./cmd/component-monitor --config-path test/e2e/scripts/component-monitor-config.yaml --dashboard-url "http://localhost:$DASHBOARD_PORT" --name "e2e-component-monitor" 2> "$COMPONENT_MONITOR_LOG" &
-COMPONENT_MONITOR_PID=$!
-
-echo "Running e2e tests..."
+# Export environment variables for config substitution
 export TEST_SERVER_URL="http://localhost:$DASHBOARD_PORT"
 export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:$PROXY_PORT"
 export TEST_MOCK_MONITORED_COMPONENT_URL="http://localhost:$MOCK_MONITORED_COMPONENT_PORT"
+export TEST_PROMETHEUS_URL="http://localhost:$PROMETHEUS_PORT"
+
+# Create temporary config file with substituted values
+COMPONENT_MONITOR_CONFIG=$(mktemp)
+envsubst < test/e2e/scripts/component-monitor-config.yaml > "$COMPONENT_MONITOR_CONFIG"
+
+# Start component-monitor in background
+go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "http://localhost:$DASHBOARD_PORT" --name "e2e-component-monitor" 2> "$COMPONENT_MONITOR_LOG" &
+COMPONENT_MONITOR_PID=$!
+
+echo "Running e2e tests..."
 set +e
-gotestsum ./test/e2e/... -count 1 -p 1
+gotestsum --format testname --hide-summary=skipped ./test/e2e/... -count 1 -p 1
 TEST_EXIT_CODE=$?
 set -e
 
-echo "Stopping component-monitor..."
-if [ ! -z "$COMPONENT_MONITOR_PID" ]; then
-  kill -TERM $COMPONENT_MONITOR_PID 2>/dev/null || true
-  sleep 1
-  kill -KILL $COMPONENT_MONITOR_PID 2>/dev/null || true
+# Only show logs if tests failed
+if [ $TEST_EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "=== Component Monitor Log (last 50 lines) ==="
+  tail -n 50 "$COMPONENT_MONITOR_LOG" 2>/dev/null || echo "No log found"
+  
+  echo ""
+  echo "=== Dashboard Server Log (last 50 lines) ==="
+  tail -n 50 "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
+  echo ""
 fi
-
-echo "Stopping mock-monitored-component..."
-if [ ! -z "$MOCK_MONITORED_COMPONENT_PORT" ]; then
-  lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -TERM 2>/dev/null || true
-  sleep 1
-  lsof -ti :$MOCK_MONITORED_COMPONENT_PORT | xargs kill -KILL 2>/dev/null || true
-fi
-
-echo "Stopping mock oauth-proxy..."
-if [ ! -z "$PROXY_PORT" ]; then
-  lsof -ti :$PROXY_PORT | xargs kill -TERM 2>/dev/null || true
-  sleep 1
-  lsof -ti :$PROXY_PORT | xargs kill -KILL 2>/dev/null || true
-fi
-
-echo "Stopping dashboard server..."
-if [ ! -z "$DASHBOARD_PORT" ]; then
-  lsof -ti :$DASHBOARD_PORT | xargs kill -TERM 2>/dev/null || true
-  sleep 1
-  lsof -ti :$DASHBOARD_PORT | xargs kill -KILL 2>/dev/null || true
-fi
-
-echo "=== Component Monitor Log ==="
-cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || echo "No log found"
-
-echo ""
-echo "=== Dashboard Server Log ==="
-cat "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
-
-echo ""
 if [ $TEST_EXIT_CODE -eq 0 ]; then
   echo "✓ Tests passed"
 else
