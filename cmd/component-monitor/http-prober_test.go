@@ -4,11 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"ship-status-dash/pkg/types"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"ship-status-dash/pkg/types"
 )
 
 func TestHTTPProber_Probe(t *testing.T) {

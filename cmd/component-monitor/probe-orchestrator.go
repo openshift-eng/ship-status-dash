@@ -40,7 +40,7 @@ func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardUR
 func (o *ProbeOrchestrator) Run(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
-			o.log.Warn("Context cancelled, exiting")
+			o.log.Warn("Context canceled, exiting")
 			return
 		}
 
@@ -88,7 +88,7 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.Com
 			o.log.Errorf("Error: %v", err)
 			probesCompleted++
 		case <-ctx.Done():
-			o.log.Warn("Context cancelled during probe collection, exiting")
+			o.log.Warn("Context canceled during probe collection, exiting")
 			return results
 		case <-timeout:
 			o.log.Warnf("Timeout waiting for probe results after %s, restarting probe cycle", o.frequency)
@@ -120,7 +120,7 @@ func (o *ProbeOrchestrator) waitForNextCycle(ctx context.Context, elapsed time.D
 		o.log.Infof("Will probe again in %s", sleepDuration)
 		select {
 		case <-ctx.Done():
-			o.log.Warn("Context cancelled during sleep, exiting")
+			o.log.Warn("Context canceled during sleep, exiting")
 			return false
 		case <-time.After(sleepDuration):
 		}

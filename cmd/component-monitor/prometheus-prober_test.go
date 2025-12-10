@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"ship-status-dash/pkg/types"
 	"testing"
 	"time"
 
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+
+	"ship-status-dash/pkg/types"
 )
 
 const (

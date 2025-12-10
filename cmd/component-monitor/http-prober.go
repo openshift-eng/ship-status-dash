@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"ship-status-dash/pkg/types"
 	"time"
+
+	"ship-status-dash/pkg/types"
 )
 
 type HTTPProber struct {
