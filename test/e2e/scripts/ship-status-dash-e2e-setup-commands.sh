@@ -27,6 +27,12 @@ e2e_pause() {
   sleep 30
 }
 
+function download_envsubst() {
+  mkdir -p /tmp/bin
+  export PATH=/tmp/bin:$PATH
+  curl -L https://github.com/a8m/envsubst/releases/download/v1.4.2/envsubst-Linux-x86_64 -o /tmp/bin/envsubst && chmod +x /tmp/bin/envsubst
+}
+
 set +e
 for i in `seq 1 20`; do
   echo -n "${i})"
@@ -178,6 +184,13 @@ MOCK_MONITORED_COMPONENT_URL="http://mock-monitored-component.ship-status-e2e.sv
 export MOCK_MONITORED_COMPONENT_URL
 PROMETHEUS_URL="https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9091"
 export TEST_PROMETHEUS_URL="${PROMETHEUS_URL}"
+
+# Ensure envsubst is available
+if ! command -v envsubst &> /dev/null; then
+  echo "envsubst not found, downloading..."
+  download_envsubst
+fi
+
 cat << END | ${KUBECTL_CMD} apply -f -
 apiVersion: v1
 kind: ConfigMap
