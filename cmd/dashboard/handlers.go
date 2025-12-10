@@ -67,25 +67,6 @@ func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Co
 	return false
 }
 
-func (h *Handlers) validateOutage(outage *types.Outage) (string, bool) {
-	if outage.Severity == "" {
-		return "Severity is required", false
-	}
-	if !types.IsValidSeverity(string(outage.Severity)) {
-		return "Invalid severity. Must be one of: Down, Degraded, Suspected", false
-	}
-	if outage.StartTime.IsZero() {
-		return "StartTime is required", false
-	}
-	if outage.DiscoveredFrom == "" {
-		return "DiscoveredFrom is required", false
-	}
-	if outage.CreatedBy == "" {
-		return "CreatedBy is required", false
-	}
-	return "", true
-}
-
 // HealthJSON returns the health status of the dashboard service.
 func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
@@ -255,7 +236,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if message, valid := h.validateOutage(&outage); !valid {
+	if message, valid := outage.Validate(); !valid {
 		respondWithError(w, http.StatusBadRequest, message)
 		return
 	}
@@ -664,7 +645,7 @@ func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http
 		}
 	}
 
-	err := h.monitorReportProcessor.Process(&req, h.validateOutage)
+	err := h.monitorReportProcessor.Process(&req)
 	if err != nil {
 		h.logger.WithField("error", err).Error("Failed to process component monitor report")
 		respondWithError(w, http.StatusInternalServerError, "Failed to process report")

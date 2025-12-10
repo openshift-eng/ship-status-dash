@@ -2,6 +2,7 @@ package types
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -81,6 +82,36 @@ type Outage struct {
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
 	//TODO: Add optional link to jira card, and incident slack thread link for outage
+}
+
+// Validate validates the outage and returns an error message and whether it's valid.
+// Returns an empty string and true if valid, otherwise returns an aggregated error message and false.
+func (o *Outage) Validate() (string, bool) {
+	var validationErrors []string
+
+	if o.Severity == "" {
+		validationErrors = append(validationErrors, "Severity is required")
+	} else if !IsValidSeverity(string(o.Severity)) {
+		validationErrors = append(validationErrors, "Invalid severity. Must be one of: Down, Degraded, Suspected")
+	}
+
+	if o.StartTime.IsZero() {
+		validationErrors = append(validationErrors, "StartTime is required")
+	}
+
+	if o.DiscoveredFrom == "" {
+		validationErrors = append(validationErrors, "DiscoveredFrom is required")
+	}
+
+	if o.CreatedBy == "" {
+		validationErrors = append(validationErrors, "CreatedBy is required")
+	}
+
+	if len(validationErrors) > 0 {
+		return strings.Join(validationErrors, "; "), false
+	}
+
+	return "", true
 }
 
 type Reason struct {

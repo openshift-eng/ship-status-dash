@@ -454,7 +454,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				logger: logger,
 			}
 
-			err := processor.Process(tt.request, func(*types.Outage) (string, bool) { return "", true })
+			err := processor.Process(tt.request)
 
 			if tt.wantErr {
 				assert.Error(t, err)
