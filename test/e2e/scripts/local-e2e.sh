@@ -55,6 +55,9 @@ cleanup() {
   if [ ! -z "$COMPONENT_MONITOR_CONFIG" ]; then
     rm -f "$COMPONENT_MONITOR_CONFIG" 2>/dev/null || true
   fi
+  if [ ! -z "$PROMETHEUS_CONFIG_TMP" ] && [ -f "$PROMETHEUS_CONFIG_TMP" ]; then
+    rm -f "$PROMETHEUS_CONFIG_TMP" 2>/dev/null || true
+  fi
 }
 
 trap cleanup EXIT
@@ -232,6 +235,12 @@ done
 
 echo "Starting Prometheus in podman container..."
 PROMETHEUS_CONFIG_PATH="$(cd "$(dirname "$0")" && pwd)/prometheus.yml"
+# Create temporary config file with substituted values
+PROMETHEUS_CONFIG_TMP=$(mktemp)
+MOCK_MONITORED_COMPONENT_TARGET="host.containers.internal:${MOCK_MONITORED_COMPONENT_PORT}"
+export MOCK_MONITORED_COMPONENT_TARGET
+envsubst < "$PROMETHEUS_CONFIG_PATH" > "$PROMETHEUS_CONFIG_TMP"
+
 # Remove any existing container first
 if podman ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^${PROMETHEUS_CONTAINER_NAME}$" 2>/dev/null; then
   podman rm -f "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
@@ -240,7 +249,7 @@ fi
 podman run -d \
   --name "$PROMETHEUS_CONTAINER_NAME" \
   -p $PROMETHEUS_PORT:9090 \
-  -v "$PROMETHEUS_CONFIG_PATH:/etc/prometheus/prometheus.yml:ro" \
+  -v "$PROMETHEUS_CONFIG_TMP:/etc/prometheus/prometheus.yml:ro" \
   quay.io/prometheus/prometheus:latest \
   --config.file=/etc/prometheus/prometheus.yml \
   --storage.tsdb.path=/prometheus \

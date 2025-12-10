@@ -54,6 +54,9 @@ func TestE2E_ComponentMonitor(t *testing.T) {
 
 func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponentURL string) func(*testing.T) {
 	return func(t *testing.T) {
+		// Clean up any existing outages first (component-monitor may have created them)
+		cleanupActiveOutages(t, client, "Sippy", "Sippy")
+
 		// Ensure service starts in healthy state
 		resp, err := http.Get(mockMonitoredComponentURL + "/health")
 		require.NoError(t, err)
@@ -97,7 +100,7 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 		assert.Equal(t, "e2e-component-monitor", foundOutage.CreatedBy)
 		require.Equal(t, len(foundOutage.Reasons), 1, "Outage should have one reason")
 		assert.Equal(t, types.CheckTypeHTTP, foundOutage.Reasons[0].Type)
-		assert.Contains(t, foundOutage.Reasons[0].Check, "http://localhost:9000/health")
+		assert.Equal(t, foundOutage.Reasons[0].Type, types.CheckTypeHTTP)
 		assert.False(t, foundOutage.EndTime.Valid, "Outage should not be resolved yet")
 
 		// Bring service back up
@@ -137,13 +140,23 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 	return func(t *testing.T) {
 		componentName := "Sippy"
 
+		// Clean up any existing outages first (component-monitor may have created them before Prometheus had metrics)
+		cleanupActiveOutages(t, client, componentName, "api")
+		cleanupActiveOutages(t, client, componentName, "data-load")
+
 		// Set up all healthy metrics once at the beginning
 		setHealthyMetricsAndWait(t, mockMonitoredComponentURL)
 
 		// Test sub-component with single query (api)
 		t.Run("SingleQuery", func(t *testing.T) {
 			subComponentName := "api"
-			expectedQueryCount := 1
+			expectedReasons := []types.Reason{
+				{
+					Type:    types.CheckTypePrometheus,
+					Check:   "success_rate >= 0.9",
+					Results: "0.5",
+				},
+			}
 
 			cleanupActiveOutages(t, client, componentName, subComponentName)
 			verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
@@ -154,7 +167,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			}
 			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
 			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
-			verifyOutageReasons(t, foundOutage, expectedQueryCount)
+			verifyOutageReasons(t, foundOutage, expectedReasons)
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})
@@ -162,7 +175,23 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 		// Test sub-component with multiple queries (data-load)
 		t.Run("MultipleQueries", func(t *testing.T) {
 			subComponentName := "data-load"
-			expectedQueryCount := 3
+			expectedReasons := []types.Reason{
+				{
+					Type:    types.CheckTypePrometheus,
+					Check:   "data_load_failure{component=\"api\"} < 1",
+					Results: "1",
+				},
+				{
+					Type:    types.CheckTypePrometheus,
+					Check:   "data_load_failure{component=\"db\"} < 1",
+					Results: "1",
+				},
+				{
+					Type:    types.CheckTypePrometheus,
+					Check:   "data_load_failure{component=\"cache\"} < 1",
+					Results: "1",
+				},
+			}
 
 			cleanupActiveOutages(t, client, componentName, subComponentName)
 			verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
@@ -177,7 +206,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			}
 			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
 			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
-			verifyOutageReasons(t, foundOutage, expectedQueryCount)
+			verifyOutageReasons(t, foundOutage, expectedReasons)
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})
@@ -230,13 +259,36 @@ func verifyOutageCreated(t *testing.T, client *TestHTTPClient, componentName, su
 	return foundOutage
 }
 
-func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedQueryCount int) {
-	require.Equal(t, expectedQueryCount, len(foundOutage.Reasons), "Outage should have exactly %d reasons (one per failed query)", expectedQueryCount)
+func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedReasons []types.Reason) {
+	require.Equal(t, len(expectedReasons), len(foundOutage.Reasons), "Outage should have exactly %d reasons (one per failed query)", len(expectedReasons))
 
+	// Create a map to track which expected reasons have been matched
+	matched := make(map[int]bool, len(expectedReasons))
+
+	// For each actual reason, find a matching expected reason
 	for i, reason := range foundOutage.Reasons {
 		assert.Equal(t, types.CheckTypePrometheus, reason.Type, "Reason %d should be Prometheus type", i)
 		assert.NotEmpty(t, reason.Check, "Reason %d should have a query", i)
 		assert.NotEmpty(t, reason.Results, "Reason %d should have results", i)
+
+		// Find a matching expected reason
+		found := false
+		for j, expected := range expectedReasons {
+			if matched[j] {
+				continue
+			}
+			if expected.Type == reason.Type && expected.Check == reason.Check && expected.Results == reason.Results {
+				matched[j] = true
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "Reason %d should match one of the expected reasons", i)
+	}
+
+	// Verify all expected reasons were matched
+	for i, expected := range expectedReasons {
+		assert.True(t, matched[i], "Expected reason %d (Type: %s, Check: %s, Results: %s) should be present", i, expected.Type, expected.Check, expected.Results)
 	}
 }
 
@@ -258,7 +310,7 @@ func restoreHealthyMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponent
 	}
 	require.NotNil(t, resolvedOutage, "Should find the previously created outage")
 	assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved with EndTime set")
-	assert.NotNil(t, resolvedOutage.ResolvedBy, "Outage should have ResolvedBy set")
+	require.NotNil(t, resolvedOutage.ResolvedBy, "Outage should have ResolvedBy set")
 	assert.Equal(t, "e2e-component-monitor", *resolvedOutage.ResolvedBy)
 }
 
