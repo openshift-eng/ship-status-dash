@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var allHealthyMetrics = map[string]interface{}{
+	"success_rate": 1.0, // >= 0.9, so query succeeds for api sub-component
+	"data_load_failure": map[string]float64{
+		"api":   0.0, // < 1, so query succeeds for data-load sub-component
+		"db":    0.0, // < 1, so query succeeds
+		"cache": 0.0, // < 1, so query succeeds
+	},
+}
+
 func TestE2E_ComponentMonitor(t *testing.T) {
 	serverURL := os.Getenv("TEST_SERVER_URL")
 	if serverURL == "" {
@@ -40,8 +49,7 @@ func TestE2E_ComponentMonitor(t *testing.T) {
 	}
 
 	t.Run("HTTPComponentMonitorProbe", testHTTPComponentMonitorProbe(client, mockMonitoredComponentURL))
-	t.Run("PrometheusComponentMonitorProbe_SingleQuery", testPrometheusComponentMonitorProbe_SingleQuery(client, mockMonitoredComponentURL, prometheusURL))
-	t.Run("PrometheusComponentMonitorProbe_MultipleQueries", testPrometheusComponentMonitorProbe_MultipleQueries(client, mockMonitoredComponentURL, prometheusURL))
+	t.Run("PrometheusComponentMonitorProbe", testPrometheusComponentMonitorProbe(client, mockMonitoredComponentURL, prometheusURL))
 }
 
 func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponentURL string) func(*testing.T) {
@@ -125,72 +133,59 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 	}
 }
 
-func testPrometheusComponentMonitorProbe_SingleQuery(client *TestHTTPClient, mockMonitoredComponentURL, prometheusURL string) func(*testing.T) {
+func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponentURL, prometheusURL string) func(*testing.T) {
 	return func(t *testing.T) {
 		componentName := "Sippy"
-		subComponentName := "api"
-		expectedQueryCount := 1
 
-		// Clean up any existing active outages from previous test runs
-		cleanupActiveOutages(t, client, componentName, subComponentName)
+		// Set up all healthy metrics once at the beginning
+		setHealthyMetricsAndWait(t, mockMonitoredComponentURL)
 
-		healthyMetrics := map[string]interface{}{
-			"success_rate": 1.0, // >= 0.9, so query succeeds
-		}
-		unhealthyMetrics := map[string]interface{}{
-			"success_rate": 0.5, // < 0.9, so query returns empty vector (fails)
-		}
+		// Test sub-component with single query (api)
+		t.Run("SingleQuery", func(t *testing.T) {
+			subComponentName := "api"
+			expectedQueryCount := 1
 
-		setupPrometheusTestMetrics(t, mockMonitoredComponentURL, healthyMetrics)
-		verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
-		waitAndVerifySuccessfulProbe(t, client, componentName, subComponentName)
+			cleanupActiveOutages(t, client, componentName, subComponentName)
+			verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
+			waitAndVerifySuccessfulProbe(t, client, componentName, subComponentName)
 
-		setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
-		foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
-		verifyOutageReasons(t, foundOutage, expectedQueryCount)
+			unhealthyMetrics := map[string]interface{}{
+				"success_rate": 0.5, // < 0.9, so query returns empty vector (fails)
+			}
+			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
+			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
+			verifyOutageReasons(t, foundOutage, expectedQueryCount)
 
-		restoreMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, healthyMetrics, client, componentName, subComponentName)
+			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
+		})
+
+		// Test sub-component with multiple queries (data-load)
+		t.Run("MultipleQueries", func(t *testing.T) {
+			subComponentName := "data-load"
+			expectedQueryCount := 3
+
+			cleanupActiveOutages(t, client, componentName, subComponentName)
+			verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
+			waitAndVerifySuccessfulProbe(t, client, componentName, subComponentName)
+
+			unhealthyMetrics := map[string]interface{}{
+				"data_load_failure": map[string]float64{
+					"api":   1.0, // >= 1, so query returns empty vector (fails)
+					"db":    1.0, // >= 1, so query returns empty vector (fails)
+					"cache": 1.0, // >= 1, so query returns empty vector (fails)
+				},
+			}
+			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
+			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
+			verifyOutageReasons(t, foundOutage, expectedQueryCount)
+
+			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
+		})
 	}
 }
 
-func testPrometheusComponentMonitorProbe_MultipleQueries(client *TestHTTPClient, mockMonitoredComponentURL, prometheusURL string) func(*testing.T) {
-	return func(t *testing.T) {
-		componentName := "Sippy"
-		subComponentName := "data-load"
-		expectedQueryCount := 3
-
-		// Clean up any existing active outages from previous test runs
-		cleanupActiveOutages(t, client, componentName, subComponentName)
-
-		healthyMetrics := map[string]interface{}{
-			"data_load_failure": map[string]float64{
-				"api":   0.0, // < 1, so query succeeds
-				"db":    0.0, // < 1, so query succeeds
-				"cache": 0.0, // < 1, so query succeeds
-			},
-		}
-		unhealthyMetrics := map[string]interface{}{
-			"data_load_failure": map[string]float64{
-				"api":   1.0, // >= 1, so query returns empty vector (fails)
-				"db":    1.0, // >= 1, so query returns empty vector (fails)
-				"cache": 1.0, // >= 1, so query returns empty vector (fails)
-			},
-		}
-
-		setupPrometheusTestMetrics(t, mockMonitoredComponentURL, healthyMetrics)
-		verifyNoActiveOutages(t, client, componentName, subComponentName, "initially")
-		waitAndVerifySuccessfulProbe(t, client, componentName, subComponentName)
-
-		setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
-		foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
-		verifyOutageReasons(t, foundOutage, expectedQueryCount)
-
-		restoreMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, healthyMetrics, client, componentName, subComponentName)
-	}
-}
-
-func setupPrometheusTestMetrics(t *testing.T, mockMonitoredComponentURL string, metrics map[string]interface{}) {
-	updateMetrics(t, mockMonitoredComponentURL, metrics)
+func setHealthyMetricsAndWait(t *testing.T, mockMonitoredComponentURL string) {
+	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
 	// Wait for Prometheus to scrape and component-monitor to process healthy state
 	time.Sleep(10 * time.Second) // Wait for Prometheus to scrape
 	time.Sleep(15 * time.Second) // Wait for component-monitor to detect healthy state
@@ -245,10 +240,26 @@ func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedQueryC
 	}
 }
 
-func restoreMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponentURL string, metrics map[string]interface{}, client *TestHTTPClient, componentName, subComponentName string) {
-	updateMetrics(t, mockMonitoredComponentURL, metrics)
+func restoreHealthyMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponentURL string, client *TestHTTPClient, componentName, subComponentName string, outageId uint) {
+	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
+	time.Sleep(10 * time.Second) // Wait for Prometheus to scrape
 	time.Sleep(15 * time.Second) // Wait for component-monitor to detect recovery
+
 	verifyNoActiveOutages(t, client, componentName, subComponentName, "after Prometheus queries recover")
+
+	// Verify the previously found outage is now resolved
+	outages := getOutages(t, client, componentName, subComponentName)
+	var resolvedOutage *types.Outage
+	for i := range outages {
+		if outages[i].ID == outageId {
+			resolvedOutage = &outages[i]
+			break
+		}
+	}
+	require.NotNil(t, resolvedOutage, "Should find the previously created outage")
+	assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved with EndTime set")
+	assert.NotNil(t, resolvedOutage.ResolvedBy, "Outage should have ResolvedBy set")
+	assert.Equal(t, "e2e-component-monitor", *resolvedOutage.ResolvedBy)
 }
 
 func updateMetrics(t *testing.T, baseURL string, metrics map[string]interface{}) {
