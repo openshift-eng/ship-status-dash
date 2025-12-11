@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: component-monitor
-  namespace: component-monitor
+  namespace: ship-status
   labels:
     app: component-monitor
 spec:
@@ -18,14 +18,23 @@ spec:
       containers:
         - name: component-monitor
           image: quay.io/sgoeddel/component-monitor:latest
+          command: ["./component-monitor"]
+          args:
+            - "--config-path=/etc/config/config.yaml"
+            - "--name=component-monitor"
+            - "--dashboard-url=https://ship-status.ci.openshift.org"
           env:
-            - name: PROMETHEUS_URL
-              value: "https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9091"
             - name: KUBECONFIG
               value: "/etc/kubeconfig/app.ci.config"
           volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
             - name: kubeconfig
               mountPath: /etc/kubeconfig
+              readOnly: true
+            - name: config
+              mountPath: /etc/config
               readOnly: true
           resources:
             requests:
@@ -35,6 +44,9 @@ spec:
               memory: "128Mi"
               cpu: "200m"
       volumes:
+        - name: config
+          configMap:
+            name: component-monitor-config
         - name: kubeconfig
           secret:
             secretName: pod-scaler-kubeconfig

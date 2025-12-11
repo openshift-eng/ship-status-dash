@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: component-monitor-config
+  namespace: ship-status
+data:
+  config.yaml: |
+    frequency: 30s
+    components:
+      - component_slug: "prow"
+        sub_component_slug: "deck"
+        http_monitor:
+          url: "https://prow.ci.openshift.org/"
+          code: 200
+          retry_after: 10s
+      - component_slug: "prow"
+        sub_component_slug: "tide"
+        prometheus_monitor:
+          url: "https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9091"
+          queries:
+            - query: "absent(up{job=\"deck\"} == 1)"
+

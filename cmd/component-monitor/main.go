@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	routeclientset "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	promapi "github.com/prometheus/client_golang/api"
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"ship-status-dash/pkg/types"
 )
@@ -168,22 +173,94 @@ func main() {
 
 func createPrometheusClients(components []types.MonitoringComponent) (map[string]promclientv1.API, error) {
 	clients := make(map[string]promclientv1.API)
+
+	// Collect unique Prometheus URLs
+	prometheusURLs := make(map[string]bool)
 	for _, component := range components {
-		prometheusMonitor := component.PrometheusMonitor
-		if prometheusMonitor != nil {
-			_, exists := clients[prometheusMonitor.URL]
-			if !exists {
-				client, err := promapi.NewClient(promapi.Config{
-					Address: prometheusMonitor.URL,
-				})
-				if err != nil {
-					return nil, fmt.Errorf("failed to create prometheus client for component %s: %w", component.ComponentSlug, err)
-				}
-				prometheusAPI := promclientv1.NewAPI(client)
-				clients[prometheusMonitor.URL] = prometheusAPI
-			}
+		if component.PrometheusMonitor != nil {
+			prometheusURLs[component.PrometheusMonitor.URL] = true
 		}
 	}
 
+	if len(prometheusURLs) == 0 {
+		return clients, nil
+	}
+
+	// Build kubeconfig - use kubeconfig if available, otherwise use default transport for local dev/e2e
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	var config *rest.Config
+	var err error
+
+	if kubeconfigPath == "" {
+		// No kubeconfig - use default transport (for local dev/e2e)
+		for url := range prometheusURLs {
+			client, err := promapi.NewClient(promapi.Config{
+				Address: url,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create prometheus client for %s: %w", url, err)
+			}
+			prometheusAPI := promclientv1.NewAPI(client)
+			clients[url] = prometheusAPI
+		}
+		return clients, nil
+	}
+
+	// From kubeconfig: handles bearer tokens, TLS certs, etc.
+	config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build config from kubeconfig: %w", err)
+	}
+
+	// Get authenticated transport with bearer token and TLS certificates from config
+	roundTripper, err := rest.TransportFor(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transport: %w", err)
+	}
+
+	// For each Prometheus URL, create a client using the authenticated transport
+	for url := range prometheusURLs {
+		// If URL looks like an OpenShift Prometheus service, try to discover via Route
+		prometheusURL := url
+		if strings.Contains(url, "openshift-monitoring") && strings.Contains(url, "prometheus-k8s") {
+			discoveredURL, err := discoverPrometheusRoute(config)
+			if err == nil {
+				prometheusURL = discoveredURL
+			}
+			// If route discovery fails, fall back to the configured URL
+		}
+
+		client, err := promapi.NewClient(promapi.Config{
+			Address:      prometheusURL,
+			RoundTripper: roundTripper,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create prometheus client for %s: %w", url, err)
+		}
+		prometheusAPI := promclientv1.NewAPI(client)
+		clients[url] = prometheusAPI
+	}
+
 	return clients, nil
+}
+
+func discoverPrometheusRoute(config *rest.Config) (string, error) {
+	routeClient, err := routeclientset.NewForConfig(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to create route client: %w", err)
+	}
+
+	route, err := routeClient.Routes("openshift-monitoring").Get(context.Background(), "prometheus-k8s", metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get prometheus route: %w", err)
+	}
+
+	var addr string
+	if route.Spec.TLS != nil {
+		addr = "https://" + route.Spec.Host
+	} else {
+		addr = "http://" + route.Spec.Host
+	}
+
+	return addr, nil
 }
