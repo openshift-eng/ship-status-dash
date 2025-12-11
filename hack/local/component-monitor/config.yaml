@@ -15,14 +15,14 @@ components:
   - component_slug: "mocked"
     sub_component_slug: "api-success-rate"
     prometheus_monitor:
-      url: "http://localhost:9090"
+      prometheus_location: "http://localhost:9090"
       queries:
         - query: "success_rate >= 0.9"
           failure_query: "success_rate"
   - component_slug: "mocked"
     sub_component_slug: "data-load"
     prometheus_monitor:
-      url: "http://localhost:9090"
+      prometheus_location: "http://localhost:9090"
       queries:
         - query: "data_load_failure == 0"
           failure_query: "data_load_failure"
