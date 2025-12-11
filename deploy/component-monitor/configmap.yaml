@@ -16,7 +16,7 @@ data:
       - component_slug: "prow"
         sub_component_slug: "tide"
         prometheus_monitor:
-          url: "https://prometheus-k8s.openshift-monitoring.svc.cluster.local:9091"
+          prometheus_location: "app.ci"
           queries:
             - query: "absent(up{job=\"deck\"} == 1)"
 

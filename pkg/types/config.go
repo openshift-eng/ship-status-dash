@@ -77,8 +77,12 @@ type MonitoringComponent struct {
 }
 
 type PrometheusMonitor struct {
-	// URL is the URL of the Prometheus server to query
-	URL string `json:"url" yaml:"url"`
+	// PrometheusLocation is either:
+	// - A URL (for e2e and local development), e.g., "http://localhost:9090"
+	// - A cluster name (when --kubeconfig-dir is provided), e.g., "app.ci"
+	//   The cluster name must correspond to a kubeconfig file in the kubeconfig directory.
+	//   When using a cluster name, the Prometheus route will be discovered automatically via OpenShift Routes.
+	PrometheusLocation string `json:"prometheus_location" yaml:"prometheus_location"`
 	// Queries is the list of Prometheus queries to perform
 	Queries []PrometheusQuery `json:"queries" yaml:"queries"`
 }

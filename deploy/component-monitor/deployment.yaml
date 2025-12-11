@@ -23,18 +23,13 @@ spec:
             - "--config-path=/etc/config/config.yaml"
             - "--name=component-monitor"
             - "--dashboard-url=https://ship-status.ci.openshift.org"
-          env:
-            - name: KUBECONFIG
-              value: "/etc/kubeconfig/app.ci.config"
+            - "--kubeconfig-dir=/etc/kubeconfig"
           volumeMounts:
             - name: config
               mountPath: /etc/config
               readOnly: true
             - name: kubeconfig
               mountPath: /etc/kubeconfig
-              readOnly: true
-            - name: config
-              mountPath: /etc/config
               readOnly: true
           resources:
             requests:
