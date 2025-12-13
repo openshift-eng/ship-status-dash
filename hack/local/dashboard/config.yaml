@@ -1,0 +1,110 @@
+components:
+  - name: "Prow"
+    description: "The backbone of the CI system"
+    ship_team: "DPTP"
+    slack_channel: "#ops-testplatform"
+    sub_components:
+      - name: "Tide"
+        description: "Automated merging of PRs"
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: false
+      - name: "Deck"
+        description: "Dashboard for Prow"
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "developer"
+      - service_account: "app-ci-component-monitor"
+  - name: "Build Farm"
+    description: "Where the CI jobs are run"
+    ship_team: "DPTP"
+    slack_channel: "#ops-testplatform"
+    sub_components:
+      - name: "Build01"
+        description: "AWS build farm cluster"
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+      - name: "Build02"
+        description: "GCP build farm cluster"
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+      - name: "Build03"
+        description: "AWS build farm cluster"
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+      - name: "Build04"
+        description: "GCP build farm cluster"
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "developer"
+      - service_account: "app-ci-component-monitor"
+  - name: "Sippy"
+    description: "CI Private Investigator"
+    ship_team: "TRT"
+    slack_channel: "#trt-alert"
+    sub_components:
+      - name: "Sippy"
+        description: "The non-auth variant of Sippy"
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "dpcr-component-monitor"
+          auto_resolve: true
+      - name: "Sippy-Auth"
+        description: "The auth variant of Sippy"
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "dpcr-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "someone-else"
+      - service_account: "dpcr-component-monitor"
+  - name: "Mocked"
+    description: "Mocked component for component-monitor local development"
+    ship_team: "TRT"
+    slack_channel: "#trt-alert"
+    sub_components:
+      - name: "Frontend"
+        description: "Mocked frontend monitored via http component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+      - name: "API Success Rate"
+        description: "Mocked API success rate monitored via prometheus (scalar) component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+      - name: "Data Load"
+        description: "Mocked data load monitored via prometheus (vector) component monitor"
+        requires_confirmation: false
+        monitoring:
+          frequency: 20s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "developer"
+      - service_account: "local-component-monitor"

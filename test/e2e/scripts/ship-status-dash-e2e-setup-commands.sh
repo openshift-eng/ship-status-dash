@@ -11,6 +11,8 @@ DSN="postgres://postgres:testpass@postgres.ship-status-e2e.svc.cluster.local:543
 echo "The dashboard CI image: ${DASHBOARD_IMAGE}"
 echo "The mock-oauth-proxy CI image: ${MOCK_OAUTH_PROXY_IMAGE}"
 echo "The migrate CI image: ${MIGRATE_IMAGE}"
+echo "The component-monitor CI image: ${COMPONENT_MONITOR_IMAGE}"
+echo "The mock-monitored-component CI image: ${MOCK_MONITORED_COMPONENT_IMAGE}"
 KUBECTL_CMD="${KUBECTL_CMD:=oc}"
 echo "The kubectl command is: ${KUBECTL_CMD}"
 
@@ -23,6 +25,12 @@ e2e_pause() {
   fi
   echo "Sleeping 30 seconds ..."
   sleep 30
+}
+
+function download_envsubst() {
+  mkdir -p /tmp/bin
+  export PATH=/tmp/bin:$PATH
+  curl -L https://github.com/a8m/envsubst/releases/download/v1.4.2/envsubst-Linux-x86_64 -o /tmp/bin/envsubst && chmod +x /tmp/bin/envsubst
 }
 
 set +e
@@ -49,8 +57,6 @@ if [ $is_ready -eq 0 ]; then
   exit 1
 fi
 
-e2e_pause
-
 echo "Creating namespace..."
 cat << END | ${KUBECTL_CMD} apply -f -
 apiVersion: v1
@@ -64,8 +70,6 @@ metadata:
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
 END
-
-e2e_pause
 
 echo "Starting postgres..."
 cat << END | ${KUBECTL_CMD} apply -f -
@@ -118,8 +122,6 @@ spec:
     app: postgres
 END
 
-e2e_pause
-
 echo "Waiting for postgres pod to be Ready ..."
 set +e
 TIMEOUT=120s
@@ -145,8 +147,9 @@ echo "SCRIPT_DIR: ${SCRIPT_DIR}"
 echo "TEST_DIR: ${TEST_DIR}"
 cd "$TEST_DIR"
 
-CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+CONFIG_FILE="${SCRIPT_DIR}/dashboard-config.yaml"
 MOCK_OAUTH_PROXY_CONFIG_FILE="${SCRIPT_DIR}/mock-oauth-proxy-config.yaml"
+COMPONENT_MONITOR_CONFIG_FILE="${SCRIPT_DIR}/component-monitor-config.yaml"
 
 echo "Creating configmaps and secrets..."
 cat << END | ${KUBECTL_CMD} apply -f -
@@ -156,7 +159,7 @@ metadata:
   name: dashboard-config
   namespace: ship-status-e2e
 data:
-  config.yaml: |
+  dashboard-config.yaml: |
 $(sed 's/^/    /' "${CONFIG_FILE}")
 END
 
@@ -171,12 +174,30 @@ data:
 $(sed 's/^/    /' "${MOCK_OAUTH_PROXY_CONFIG_FILE}")
 END
 
+export TEST_MOCK_MONITORED_COMPONENT_URL="http://mock-monitored-component.ship-status-e2e.svc.cluster.local:9000"
+export TEST_PROMETHEUS_URL="http://prometheus.ship-status-e2e.svc.cluster.local:9090"
+
+# Ensure envsubst is available
+if ! command -v envsubst &> /dev/null; then
+  echo "envsubst not found, downloading..."
+  download_envsubst
+fi
+
+cat << END | ${KUBECTL_CMD} apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: component-monitor-config
+  namespace: ship-status-e2e
+data:
+  component-monitor-config.yaml: |
+$(envsubst '$TEST_MOCK_MONITORED_COMPONENT_URL $TEST_PROMETHEUS_URL' < "${COMPONENT_MONITOR_CONFIG_FILE}" | sed 's/^/    /')
+END
+
 HMAC_SECRET=$(openssl rand -hex 32)
 ${KUBECTL_CMD} -n ship-status-e2e create secret generic hmac-secret --from-literal=secret="${HMAC_SECRET}" --dry-run=client -o yaml | ${KUBECTL_CMD} apply -f -
 
 ${KUBECTL_CMD} -n ship-status-e2e create secret generic regcred --from-file=.dockerconfigjson=${DOCKERCONFIGJSON} --type=kubernetes.io/dockerconfigjson --dry-run=client -o yaml | ${KUBECTL_CMD} apply -f -
-
-e2e_pause
 
 echo "Running database migration..."
 cat << END | ${KUBECTL_CMD} apply -f -
@@ -216,8 +237,6 @@ if [ ${migrate_retVal} -ne 0 ]; then
   exit 1
 fi
 
-e2e_pause
-
 echo "Starting dashboard..."
 cat << END | ${KUBECTL_CMD} apply -f -
 apiVersion: v1
@@ -236,7 +255,7 @@ spec:
     - containerPort: 8080
     command: ["./dashboard"]
     args:
-      - "--config=/etc/config/config.yaml"
+      - "--config=/etc/config/dashboard-config.yaml"
       - "--port=8080"
       - "--dsn=${DSN}"
       - "--hmac-secret-file=/etc/hmac/secret"
@@ -282,8 +301,6 @@ spec:
   selector:
     app: dashboard
 END
-
-e2e_pause
 
 echo "Starting mock-oauth-proxy..."
 cat << END | ${KUBECTL_CMD} apply -f -
@@ -350,25 +367,218 @@ spec:
     app: mock-oauth-proxy
 END
 
-e2e_pause
+echo "Starting mock-monitored-component..."
+cat << END | ${KUBECTL_CMD} apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mock-monitored-component
+  namespace: ship-status-e2e
+  labels:
+    app: mock-monitored-component
+spec:
+  containers:
+  - name: mock-monitored-component
+    image: ${MOCK_MONITORED_COMPONENT_IMAGE}
+    imagePullPolicy: Always
+    ports:
+    - containerPort: 9000
+    command: ["./mock-monitored-component"]
+    args:
+      - "--port=9000"
+  imagePullSecrets:
+  - name: regcred
+  securityContext:
+    privileged: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    runAsNonRoot: true
+    runAsUser: 1001
+    seccompProfile:
+      type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: mock-monitored-component
+  name: mock-monitored-component
+  namespace: ship-status-e2e
+spec:
+  ports:
+  - name: http
+    port: 9000
+    protocol: TCP
+  selector:
+    app: mock-monitored-component
+END
 
-echo "Waiting for dashboard and mock-oauth-proxy pods to be Ready ..."
+echo "Starting Prometheus..."
+PROMETHEUS_CONFIG_FILE="${SCRIPT_DIR}/prometheus.yml"
+export MOCK_MONITORED_COMPONENT_TARGET="mock-monitored-component.ship-status-e2e.svc.cluster.local:9000"
+cat << END | ${KUBECTL_CMD} apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: ship-status-e2e
+data:
+  prometheus.yml: |
+$(envsubst '$MOCK_MONITORED_COMPONENT_TARGET' < "${PROMETHEUS_CONFIG_FILE}" | sed 's/^/    /')
+END
+
+cat << END | ${KUBECTL_CMD} apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus
+  namespace: ship-status-e2e
+  labels:
+    app: prometheus
+spec:
+  containers:
+  - name: prometheus
+    image: quay.io/prometheus/prometheus:latest
+    imagePullPolicy: Always
+    ports:
+    - containerPort: 9090
+    args:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    volumeMounts:
+    - mountPath: /etc/prometheus
+      name: prometheus-config
+      readOnly: true
+  volumes:
+    - name: prometheus-config
+      configMap:
+        name: prometheus-config
+  securityContext:
+    privileged: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+  namespace: ship-status-e2e
+spec:
+  ports:
+  - name: http
+    port: 9090
+    protocol: TCP
+  selector:
+    app: prometheus
+END
+
+echo "Waiting for Prometheus pod to be Ready..."
+set +e
+TIMEOUT=60s
+${KUBECTL_CMD} -n ship-status-e2e wait --for=condition=Ready pod/prometheus --timeout=${TIMEOUT}
+prometheus_retVal=$?
+set -e
+
+if [ ${prometheus_retVal} -ne 0 ]; then
+  echo "Prometheus pod never came up"
+  ${KUBECTL_CMD} -n ship-status-e2e logs prometheus > ${ARTIFACT_DIR}/prometheus.log || true
+  exit 1
+fi
+
+echo "Waiting for Prometheus to complete initial scrape..."
+for i in `seq 1 60`; do
+  if ${KUBECTL_CMD} -n ship-status-e2e exec prometheus -- wget -q -O- "http://localhost:9090/api/v1/query?query=mock_monitored_component_initialized" 2>/dev/null | grep -q "mock_monitored_component_initialized"; then
+    echo "Prometheus has completed initial scrape"
+    break
+  fi
+  if [ $i -eq 60 ]; then
+    echo "Prometheus failed to complete initial scrape within 60 seconds"
+    ${KUBECTL_CMD} -n ship-status-e2e logs prometheus > ${ARTIFACT_DIR}/prometheus-scrape.log || true
+    exit 1
+  fi
+  sleep 1
+done
+
+echo "Starting component-monitor..."
+cat << END | ${KUBECTL_CMD} apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: component-monitor
+  namespace: ship-status-e2e
+  labels:
+    app: component-monitor
+spec:
+  containers:
+  - name: component-monitor
+    image: ${COMPONENT_MONITOR_IMAGE}
+    imagePullPolicy: Always
+    command: ["./component-monitor"]
+    args:
+      - "--config-path=/etc/config/component-monitor-config.yaml"
+      - "--dashboard-url=http://dashboard.ship-status-e2e.svc.cluster.local:8080"
+      - "--name=e2e-component-monitor"
+    volumeMounts:
+    - mountPath: /etc/config
+      name: component-monitor-config
+      readOnly: true
+  imagePullSecrets:
+  - name: regcred
+  volumes:
+    - name: component-monitor-config
+      configMap:
+        name: component-monitor-config
+  securityContext:
+    privileged: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    runAsNonRoot: true
+    runAsUser: 1001
+    seccompProfile:
+      type: RuntimeDefault
+END
+
+echo "Waiting for dashboard, mock-oauth-proxy, mock-monitored-component, and component-monitor pods to be Ready ..."
 set +e
 TIMEOUT=60s
 ${KUBECTL_CMD} -n ship-status-e2e wait --for=condition=Ready pod/dashboard --timeout=${TIMEOUT}
 dashboard_retVal=$?
 ${KUBECTL_CMD} -n ship-status-e2e wait --for=condition=Ready pod/mock-oauth-proxy --timeout=${TIMEOUT}
 proxy_retVal=$?
+${KUBECTL_CMD} -n ship-status-e2e wait --for=condition=Ready pod/mock-monitored-component --timeout=${TIMEOUT}
+mock_component_retVal=$?
+${KUBECTL_CMD} -n ship-status-e2e wait --for=condition=Ready pod/component-monitor --timeout=${TIMEOUT}
+component_monitor_retVal=$?
 set -e
 
-if [ ${dashboard_retVal} -ne 0 ] || [ ${proxy_retVal} -ne 0 ]; then
+if [ ${dashboard_retVal} -ne 0 ] || [ ${proxy_retVal} -ne 0 ] || [ ${mock_component_retVal} -ne 0 ] || [ ${component_monitor_retVal} -ne 0 ]; then
   echo "Pod startup failed, debugging..."
   ${KUBECTL_CMD} -n ship-status-e2e describe pod dashboard
   ${KUBECTL_CMD} -n ship-status-e2e describe pod mock-oauth-proxy
+  ${KUBECTL_CMD} -n ship-status-e2e describe pod mock-monitored-component
+  ${KUBECTL_CMD} -n ship-status-e2e describe pod component-monitor
 fi
 
 ${KUBECTL_CMD} -n ship-status-e2e logs dashboard > ${ARTIFACT_DIR}/dashboard.log || true
 ${KUBECTL_CMD} -n ship-status-e2e logs mock-oauth-proxy > ${ARTIFACT_DIR}/mock-oauth-proxy.log || true
+${KUBECTL_CMD} -n ship-status-e2e logs mock-monitored-component > ${ARTIFACT_DIR}/mock-monitored-component.log || true
+${KUBECTL_CMD} -n ship-status-e2e logs prometheus > ${ARTIFACT_DIR}/prometheus.log || true
+${KUBECTL_CMD} -n ship-status-e2e logs component-monitor > ${ARTIFACT_DIR}/component-monitor.log || true
 
 if [ ${dashboard_retVal} -ne 0 ]; then
   echo "Dashboard pod never came up"
@@ -378,6 +588,16 @@ if [ ${proxy_retVal} -ne 0 ]; then
   echo "Mock oauth-proxy pod never came up"
   exit 1
 fi
+if [ ${mock_component_retVal} -ne 0 ]; then
+  echo "Mock-monitored-component pod never came up"
+  exit 1
+fi
+if [ ${component_monitor_retVal} -ne 0 ]; then
+  echo "Component-monitor pod never came up"
+  exit 1
+fi
+
+sleep 30
 
 ${KUBECTL_CMD} -n ship-status-e2e get po -o wide
 ${KUBECTL_CMD} -n ship-status-e2e get svc,ep

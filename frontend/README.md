@@ -9,7 +9,7 @@ Before starting the frontend, ensure the backend services are running:
 1. Start the backend services (from the project root):
 
    ```bash
-   make local-dev DSN="postgres://user:pass@localhost:5432/ship_status?sslmode=disable"
+   make local-dashboard-dev DSN="postgres://user:pass@localhost:5432/ship_status?sslmode=disable"
    ```
 
 2. Install frontend dependencies (if not already done):

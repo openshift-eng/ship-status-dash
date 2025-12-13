@@ -1,11 +1,11 @@
 package types
 
-// Config contains the application configuration including component definitions.
-type Config struct {
+// DashboardConfig contains the dashboardapplication configuration including component definitions.
+type DashboardConfig struct {
 	Components []*Component `json:"components" yaml:"components"`
 }
 
-func (c *Config) GetComponentBySlug(slug string) *Component {
+func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {
 	for i := range c.Components {
 		if c.Components[i].Slug == slug {
 			return c.Components[i]
@@ -58,4 +58,48 @@ type Owner struct {
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
 	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
 	User string `json:"user,omitempty" yaml:"user,omitempty"`
+}
+
+// ComponentMonitorConfig contains the configuration for the component monitor.
+type ComponentMonitorConfig struct {
+	Components []MonitoringComponent `json:"components" yaml:"components"`
+	Frequency  string                `json:"frequency" yaml:"frequency"`
+}
+
+// MonitoringComponent contains the configuration for a sub-component monitor in the component monitor.
+type MonitoringComponent struct {
+	ComponentSlug    string `json:"component_slug" yaml:"component_slug"`
+	SubComponentSlug string `json:"sub_component_slug" yaml:"sub_component_slug"`
+	// PrometheusMonitors is the configuration for the Prometheus monitor
+	PrometheusMonitor *PrometheusMonitor `json:"prometheus_monitor" yaml:"prometheus_monitor"`
+	// HTTPMonitor is the configuration for the HTTP monitor
+	HTTPMonitor *HTTPMonitor `json:"http_monitor,omitempty" yaml:"http_monitor,omitempty"`
+}
+
+type PrometheusMonitor struct {
+	// PrometheusLocation is either:
+	// - A URL (for e2e and local development), e.g., "http://localhost:9090"
+	// - A cluster name (when --kubeconfig-dir is provided), e.g., "app.ci"
+	//   The cluster name must correspond to a kubeconfig file in the kubeconfig directory.
+	//   When using a cluster name, the Prometheus route will be discovered automatically via OpenShift Routes.
+	PrometheusLocation string `json:"prometheus_location" yaml:"prometheus_location"`
+	// Queries is the list of Prometheus queries to perform
+	Queries []PrometheusQuery `json:"queries" yaml:"queries"`
+}
+
+type PrometheusQuery struct {
+	// Query is the Prometheus query to perform
+	Query string `json:"query" yaml:"query"`
+	// FailureQuery is the Prometheus query that runs when the Query returns no results
+	// It will provide a more information as to the reason for the resulting Outage
+	FailureQuery string `json:"failure_query" yaml:"failure_query"`
+}
+
+type HTTPMonitor struct {
+	// URL is the URL to probe
+	URL string `json:"url" yaml:"url"`
+	// Code is the expected HTTP status code
+	Code int `json:"code" yaml:"code"`
+	// RetryAfter is the duration to wait before retrying the probe only when the status code is not as expected
+	RetryAfter string `json:"retry_after" yaml:"retry_after"`
 }

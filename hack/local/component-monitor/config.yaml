@@ -1,0 +1,28 @@
+frequency: 20s
+components:
+  - component_slug: "prow"
+    sub_component_slug: "deck"
+    http_monitor:
+      url: "https://prow.ci.openshift.org/"
+      code: 200
+      retry_after: 5s
+  - component_slug: "mocked"
+    sub_component_slug: "frontend"
+    http_monitor:
+      url: "http://localhost:8081/health"
+      code: 200
+      retry_after: 5s
+  - component_slug: "mocked"
+    sub_component_slug: "api-success-rate"
+    prometheus_monitor:
+      prometheus_location: "http://localhost:9090"
+      queries:
+        - query: "success_rate >= 0.9"
+          failure_query: "success_rate"
+  - component_slug: "mocked"
+    sub_component_slug: "data-load"
+    prometheus_monitor:
+      prometheus_location: "http://localhost:9090"
+      queries:
+        - query: "data_load_failure == 0"
+          failure_query: "data_load_failure"

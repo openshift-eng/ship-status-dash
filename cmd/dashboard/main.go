@@ -87,7 +87,7 @@ func setupLogger() *logrus.Logger {
 	return log
 }
 
-func loadConfig(log *logrus.Logger, configPath string) *types.Config {
+func loadAndValidateConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
@@ -98,12 +98,20 @@ func loadConfig(log *logrus.Logger, configPath string) *types.Config {
 		}).Fatal("Failed to read config file")
 	}
 
-	var config types.Config
+	var config types.DashboardConfig
 	if err := yaml.Unmarshal(configFile, &config); err != nil {
 		log.WithFields(logrus.Fields{
 			"config_path": configPath,
 			"error":       err,
 		}).Fatal("Failed to parse config file")
+	}
+
+	for _, component := range config.Components {
+		if len(component.Owners) == 0 {
+			log.WithFields(logrus.Fields{
+				"component": component.Name,
+			}).Fatal("Component must have at least one owner")
+		}
 	}
 
 	// We need to compute and store all the slugs to match by them later
@@ -141,7 +149,7 @@ func getHMACSecret(log *logrus.Logger, path string) []byte {
 	return []byte(strings.TrimSpace(string(secret)))
 }
 
-func extractRoverGroups(config *types.Config) []string {
+func extractRoverGroups(config *types.DashboardConfig) []string {
 	groupSet := sets.NewString()
 	for _, component := range config.Components {
 		for _, owner := range component.Owners {
@@ -154,7 +162,7 @@ func extractRoverGroups(config *types.Config) []string {
 	return groupSet.List()
 }
 
-func loadGroupMembership(log *logrus.Logger, config *types.Config, kubeconfigPath string) *auth.GroupMembershipCache {
+func loadGroupMembership(log *logrus.Logger, config *types.DashboardConfig, kubeconfigPath string) *auth.GroupMembershipCache {
 	groupNames := extractRoverGroups(config)
 	if len(groupNames) == 0 {
 		log.Info("No rover_groups configured, skipping group membership loading")
@@ -179,7 +187,7 @@ func main() {
 		log.WithField("error", err).Fatal("Invalid command-line options")
 	}
 
-	config := loadConfig(log, opts.ConfigPath)
+	config := loadAndValidateConfig(log, opts.ConfigPath)
 	db := connectDatabase(log, opts.DatabaseDSN)
 	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
 	groupCache := loadGroupMembership(log, config, opts.KubeconfigPath)

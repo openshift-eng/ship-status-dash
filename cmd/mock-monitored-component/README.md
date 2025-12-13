@@ -49,19 +49,24 @@ Exposes Prometheus metrics in the standard Prometheus format. This endpoint can 
 
 The following metrics are exposed:
 
-1. **`success_rate`** (Gauge) - A simple gauge without labels
+1. **`mock_monitored_component_initialized`** (Gauge) - Initialization indicator
+   - Always set to 1.0 when the component is running
+   - Used by e2e tests to verify that Prometheus has successfully discovered and scraped the component's metrics
+   - Default value: 1.0
+
+2. **`success_rate`** (Gauge) - A simple gauge without labels
    - Used for testing **Scalar** results when queried with `scalar()`
    - Returns **Vector** on instant queries
    - Returns **Matrix** on range queries
    - Default value: 1.0
 
-2. **`data_load_failure`** (GaugeVec) - A gauge with labels
+3. **`data_load_failure`** (GaugeVec) - A gauge with labels
    - Label: `component`
    - Used for testing **Vector** results (multiple time series with labels)
    - Returns **Matrix** on range queries
    - Default: `data_load_failure{component="api"} 0.0`
 
-3. **`request_count`** (Gauge) - A gauge for range queries
+4. **`request_count`** (Gauge) - A gauge for range queries
    - Used for testing **Matrix** results (time series over a range)
    - Returns **Vector** on instant queries
    - Default value: 0.0
@@ -191,3 +196,4 @@ request_count[5m]
 success_rate[1m]
 data_load_failure{component="api"}[10m]
 ```
+

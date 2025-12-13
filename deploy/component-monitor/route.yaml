@@ -2,7 +2,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: component-monitor
-  namespace: component-monitor
+  namespace: ship-status
   labels:
     app: component-monitor
 spec:

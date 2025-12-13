@@ -1,12 +1,9 @@
-.PHONY: build e2e test local-dev lint npm build-dashboard build-frontend
+.PHONY: build e2e test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend
 
 build: build-frontend build-dashboard
 
 local-e2e:
 	@./test/e2e/scripts/local-e2e.sh
-
-local-dev:
-	@./hack/local/local-dev.sh $(DSN)
 
 test:
 	@echo "Running unit tests..."

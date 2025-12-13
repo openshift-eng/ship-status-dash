@@ -19,12 +19,12 @@ const (
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
 	repo   OutageRepository
-	config *types.Config
+	config *types.DashboardConfig
 	logger *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.Config, logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
 		repo:   NewGORMOutageRepository(db),
 		config: config,
@@ -34,7 +34,7 @@ func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.Config, logge
 
 // Process processes a component monitor report request.
 // All components and sub-components are assumed to be valid (validated in the API layer).
-func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorReportRequest, validateOutage func(*types.Outage) (string, bool)) error {
+func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorReportRequest) error {
 	logger := p.logger.WithFields(logrus.Fields{
 		"component_monitor": req.ComponentMonitor,
 		"status_count":      len(req.Statuses),
@@ -132,7 +132,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
 				}
 
-				if message, valid := validateOutage(&outage); !valid {
+				if message, valid := outage.Validate(); !valid {
 					return fmt.Errorf("validation failed: %s", message)
 				}
 

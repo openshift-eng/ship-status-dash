@@ -1,0 +1,59 @@
+components:
+  - name: Prow
+    description: Backbone of the CI system
+    ship_team: TestPlatform
+    slack_channel: "#test-channel"
+    sub_components:
+      - name: Tide
+        description: Merges PRs
+        requires_confirmation: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: false
+      - name: Deck
+        description: The frontend for Prow
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: developer
+  - name: Build Farm
+    description: Where the CI jobs are run
+    ship_team: DPTP
+    slack_channel: "#ops-testplatform"
+    sub_components:
+      - name: Build01
+        description: AWS build farm cluster
+      - name: Build02
+        description: GCP build farm cluster
+    owners:
+      - user: other-developer
+  # The Sippy component is used during the component monitor e2e tests
+  - name: Sippy
+    description: CI private investigator
+    ship_team: TRT
+    slack_channel: "#trt-alert"
+    sub_components:
+      - name: Sippy
+        description: CI private investigator
+        monitoring:
+          frequency: 30s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
+      - name: api
+        description: API success rate
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
+      - name: data-load
+        description: Data load
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
+    owners:
+      - service_account: e2e-component-monitor

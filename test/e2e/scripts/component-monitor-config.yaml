@@ -1,0 +1,26 @@
+frequency: 10s
+components:
+  - component_slug: "sippy"
+    sub_component_slug: "sippy"
+    http_monitor:
+      url: "${TEST_MOCK_MONITORED_COMPONENT_URL}/health"
+      code: 200
+      retry_after: 2s
+  - component_slug: "sippy"
+    sub_component_slug: "api"
+    prometheus_monitor:
+      prometheus_location: "${TEST_PROMETHEUS_URL}"
+      queries:
+        - query: "success_rate >= 0.9"
+          failure_query: "success_rate"
+  - component_slug: "sippy"
+    sub_component_slug: "data-load"
+    prometheus_monitor:
+      prometheus_location: "${TEST_PROMETHEUS_URL}"
+      queries:
+        - query: "data_load_failure{component=\"api\"} < 1"
+          failure_query: "data_load_failure{component=\"api\"}"
+        - query: "data_load_failure{component=\"db\"} < 1"
+          failure_query: "data_load_failure{component=\"db\"}"
+        - query: "data_load_failure{component=\"cache\"} < 1"
+          failure_query: "data_load_failure{component=\"cache\"}"

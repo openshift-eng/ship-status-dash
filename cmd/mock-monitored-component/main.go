@@ -15,6 +15,7 @@ var (
 	activeStatusCode int
 	statusMutex      sync.RWMutex
 
+	initializedMetric     prometheus.Gauge
 	successRateMetric     prometheus.Gauge
 	dataLoadFailureMetric *prometheus.GaugeVec
 	requestCountMetric    prometheus.Gauge
@@ -22,6 +23,12 @@ var (
 
 func init() {
 	activeStatusCode = 200
+
+	initializedMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "mock_monitored_component_initialized",
+		Help: "Indicates that the mock-monitored-component has initialized (always 1)",
+	})
+	initializedMetric.Set(1.0)
 
 	successRateMetric = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "success_rate",
@@ -44,7 +51,7 @@ func init() {
 	})
 	requestCountMetric.Set(0.0)
 
-	prometheus.MustRegister(successRateMetric, dataLoadFailureMetric, requestCountMetric)
+	prometheus.MustRegister(initializedMetric, successRateMetric, dataLoadFailureMetric, requestCountMetric)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

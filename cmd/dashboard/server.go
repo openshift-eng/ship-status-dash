@@ -19,7 +19,7 @@ import (
 // Server represents the HTTP server for the dashboard API.
 type Server struct {
 	logger     *logrus.Logger
-	config     *types.Config
+	config     *types.DashboardConfig
 	handlers   *Handlers
 	db         *gorm.DB
 	corsOrigin string
@@ -29,7 +29,7 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance
-func NewServer(config *types.Config, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache) *Server {
+func NewServer(config *types.DashboardConfig, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache) *Server {
 	return &Server{
 		logger:     logger,
 		config:     config,
