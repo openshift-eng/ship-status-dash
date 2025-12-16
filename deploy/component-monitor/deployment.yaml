@@ -21,7 +21,7 @@ spec:
           command: ["./component-monitor"]
           args:
             - "--config-path=/etc/config/config.yaml"
-            - "--name=component-monitor"
+            - "--name=app-ci-component-monitor"
             - "--dashboard-url=https://ship-status.ci.openshift.org"
             - "--kubeconfig-dir=/etc/kubeconfig"
           volumeMounts:

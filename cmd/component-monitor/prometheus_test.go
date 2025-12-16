@@ -4,12 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 
+	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 )
 
@@ -162,7 +162,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 				},
 			},
 			kubeconfigDir: tmpDir,
-			expectedErr:   errors.New("kubeconfig file not found for cluster nonexistent at"),
+			expectedErr:   errors.New("kubeconfig file not found for cluster nonexistent"),
 		},
 		{
 			name: "valid - component without PrometheusMonitor",
@@ -198,29 +198,217 @@ func TestValidatePrometheusLocations(t *testing.T) {
 			},
 			kubeconfigDir: tmpDir,
 		},
+		{
+			name: "invalid - unparseable duration",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: "http://localhost:9090",
+						Queries: []types.PrometheusQuery{
+							{
+								Query:    "up",
+								Duration: "invalid-duration",
+							},
+						},
+					},
+				},
+			},
+			expectedErr: errors.New(`failed to parse duration for component test/test, query "up": time: invalid duration "invalid-duration"`),
+		},
+		{
+			name: "invalid - unparseable step",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: "http://localhost:9090",
+						Queries: []types.PrometheusQuery{
+							{
+								Query:    "up",
+								Duration: "1h",
+								Step:     "invalid-step",
+							},
+						},
+					},
+				},
+			},
+			expectedErr: errors.New(`failed to parse step for component test/test, query "up": time: invalid duration "invalid-step"`),
+		},
+		{
+			name: "invalid - step set without duration",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: "http://localhost:9090",
+						Queries: []types.PrometheusQuery{
+							{
+								Query: "up",
+								Step:  "15s",
+							},
+						},
+					},
+				},
+			},
+			expectedErr: errors.New(`step cannot be set without duration for component test/test, query "up"`),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validatePrometheusLocations(tt.components, tt.kubeconfigDir)
-			diff := cmp.Diff(tt.expectedErr, err, cmp.Comparer(func(a, b error) bool {
-				if a == nil && b == nil {
-					return true
-				}
-				if a == nil || b == nil {
-					return false
-				}
-				aErr := a.Error()
-				bErr := b.Error()
-				// For errors that contain paths (like kubeconfig file not found),
-				// check if one error message contains the other (symmetric check)
-				if strings.Contains(aErr, "at") && strings.Contains(bErr, "at") {
-					return strings.Contains(aErr, bErr) || strings.Contains(bErr, aErr)
-				}
-				return aErr == bErr
-			}))
+			err := validatePrometheusConfiguration(tt.components, tt.kubeconfigDir)
+			diff := cmp.Diff(tt.expectedErr, err, testhelper.EquateErrorMessage)
 			if diff != "" {
-				t.Errorf("validatePrometheusLocations() error mismatch (-want +got):\n%s", diff)
+				t.Errorf("validatePrometheusConfiguration() error mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestSetDefaultStepValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *types.ComponentMonitorConfig
+		expected *types.ComponentMonitorConfig
+	}{
+		{
+			name: "sets default step for short duration",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "30m",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "30m",
+									Step:     "15s",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "sets default step for long duration",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "24h",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "24h",
+									Step:     "5m45.6s",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "does not modify query with existing step",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "1h",
+									Step:     "30s",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Duration: "1h",
+									Step:     "30s",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "does not modify query without duration",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query: "up",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query: "up",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setDefaultStepValues(tt.config)
+			diff := cmp.Diff(tt.expected, tt.config)
+			if diff != "" {
+				t.Errorf("setDefaultStepValues() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

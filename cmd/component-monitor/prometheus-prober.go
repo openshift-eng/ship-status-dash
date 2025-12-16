@@ -30,7 +30,7 @@ func NewPrometheusProber(componentSlug string, subComponentSlug string, client p
 func (p *PrometheusProber) Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error) {
 	var successful, failed []types.PrometheusQuery
 	for _, prometheusQuery := range p.prometheusQueries {
-		result, err := p.runQuery(ctx, prometheusQuery.Query)
+		result, err := p.runQuery(ctx, prometheusQuery.Query, prometheusQuery.Duration, prometheusQuery.Step)
 		if err != nil {
 			errChan <- err
 		}
@@ -44,8 +44,33 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- types.Compo
 	results <- p.createStatusFromQueryResults(ctx, successful, failed)
 }
 
-func (p *PrometheusProber) runQuery(ctx context.Context, query string) (model.Value, error) {
-	result, warnings, err := p.client.Query(ctx, query, time.Now())
+func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration string, step string) (model.Value, error) {
+	now := time.Now()
+	var result model.Value
+	var warnings promclientv1.Warnings
+	var err error
+
+	if duration != "" {
+		dur, parseErr := time.ParseDuration(duration)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+
+		stepDuration, parseErr := time.ParseDuration(step)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+
+		r := promclientv1.Range{
+			Start: now.Add(-dur),
+			End:   now,
+			Step:  stepDuration,
+		}
+		result, warnings, err = p.client.QueryRange(ctx, query, r)
+	} else {
+		result, warnings, err = p.client.Query(ctx, query, now)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +107,7 @@ func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, suc
 		for _, query := range failedQueries {
 			resultStr := "query returned unsuccessful"
 			if query.FailureQuery != "" {
-				result, err := p.runQuery(ctx, query.FailureQuery)
+				result, err := p.runQuery(ctx, query.FailureQuery, "", "")
 				if err != nil {
 					//This is best-effort to improve the outage description, if we have an error here, we just move on without
 					logrus.WithError(err).WithField("failure_query", query.FailureQuery).Errorf("Failed to run failure query, will proceed without extra info in outage description")

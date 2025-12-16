@@ -13,6 +13,8 @@ components:
       queries:
         - query: "success_rate >= 0.9"
           failure_query: "success_rate"
+          duration: "30s"
+          step: "15s"
   - component_slug: "sippy"
     sub_component_slug: "data-load"
     prometheus_monitor:
