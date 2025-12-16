@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	routeclientset "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	promapi "github.com/prometheus/client_golang/api"
@@ -17,8 +18,32 @@ import (
 	"ship-status-dash/pkg/types"
 )
 
-// validatePrometheusLocations validates prometheusLocation values based on whether kubeconfigDir is provided:
-func validatePrometheusLocations(components []types.MonitoringComponent, kubeconfigDir string) error {
+// setDefaultStepValues sets default step values for Prometheus queries that have a duration but no step specified.
+func setDefaultStepValues(config *types.ComponentMonitorConfig) {
+	for i := range config.Components {
+		if config.Components[i].PrometheusMonitor == nil {
+			continue
+		}
+		for j := range config.Components[i].PrometheusMonitor.Queries {
+			query := &config.Components[i].PrometheusMonitor.Queries[j]
+			if query.Duration != "" && query.Step == "" {
+				dur, err := time.ParseDuration(query.Duration)
+				if err != nil {
+					continue
+				}
+				if dur <= 1*time.Hour {
+					query.Step = "15s"
+				} else {
+					stepDuration := dur / 250
+					query.Step = stepDuration.String()
+				}
+			}
+		}
+	}
+}
+
+// validatePrometheusConfiguration validates Prometheus monitor configuration including locations, durations, and steps.
+func validatePrometheusConfiguration(components []types.MonitoringComponent, kubeconfigDir string) error {
 	for _, component := range components {
 		if component.PrometheusMonitor == nil {
 			continue
@@ -38,12 +63,28 @@ func validatePrometheusLocations(components []types.MonitoringComponent, kubecon
 			// Check if kubeconfig file exists for this cluster
 			kubeconfigPath := filepath.Join(kubeconfigDir, location+".config")
 			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-				return fmt.Errorf("kubeconfig file not found for cluster %s at %s", location, kubeconfigPath)
+				return fmt.Errorf("kubeconfig file not found for cluster %s", location)
 			}
 		} else {
 			// When kubeconfig-dir is not provided, location must be a URL
 			if !isURL(location) {
 				return fmt.Errorf("prometheusLocation must be a URL when --kubeconfig-dir is not set, got: %s", location)
+			}
+		}
+
+		for _, query := range component.PrometheusMonitor.Queries {
+			if query.Step != "" && query.Duration == "" {
+				return fmt.Errorf("step cannot be set without duration for component %s/%s, query %q", component.ComponentSlug, component.SubComponentSlug, query.Query)
+			}
+			if query.Duration != "" {
+				if _, err := time.ParseDuration(query.Duration); err != nil {
+					return fmt.Errorf("failed to parse duration for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err)
+				}
+			}
+			if query.Step != "" {
+				if _, err := time.ParseDuration(query.Step); err != nil {
+					return fmt.Errorf("failed to parse step for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err)
+				}
 			}
 		}
 	}

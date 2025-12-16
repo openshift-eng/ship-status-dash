@@ -90,9 +90,17 @@ type PrometheusMonitor struct {
 type PrometheusQuery struct {
 	// Query is the Prometheus query to perform
 	Query string `json:"query" yaml:"query"`
-	// FailureQuery is the Prometheus query that runs when the Query returns no results
-	// It will provide a more information as to the reason for the resulting Outage
+	// FailureQuery is the, optional, Prometheus (instant) query that runs when the Query returns no results
+	// It can be used to provide more information as to the reason for the resulting Outage
 	FailureQuery string `json:"failure_query" yaml:"failure_query"`
+	// Duration is the duration to use in a range query.
+	// If provided, the query will be a range query.
+	// If not provided, the query will be an instant query.
+	Duration string `json:"duration" yaml:"duration"`
+	// Step is the resolution (time between data points) for range queries.
+	// If not provided, a default step will be calculated based on the duration.
+	// If provided, it must be a valid duration string (e.g., "15s", "1m").
+	Step string `json:"step" yaml:"step"`
 }
 
 type HTTPMonitor struct {

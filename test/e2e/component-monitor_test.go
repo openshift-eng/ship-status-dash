@@ -147,8 +147,8 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 		// Set up all healthy metrics once at the beginning
 		setHealthyMetricsAndWait(t, mockMonitoredComponentURL)
 
-		// Test sub-component with single query (api)
-		t.Run("SingleQuery", func(t *testing.T) {
+		// Test sub-component with single range query (api)
+		t.Run("SingleRangeQuery", func(t *testing.T) {
 			subComponentName := "api"
 			expectedReasons := []types.Reason{
 				{
@@ -163,7 +163,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			waitAndVerifySuccessfulProbe(t, client, componentName, subComponentName)
 
 			unhealthyMetrics := map[string]interface{}{
-				"success_rate": 0.5, // < 0.9, so query returns empty vector (fails)
+				"success_rate": 0.5, // < 0.9, so range query returns empty matrix (fails)
 			}
 			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
 			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
@@ -173,7 +173,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 		})
 
 		// Test sub-component with multiple queries (data-load)
-		t.Run("MultipleQueries", func(t *testing.T) {
+		t.Run("MultipleInstantQueries", func(t *testing.T) {
 			subComponentName := "data-load"
 			expectedReasons := []types.Reason{
 				{
@@ -215,8 +215,8 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 
 func setHealthyMetricsAndWait(t *testing.T, mockMonitoredComponentURL string) {
 	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
-	// Wait for Prometheus to scrape and component-monitor to process healthy state
-	time.Sleep(10 * time.Second) // Wait for Prometheus to scrape
+	// Wait for Prometheus to scrape and accumulate enough data for range queries (30s range needs at least 30s of data)
+	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape and accumulate data (need at least 30s for range query)
 	time.Sleep(15 * time.Second) // Wait for component-monitor to detect healthy state
 }
 
@@ -233,7 +233,8 @@ func waitAndVerifySuccessfulProbe(t *testing.T, client *TestHTTPClient, componen
 
 func setUnhealthyMetricsAndWait(t *testing.T, mockMonitoredComponentURL string, metrics map[string]interface{}) {
 	updateMetrics(t, mockMonitoredComponentURL, metrics)
-	time.Sleep(10 * time.Second) // Wait for Prometheus to scrape
+	// Wait for Prometheus to scrape enough data points for the range query (30s range needs at least 30s of data)
+	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape (need at least 30s for range query)
 	time.Sleep(15 * time.Second) // Wait for component-monitor to detect failure
 }
 
@@ -294,7 +295,8 @@ func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedReason
 
 func restoreHealthyMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponentURL string, client *TestHTTPClient, componentName, subComponentName string, outageId uint) {
 	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
-	time.Sleep(10 * time.Second) // Wait for Prometheus to scrape
+	// Wait for Prometheus to scrape enough data points for the range query (30s range needs at least 30s of data)
+	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape (need at least 30s for range query)
 	time.Sleep(15 * time.Second) // Wait for component-monitor to detect recovery
 
 	verifyNoActiveOutages(t, client, componentName, subComponentName, "after Prometheus queries recover")

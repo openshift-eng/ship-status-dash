@@ -101,6 +101,8 @@ func loadAndValidateComponentsAndFrequency(log *logrus.Logger, configPath string
 		}
 	}
 
+	setDefaultStepValues(&config)
+
 	log.Infof("Loaded configuration with %d components", len(config.Components))
 	return config.Components, frequency
 }
@@ -120,8 +122,8 @@ func main() {
 
 	components, frequency := loadAndValidateComponentsAndFrequency(log, opts.ConfigPath)
 
-	// Validate prometheusLocation configuration
-	if err := validatePrometheusLocations(components, opts.KubeconfigDir); err != nil {
+	// Validate Prometheus configuration
+	if err := validatePrometheusConfiguration(components, opts.KubeconfigDir); err != nil {
 		log.WithField("error", err).Fatal("Invalid prometheus location configuration")
 	}
 
