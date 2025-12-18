@@ -3,3 +3,6 @@ users:
     password_hash: $2a$10$lXg2vtUXEE4.kh/Ww.I66eu3dPGFXRf0B4vmR3FfTStKtNN.L3orC
     email: developer@example.com
 
+service_accounts:
+  - name: system:serviceaccount:ship-status:component-monitor
+    token: component-monitor-sa-token

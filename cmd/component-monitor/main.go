@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,7 +24,8 @@ type Options struct {
 	// KubeconfigDir is the path to a directory containing kubeconfig files for different clusters.
 	// Each file should be named after the cluster with a ".config" suffix (e.g., "app.ci.config" for the app.ci cluster).
 	// When this is set, prometheusLocation in the config must be a cluster name, not a URL.
-	KubeconfigDir string
+	KubeconfigDir       string
+	ReportAuthTokenFile string
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -31,9 +33,10 @@ func NewOptions() *Options {
 	opts := &Options{}
 
 	flag.StringVar(&opts.ConfigPath, "config-path", "", "Path to component monitor config file")
-	flag.StringVar(&opts.DashboardURL, "dashboard-url", "http://localhost:8080", "Dashboard API base URL")
+	flag.StringVar(&opts.DashboardURL, "dashboard-url", "", "Dashboard API base URL")
 	flag.StringVar(&opts.Name, "name", "", "Name of the component monitor")
 	flag.StringVar(&opts.KubeconfigDir, "kubeconfig-dir", "", "Path to directory containing kubeconfig files for different clusters (each file named after the cluster)")
+	flag.StringVar(&opts.ReportAuthTokenFile, "report-auth-token-file", "", "Path to file containing bearer token for authenticating report requests")
 	flag.Parse()
 
 	return opts
@@ -51,6 +54,14 @@ func (o *Options) Validate() error {
 
 	if o.Name == "" {
 		return errors.New("name is required (use --name flag)")
+	}
+
+	if o.ReportAuthTokenFile == "" {
+		return errors.New("report auth token file is required (use --report-auth-token-file flag)")
+	}
+
+	if _, err := os.Stat(o.ReportAuthTokenFile); os.IsNotExist(err) {
+		return errors.New("report auth token file does not exist: " + o.ReportAuthTokenFile)
 	}
 
 	return nil
@@ -171,6 +182,15 @@ func main() {
 		return
 	}
 
-	orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, log)
+	tokenBytes, err := os.ReadFile(opts.ReportAuthTokenFile)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"token_file": opts.ReportAuthTokenFile,
+			"error":      err,
+		}).Fatal("Failed to read report auth token file")
+	}
+	reportAuthToken := strings.TrimSpace(string(tokenBytes))
+
+	orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, reportAuthToken, log)
 	orchestrator.Run(ctx)
 }

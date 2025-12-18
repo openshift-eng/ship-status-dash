@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	prowComponentName = "Prow"
+	prowComponentName       = "Prow"
+	componentMonitorSAToken = "component-monitor-sa-token"
 )
 
 func TestE2E_Dashboard(t *testing.T) {
@@ -977,7 +978,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1032,7 +1033,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1077,7 +1078,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 
 			// First report
-			resp1, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp1, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp1.Body.Close()
 			assert.Equal(t, http.StatusOK, resp1.StatusCode)
@@ -1094,7 +1095,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			require.NotNil(t, firstOutage, "First outage should be created")
 
 			// Second report with same Reason.Type
-			resp2, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp2.Body.Close()
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -1136,7 +1137,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			downBytes, err := json.Marshal(downReport)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", downBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", downBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp.Body.Close()
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -1175,7 +1176,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			healthyBytes, err := json.Marshal(healthyReport)
 			require.NoError(t, err)
 
-			resp2, err := client.PostUnprotected("/api/component-monitor/report", healthyBytes)
+			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp2.Body.Close()
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -1218,7 +1219,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			downBytes, err := json.Marshal(downReport)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", downBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", downBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp.Body.Close()
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -1256,7 +1257,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			healthyBytes, err := json.Marshal(healthyReport)
 			require.NoError(t, err)
 
-			resp2, err := client.PostUnprotected("/api/component-monitor/report", healthyBytes)
+			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp2.Body.Close()
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -1299,7 +1300,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1333,7 +1334,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1379,7 +1380,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1433,7 +1434,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1454,7 +1455,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
-			resp, err := client.PostUnprotected("/api/component-monitor/report", payloadBytes)
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
@@ -1464,6 +1465,106 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
 			require.NoError(t, err)
 			assert.Contains(t, errorResponse["error"], "statuses cannot be empty")
+		})
+
+		t.Run("POST report with invalid token returns 401", func(t *testing.T) {
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			invalidToken := "invalid-token"
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, invalidToken)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		})
+
+		t.Run("POST report with service account not an owner returns 400", func(t *testing.T) {
+			// Build Farm component does not have the service account as an owner
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Build Farm"),
+						SubComponentSlug: utils.Slugify("Build01"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"build01\"} == 0",
+								Results: "No healthy instances found",
+							},
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "Invalid request", errorResponse["error"])
+		})
+
+		t.Run("POST report with wrong component monitor instance returns 400", func(t *testing.T) {
+			// Prow/Deck is configured for "app-ci-component-monitor", not "wrong-monitor"
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "wrong-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    "prometheus",
+								Check:   "up{job=\"deck\"} == 0",
+								Results: "No healthy instances found",
+							},
+						},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			var errorResponse map[string]string
+			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "Invalid request", errorResponse["error"])
 		})
 	}
 }

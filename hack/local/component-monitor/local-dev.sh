@@ -25,6 +25,9 @@ cleanup() {
     podman stop "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
     podman rm "$PROMETHEUS_CONTAINER_NAME" > /dev/null 2>&1 || true
   fi
+  if [ ! -z "$COMPONENT_MONITOR_TOKEN" ] && [ -f "$COMPONENT_MONITOR_TOKEN" ]; then
+    rm -f "$COMPONENT_MONITOR_TOKEN"
+  fi
   echo "Cleanup complete"
   exit 0
 }
@@ -80,11 +83,15 @@ for i in {1..60}; do
   sleep 1
 done
 
+echo "Creating component-monitor auth token file..."
+COMPONENT_MONITOR_TOKEN=$(mktemp)
+echo "component-monitor-sa-token" > "$COMPONENT_MONITOR_TOKEN"
+
 echo "Starting component-monitor..."
 COMPONENT_MONITOR_LOG="/tmp/component-monitor-local-dev.log"
 echo "Component-monitor logs: $COMPONENT_MONITOR_LOG"
 
-go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml --dashboard-url http://localhost:8080 --name local-component-monitor 2>&1 | tee "$COMPONENT_MONITOR_LOG" &
+go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml --dashboard-url http://localhost:8443 --name local-component-monitor --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" 2>&1 | tee "$COMPONENT_MONITOR_LOG" &
 COMPONENT_MONITOR_PID=$!
 
 echo ""

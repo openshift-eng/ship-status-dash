@@ -30,8 +30,23 @@ type User struct {
 	Email        string `yaml:"email"`
 }
 
+type ServiceAccount struct {
+	Name  string `yaml:"name"`
+	Token string `yaml:"token"`
+}
+
 type Config struct {
-	Users []User `yaml:"users"`
+	Users           []User           `yaml:"users"`
+	ServiceAccounts []ServiceAccount `yaml:"service_accounts"`
+}
+
+func authenticateServiceAccount(token string, config *Config) (*ServiceAccount, error) {
+	for _, sa := range config.ServiceAccounts {
+		if sa.Token == token {
+			return &sa, nil
+		}
+	}
+	return nil, fmt.Errorf("invalid service account token")
 }
 
 type Options struct {
@@ -147,33 +162,6 @@ func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.Hm
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
 
-		logger.WithFields(logrus.Fields{
-			"method":         req.Method,
-			"url":            req.URL.String(),
-			"host":           req.Host,
-			"content_type":   req.Header.Get("Content-Type"),
-			"content_length": req.ContentLength,
-		}).Info("Director: Preparing request for upstream")
-
-		username, password, ok := req.BasicAuth()
-		if !ok {
-			logger.Warn("Director: No BasicAuth credentials found")
-			return
-		}
-
-		user, err := authenticateUser(username, password, config)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"username": username,
-				"error":    err,
-			}).Warn("Director: Authentication failed")
-			return
-		}
-
-		req.Header.Set("X-Forwarded-User", user.Username)
-		req.Header.Set("X-Forwarded-Email", user.Email)
-		req.Header.Set("X-Forwarded-Access-Token", "mock-access-token-"+user.Username)
-
 		if req.Header.Get("Date") == "" {
 			req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 		}
@@ -183,12 +171,6 @@ func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.Hm
 		}
 
 		hmacAuth.SignRequest(req)
-
-		logger.WithFields(logrus.Fields{
-			"username":       user.Username,
-			"forwarded_user": req.Header.Get("X-Forwarded-User"),
-			"has_signature":  req.Header.Get(auth.GAPSignatureHeader) != "",
-		}).Info("Director: Request prepared with auth headers")
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -204,10 +186,9 @@ func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.Hm
 		if r.Method == http.MethodOptions {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
-				origin = "http://localhost:3000" // Default for local dev
+				origin = "http://localhost:3000"
 			}
 			requestLogger.WithField("origin", origin).Info("Handling OPTIONS preflight request")
-			// Cannot use "*" with credentials: 'include', must use specific origin
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Forwarded-User, GAP-Signature")
@@ -216,32 +197,60 @@ func basicAuthHandler(config *Config, upstreamURL *url.URL, hmacAuth hmacauth.Hm
 			return
 		}
 
-		username, password, ok := r.BasicAuth()
-		if !ok {
-			requestLogger.Warn("No BasicAuth credentials provided")
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+		var forwardedUser string
+		var forwardedEmail string
 
-		user, err := authenticateUser(username, password, config)
-		if err != nil {
+		// Authenticate request
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			sa, err := authenticateServiceAccount(token, config)
+			if err != nil {
+				requestLogger.WithField("error", err).Warn("Service account authentication failed")
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			forwardedUser = sa.Name
+			forwardedEmail = ""
 			requestLogger.WithFields(logrus.Fields{
-				"username": username,
-				"error":    err,
-			}).Warn("Authentication failed")
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
+				"auth_type":       "bearer",
+				"service_account": sa.Name,
+			}).Info("Service account authenticated")
+		} else {
+			username, password, ok := r.BasicAuth()
+			if !ok {
+				requestLogger.Warn("No BasicAuth credentials provided")
+				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			user, err := authenticateUser(username, password, config)
+			if err != nil {
+				requestLogger.WithFields(logrus.Fields{
+					"username": username,
+					"error":    err,
+				}).Warn("Authentication failed")
+				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			forwardedUser = user.Username
+			forwardedEmail = user.Email
+			requestLogger.WithFields(logrus.Fields{
+				"username":  user.Username,
+				"auth_type": "basic",
+			}).Info("User authenticated")
 		}
 
-		requestLogger.WithFields(logrus.Fields{
-			"username":       user.Username,
-			"content_type":   r.Header.Get("Content-Type"),
-			"content_length": r.ContentLength,
-		}).Info("Authentication successful, forwarding to upstream")
+		// Set forwarded headers for upstream
+		r.Header.Set("X-Forwarded-User", forwardedUser)
+		if forwardedEmail != "" {
+			r.Header.Set("X-Forwarded-Email", forwardedEmail)
+		}
+		r.Header.Set("X-Forwarded-Access-Token", "mock-access-token-"+forwardedUser)
 
-		// Create a response writer wrapper to log the response
 		responseLogger := &responseLoggingWriter{
 			ResponseWriter: w,
 			logger:         requestLogger,

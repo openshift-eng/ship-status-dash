@@ -20,7 +20,7 @@ components:
           auto_resolve: true
     owners:
       - user: "developer"
-      - service_account: "app-ci-component-monitor"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"
   - name: "Build Farm"
     description: "Where the CI jobs are run"
     ship_team: "DPTP"
@@ -56,7 +56,7 @@ components:
           auto_resolve: true
     owners:
       - user: "developer"
-      - service_account: "app-ci-component-monitor"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"
   - name: "Sippy"
     description: "CI Private Investigator"
     ship_team: "TRT"
@@ -78,7 +78,7 @@ components:
           auto_resolve: true
     owners:
       - user: "someone-else"
-      - service_account: "dpcr-component-monitor"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"
   - name: "Mocked"
     description: "Mocked component for component-monitor local development"
     ship_team: "TRT"
@@ -107,4 +107,4 @@ components:
           auto_resolve: true
     owners:
       - user: "developer"
-      - service_account: "local-component-monitor"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"

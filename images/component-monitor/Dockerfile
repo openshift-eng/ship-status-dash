@@ -16,7 +16,7 @@ ENV GOARCH=${GOARCH}
 COPY . .
 
 RUN dnf install -y go make && \
-    go build -mod=vendor -o component-monitor ./cmd/component-monitor
+    make build-component-monitor
 
 FROM registry.access.redhat.com/ubi9/ubi:latest AS base
 

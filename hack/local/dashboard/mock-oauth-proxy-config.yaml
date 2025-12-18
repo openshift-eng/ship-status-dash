@@ -2,4 +2,6 @@ users:
   - username: developer
     password_hash: $2a$10$8ONMLVwxFyFPUqynwd27ou0FE2nmASZdszVHemUNl/EJjTeavhY4y
     email: developer@example.com
-
+service_accounts:
+  - name: system:serviceaccount:ship-status:component-monitor
+    token: component-monitor-sa-token

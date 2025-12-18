@@ -199,6 +199,9 @@ ${KUBECTL_CMD} -n ship-status-e2e create secret generic hmac-secret --from-liter
 
 ${KUBECTL_CMD} -n ship-status-e2e create secret generic regcred --from-file=.dockerconfigjson=${DOCKERCONFIGJSON} --type=kubernetes.io/dockerconfigjson --dry-run=client -o yaml | ${KUBECTL_CMD} apply -f -
 
+echo "Creating hardcoded service account token secret..."
+${KUBECTL_CMD} -n ship-status-e2e create secret generic component-monitor-token --from-literal=token="component-monitor-sa-token" --dry-run=client -o yaml | ${KUBECTL_CMD} apply -f -
+
 echo "Running database migration..."
 cat << END | ${KUBECTL_CMD} apply -f -
 apiVersion: batch/v1
@@ -529,11 +532,15 @@ spec:
     command: ["./component-monitor"]
     args:
       - "--config-path=/etc/config/component-monitor-config.yaml"
-      - "--dashboard-url=http://dashboard.ship-status-e2e.svc.cluster.local:8080"
+      - "--dashboard-url=http://mock-oauth-proxy.ship-status-e2e.svc.cluster.local:8443"
       - "--name=e2e-component-monitor"
+      - "--report-auth-token-file=/etc/token/token"
     volumeMounts:
     - mountPath: /etc/config
       name: component-monitor-config
+      readOnly: true
+    - mountPath: /etc/token
+      name: component-monitor-token
       readOnly: true
   imagePullSecrets:
   - name: regcred
@@ -541,6 +548,9 @@ spec:
     - name: component-monitor-config
       configMap:
         name: component-monitor-config
+    - name: component-monitor-token
+      secret:
+        secretName: component-monitor-token
   securityContext:
     privileged: false
     allowPrivilegeEscalation: false

@@ -4,8 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -76,8 +78,11 @@ func (m *mockOutageRepository) Transaction(fn func(OutageRepository) error) erro
 
 func testConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 	subComponent := types.SubComponent{
-		Slug:                 "test-subcomponent",
-		Monitoring:           types.Monitoring{AutoResolve: autoResolve},
+		Slug: "test-subcomponent",
+		Monitoring: types.Monitoring{
+			AutoResolve:      autoResolve,
+			ComponentMonitor: "test-monitor",
+		},
 		RequiresConfirmation: requiresConfirmation,
 	}
 	return &types.DashboardConfig{
@@ -85,6 +90,9 @@ func testConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 			{
 				Slug:          "test-component",
 				Subcomponents: []types.SubComponent{subComponent},
+				Owners: []types.Owner{
+					{ServiceAccount: "test-sa"},
+				},
 			},
 		},
 	}
@@ -99,8 +107,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 		config                   *types.DashboardConfig
 		request                  *types.ComponentMonitorReportRequest
 		setupRepo                func(*mockOutageRepository)
-		wantErr                  bool
-		errContains              string
+		wantErr                  error
 		verifyOutageExpectations func(*testing.T, *mockOutageRepository)
 	}{
 		{
@@ -289,9 +296,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo:   func(*mockOutageRepository) {},
-			wantErr:     true,
-			errContains: "component not found: nonexistent",
+			setupRepo: func(*mockOutageRepository) {},
+			wantErr:   errors.New("component not found: nonexistent"),
 		},
 		{
 			name:   "sub-component not found returns error",
@@ -307,9 +313,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo:   func(*mockOutageRepository) {},
-			wantErr:     true,
-			errContains: "sub-component not found: test-component/nonexistent",
+			setupRepo: func(*mockOutageRepository) {},
+			wantErr:   errors.New("sub-component not found: test-component/nonexistent"),
 		},
 		{
 			name:   "get active outages error returns error",
@@ -328,8 +333,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			setupRepo: func(repo *mockOutageRepository) {
 				repo.activeOutagesError = errors.New("database error")
 			},
-			wantErr:     true,
-			errContains: "database error",
+			wantErr: errors.New("database error"),
 		},
 		{
 			name:   "save outage error continues processing",
@@ -456,17 +460,173 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 
 			err := processor.Process(tt.request)
 
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-			} else {
-				assert.NoError(t, err)
+			if diff := cmp.Diff(tt.wantErr, err, testhelper.EquateErrorMessage); diff != "" {
+				t.Errorf("Process() error mismatch (-want +got):\n%s", diff)
 			}
 
 			if tt.verifyOutageExpectations != nil {
 				tt.verifyOutageExpectations(t, repo)
+			}
+		})
+	}
+}
+
+func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	tests := []struct {
+		name           string
+		config         *types.DashboardConfig
+		request        *types.ComponentMonitorReportRequest
+		serviceAccount string
+		wantErr        error
+	}{
+		{
+			name:   "valid request",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusHealthy,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+		},
+		{
+			name:   "component not found",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "nonexistent",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+			wantErr:        errors.New("component not found: nonexistent"),
+		},
+		{
+			name:   "service account not an owner",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "unauthorized-sa",
+			wantErr:        errors.New("service account unauthorized-sa is not an owner of component test-component"),
+		},
+		{
+			name:   "sub-component not found",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "nonexistent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+			wantErr:        errors.New("sub-component not found: test-component/nonexistent"),
+		},
+		{
+			name:   "wrong component monitor source",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "wrong-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+			wantErr:        errors.New("improper component monitor source: wrong-monitor for: test-component/test-subcomponent"),
+		},
+		{
+			name:   "multiple errors aggregated",
+			config: testConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "nonexistent",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+					},
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "nonexistent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+			wantErr:        errors.New("[component not found: nonexistent, sub-component not found: test-component/nonexistent]"),
+		},
+		{
+			name: "owner with only rover group is not service account owner",
+			config: &types.DashboardConfig{
+				Components: []*types.Component{
+					{
+						Slug: "test-component",
+						Subcomponents: []types.SubComponent{
+							{
+								Slug:       "test-subcomponent",
+								Monitoring: types.Monitoring{ComponentMonitor: "test-monitor"},
+							},
+						},
+						Owners: []types.Owner{
+							{RoverGroup: "some-rover-group"},
+						},
+					},
+				},
+			},
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+					},
+				},
+			},
+			serviceAccount: "test-sa",
+			wantErr:        errors.New("service account test-sa is not an owner of component test-component"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			processor := &ComponentMonitorReportProcessor{
+				repo:   new(mockOutageRepository),
+				config: tt.config,
+				logger: logger,
+			}
+
+			err := processor.ValidateRequest(tt.request, tt.serviceAccount)
+
+			if diff := cmp.Diff(tt.wantErr, err, testhelper.EquateErrorMessage); diff != "" {
+				t.Errorf("validateRequest() error mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

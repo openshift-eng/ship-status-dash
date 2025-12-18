@@ -8,6 +8,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"ship-status-dash/pkg/types"
 )
@@ -32,6 +33,48 @@ func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.DashboardConf
 	}
 }
 
+func (p *ComponentMonitorReportProcessor) ValidateRequest(req *types.ComponentMonitorReportRequest, serviceAccount string) error {
+	var errors []error
+	for _, status := range req.Statuses {
+		// Component must exist
+		component := p.config.GetComponentBySlug(status.ComponentSlug)
+		if component == nil {
+			errors = append(errors, fmt.Errorf("component not found: %s", status.ComponentSlug))
+			continue
+		}
+
+		// Service account must be an owner of the component
+		serviceAccountIsOwner := false
+		for _, owner := range component.Owners {
+			if owner.ServiceAccount == "" {
+				continue
+			}
+			if owner.ServiceAccount == serviceAccount {
+				serviceAccountIsOwner = true
+				break
+			}
+		}
+		if !serviceAccountIsOwner {
+			errors = append(errors, fmt.Errorf("service account %s is not an owner of component %s", serviceAccount, status.ComponentSlug))
+			continue
+		}
+
+		// Sub-component must exist
+		subComponent := component.GetSubComponentBySlug(status.SubComponentSlug)
+		if subComponent == nil {
+			errors = append(errors, fmt.Errorf("sub-component not found: %s/%s", status.ComponentSlug, status.SubComponentSlug))
+			continue
+		}
+
+		// This component-monitor instance must be configured for the sub-component
+		if subComponent.Monitoring.ComponentMonitor != req.ComponentMonitor {
+			errors = append(errors, fmt.Errorf("improper component monitor source: %s for: %s/%s", req.ComponentMonitor, status.ComponentSlug, status.SubComponentSlug))
+		}
+	}
+
+	return apimachineryerrors.NewAggregate(errors)
+}
+
 // Process processes a component monitor report request.
 // All components and sub-components are assumed to be valid (validated in the API layer).
 func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorReportRequest) error {
@@ -49,18 +92,17 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 
 		component := p.config.GetComponentBySlug(status.ComponentSlug)
 		if component == nil {
-			statusLogger.Error("Component not found in processor config")
+			// This should never happen, since the request validation should have caught this.
 			return fmt.Errorf("component not found: %s", status.ComponentSlug)
 		}
 
 		subComponent := component.GetSubComponentBySlug(status.SubComponentSlug)
 		if subComponent == nil {
-			statusLogger.Error("Sub-component not found in processor config")
+			// This should never happen, since the request validation should have caught this.
 			return fmt.Errorf("sub-component not found: %s/%s", status.ComponentSlug, status.SubComponentSlug)
 		}
 
 		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
-		// It will result in multiple outages if users (or other systems) have created outages for this component/sub-component.
 		activeOutages, err := p.repo.GetActiveOutagesFromSource(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
 		if err != nil {
 			statusLogger.WithField("error", err).Error("Failed to query active outages")
@@ -79,10 +121,9 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			}
 
 			now := time.Now()
-			resolvedBy := req.ComponentMonitor
 			for i := range activeOutages {
 				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
-				activeOutages[i].ResolvedBy = &resolvedBy
+				activeOutages[i].ResolvedBy = &req.ComponentMonitor
 				if err := p.repo.SaveOutage(&activeOutages[i]); err != nil {
 					statusLogger.WithFields(logrus.Fields{
 						"outage_id": activeOutages[i].ID,

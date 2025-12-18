@@ -25,13 +25,13 @@ type ProbeOrchestrator struct {
 }
 
 // NewProbeOrchestrator creates a new ProbeOrchestrator.
-func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardURL string, componentMonitorName string, log *logrus.Logger) *ProbeOrchestrator {
+func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardURL string, componentMonitorName string, authToken string, log *logrus.Logger) *ProbeOrchestrator {
 	return &ProbeOrchestrator{
 		probers:      probers,
 		results:      make(chan types.ComponentMonitorReportComponentStatus),
 		errChan:      make(chan error),
 		frequency:    frequency,
-		reportClient: NewReportClient(dashboardURL, componentMonitorName),
+		reportClient: NewReportClient(dashboardURL, componentMonitorName, authToken),
 		log:          log,
 	}
 }

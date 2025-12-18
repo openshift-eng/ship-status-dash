@@ -45,7 +45,9 @@ type SubComponent struct {
 
 // Monitoring defines how this sub-component is automatically monitored.
 type Monitoring struct {
-	Frequency        string `json:"frequency" yaml:"frequency"`
+	Frequency string `json:"frequency" yaml:"frequency"`
+	// ComponentMonitor is the name of the component monitor that will be used to report the status of this sub-component
+	// It must match the component monitor name in the report request
 	ComponentMonitor string `json:"component_monitor" yaml:"component_monitor"`
 	// AutoResolve is a flag that indicates whether outages discovered by the component-monitor should be automatically resolved when
 	// the component-monitor reports the sub-component is healthy.
@@ -54,7 +56,9 @@ type Monitoring struct {
 
 // Owner represents ownership information for a component, either via Rover group or service account.
 type Owner struct {
-	RoverGroup     string `json:"rover_group,omitempty" yaml:"rover_group,omitempty"`
+	RoverGroup string `json:"rover_group,omitempty" yaml:"rover_group,omitempty"`
+	// ServiceAccount owners are used for the component-monitor.
+	// In order to report the status of a sub-component, the service account must be an owner of the component.
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
 	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
 	User string `json:"user,omitempty" yaml:"user,omitempty"`
