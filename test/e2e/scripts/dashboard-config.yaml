@@ -20,6 +20,7 @@ components:
           auto_resolve: true
     owners:
       - user: developer
+      - service_account: system:serviceaccount:ship-status:component-monitor
   - name: Build Farm
     description: Where the CI jobs are run
     ship_team: DPTP
@@ -56,4 +57,5 @@ components:
           component_monitor: "e2e-component-monitor"
           auto_resolve: true
     owners:
-      - service_account: e2e-component-monitor
+      - user: developer
+      - service_account: system:serviceaccount:ship-status:component-monitor

@@ -285,8 +285,12 @@ export TEST_PROMETHEUS_URL="http://localhost:$PROMETHEUS_PORT"
 COMPONENT_MONITOR_CONFIG=$(mktemp)
 envsubst < test/e2e/scripts/component-monitor-config.yaml > "$COMPONENT_MONITOR_CONFIG"
 
+# Create temporary token file for component-monitor authentication
+COMPONENT_MONITOR_TOKEN=$(mktemp)
+echo "component-monitor-sa-token" > "$COMPONENT_MONITOR_TOKEN"
+
 # Start component-monitor in background
-go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "http://localhost:$DASHBOARD_PORT" --name "e2e-component-monitor" 2> "$COMPONENT_MONITOR_LOG" &
+go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "$TEST_MOCK_OAUTH_PROXY_URL" --name "e2e-component-monitor" --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" 2> "$COMPONENT_MONITOR_LOG" &
 COMPONENT_MONITOR_PID=$!
 
 echo "Running e2e tests..."
@@ -304,6 +308,10 @@ if [ $TEST_EXIT_CODE -ne 0 ]; then
   echo ""
   echo "=== Dashboard Server Log (last 50 lines) ==="
   tail -n 50 "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
+
+  echo ""
+  echo "=== Mock OAuth Proxy Log (last 50 lines) ==="
+  tail -n 50 "$PROXY_LOG" 2>/dev/null || echo "No log found"
   echo ""
 fi
 if [ $TEST_EXIT_CODE -eq 0 ]; then

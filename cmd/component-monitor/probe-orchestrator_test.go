@@ -82,6 +82,7 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
+				"",
 				log,
 			)
 
@@ -158,6 +159,7 @@ func TestProbeOrchestrator_drainChannels(t *testing.T) {
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
+				"",
 				log,
 			)
 
@@ -223,6 +225,7 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 				tt.frequency,
 				"http://test",
 				"test-monitor",
+				"",
 				log,
 			)
 

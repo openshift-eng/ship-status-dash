@@ -132,7 +132,7 @@ func (s *Server) setupRoutes() http.Handler {
 			path:      "/api/component-monitor/report",
 			method:    http.MethodPost,
 			handler:   s.handlers.PostComponentMonitorReportJSON,
-			protected: false, //TODO: change to true when component-monitor auth is implemented
+			protected: true,
 		},
 	}
 

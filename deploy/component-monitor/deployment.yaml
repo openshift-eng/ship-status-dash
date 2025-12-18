@@ -17,13 +17,14 @@ spec:
     spec:
       containers:
         - name: component-monitor
-          image: quay-proxy.ci.openshift.org/openshift/ci:ship-status-dash_component-monitor_latest
+          image: quay.io/sgoeddel/component-monitor:latest
           command: ["./component-monitor"]
           args:
             - "--config-path=/etc/config/config.yaml"
             - "--name=app-ci-component-monitor"
-            - "--dashboard-url=https://ship-status.ci.openshift.org"
+            - "--dashboard-url=https://protected.ship-status.ci.openshift.org"
             - "--kubeconfig-dir=/etc/kubeconfig"
+            - "--report-auth-token-file=/etc/kubeconfig/sa.component-monitor.app.ci.token.txt"
           volumeMounts:
             - name: config
               mountPath: /etc/config

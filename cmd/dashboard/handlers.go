@@ -50,6 +50,7 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 
 // IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
 // A user is authorized if they match any Owner.User field, or if they are a member of at least one rover_group configured for the component.
+// Note that this does not check ServiceAccounts.
 func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
 	for _, owner := range component.Owners {
 		// Check if user matches the Owner.User field (for development/testing)
@@ -645,7 +646,17 @@ func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http
 		}
 	}
 
-	err := h.monitorReportProcessor.Process(&req)
+	user, authenticated := GetUserFromContext(r.Context())
+	if !authenticated {
+		respondWithError(w, http.StatusUnauthorized, "no Authenticated ServiceAccount user found")
+		return
+	}
+	err := h.monitorReportProcessor.ValidateRequest(&req, user)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	err = h.monitorReportProcessor.Process(&req)
 	if err != nil {
 		h.logger.WithField("error", err).Error("Failed to process component monitor report")
 		respondWithError(w, http.StatusInternalServerError, "Failed to process report")

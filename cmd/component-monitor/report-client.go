@@ -14,14 +14,16 @@ import (
 type ReportClient struct {
 	baseURL    string
 	name       string
+	authToken  string
 	httpClient *http.Client
 }
 
 // NewReportClient creates a new ReportClient with the specified base URL.
-func NewReportClient(baseURL, name string) *ReportClient {
+func NewReportClient(baseURL, name, authToken string) *ReportClient {
 	return &ReportClient{
-		baseURL: baseURL,
-		name:    name,
+		baseURL:   baseURL,
+		name:      name,
+		authToken: authToken,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -48,6 +50,7 @@ func (c *ReportClient) SendReport(results []types.ComponentMonitorReportComponen
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.authToken)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

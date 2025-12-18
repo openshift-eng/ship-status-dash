@@ -3,6 +3,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 var allHealthyMetrics = map[string]interface{}{
@@ -74,25 +76,8 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		resp.Body.Close()
 
-		// Wait for component-monitor to detect the failure
-		// Frequency is 10s, retry_after is 2s, so wait at least 15s to be safe
-		time.Sleep(15 * time.Second)
-
-		// Verify outage was created
-		outages = getOutages(t, client, "Sippy", "Sippy")
-		activeOutages = filterActiveOutages(outages)
-		require.NotEmpty(t, activeOutages, "Should have an active outage after service goes down")
-
-		var foundOutage *types.Outage
-		for i := range activeOutages {
-			if activeOutages[i].DiscoveredFrom == "component-monitor" &&
-				activeOutages[i].ComponentName == utils.Slugify("Sippy") &&
-				activeOutages[i].SubComponentName == utils.Slugify("Sippy") {
-				foundOutage = &activeOutages[i]
-				break
-			}
-		}
-		require.NotNil(t, foundOutage, "Should find outage created by component-monitor")
+		// Wait for component-monitor to detect the failure and create an outage
+		foundOutage := waitForOutageCreated(t, client, "Sippy", "Sippy", 30*time.Second)
 
 		// Verify outage properties
 		assert.Equal(t, string(types.SeverityDown), string(foundOutage.Severity))
@@ -109,14 +94,8 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		resp.Body.Close()
 
-		// Wait for component-monitor to detect the recovery
-		// Frequency is 10s, retry_after is 2s, so wait at least 15s to be safe
-		time.Sleep(15 * time.Second)
-
-		// Verify outage was resolved
-		outages = getOutages(t, client, "Sippy", "Sippy")
-		activeOutages = filterActiveOutages(outages)
-		assert.Empty(t, activeOutages, "Should have no active outages after service recovers")
+		// Wait for component-monitor to detect the recovery and resolve the outage
+		waitForOutageResolved(t, client, "Sippy", "Sippy", foundOutage.ID, 30*time.Second)
 
 		// Verify the previously found outage is now resolved
 		// Get all outages and find the resolved one
@@ -145,7 +124,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 		cleanupActiveOutages(t, client, componentName, "data-load")
 
 		// Set up all healthy metrics once at the beginning
-		setHealthyMetricsAndWait(t, mockMonitoredComponentURL)
+		updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
 
 		// Test sub-component with single range query (api)
 		t.Run("SingleRangeQuery", func(t *testing.T) {
@@ -165,8 +144,8 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			unhealthyMetrics := map[string]interface{}{
 				"success_rate": 0.5, // < 0.9, so range query returns empty matrix (fails)
 			}
-			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
-			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
+			setUnhealthyMetrics(t, mockMonitoredComponentURL, unhealthyMetrics)
+			foundOutage := waitForOutageCreated(t, client, componentName, subComponentName, 60*time.Second)
 			verifyOutageReasons(t, foundOutage, expectedReasons)
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
@@ -204,20 +183,13 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 					"cache": 1.0, // >= 1, so query returns empty vector (fails)
 				},
 			}
-			setUnhealthyMetricsAndWait(t, mockMonitoredComponentURL, unhealthyMetrics)
-			foundOutage := verifyOutageCreated(t, client, componentName, subComponentName)
+			setUnhealthyMetrics(t, mockMonitoredComponentURL, unhealthyMetrics)
+			foundOutage := waitForOutageCreated(t, client, componentName, subComponentName, 30*time.Second)
 			verifyOutageReasons(t, foundOutage, expectedReasons)
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})
 	}
-}
-
-func setHealthyMetricsAndWait(t *testing.T, mockMonitoredComponentURL string) {
-	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
-	// Wait for Prometheus to scrape and accumulate enough data for range queries (30s range needs at least 30s of data)
-	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape and accumulate data (need at least 30s for range query)
-	time.Sleep(15 * time.Second) // Wait for component-monitor to detect healthy state
 }
 
 func verifyNoActiveOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName, context string) {
@@ -227,37 +199,12 @@ func verifyNoActiveOutages(t *testing.T, client *TestHTTPClient, componentName, 
 }
 
 func waitAndVerifySuccessfulProbe(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
-	// Already waited in the test, just verify
-	verifyNoActiveOutages(t, client, componentName, subComponentName, "when Prometheus queries succeed")
+	// Wait for component-monitor to detect healthy state (no active outages)
+	waitForNoActiveOutages(t, client, componentName, subComponentName, 30*time.Second)
 }
 
-func setUnhealthyMetricsAndWait(t *testing.T, mockMonitoredComponentURL string, metrics map[string]interface{}) {
+func setUnhealthyMetrics(t *testing.T, mockMonitoredComponentURL string, metrics map[string]interface{}) {
 	updateMetrics(t, mockMonitoredComponentURL, metrics)
-	// Wait for Prometheus to scrape enough data points for the range query (30s range needs at least 30s of data)
-	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape (need at least 30s for range query)
-	time.Sleep(15 * time.Second) // Wait for component-monitor to detect failure
-}
-
-func verifyOutageCreated(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) *types.Outage {
-	outages := getOutages(t, client, componentName, subComponentName)
-	activeOutages := filterActiveOutages(outages)
-	require.NotEmpty(t, activeOutages, "Should have an active outage after Prometheus queries fail")
-
-	var foundOutage *types.Outage
-	for i := range activeOutages {
-		if activeOutages[i].DiscoveredFrom == "component-monitor" &&
-			activeOutages[i].ComponentName == utils.Slugify(componentName) &&
-			activeOutages[i].SubComponentName == utils.Slugify(subComponentName) {
-			foundOutage = &activeOutages[i]
-			break
-		}
-	}
-	require.NotNil(t, foundOutage, "Should find outage created by component-monitor")
-
-	assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
-	assert.Equal(t, "e2e-component-monitor", foundOutage.CreatedBy)
-
-	return foundOutage
 }
 
 func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedReasons []types.Reason) {
@@ -295,9 +242,8 @@ func verifyOutageReasons(t *testing.T, foundOutage *types.Outage, expectedReason
 
 func restoreHealthyMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponentURL string, client *TestHTTPClient, componentName, subComponentName string, outageId uint) {
 	updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
-	// Wait for Prometheus to scrape enough data points for the range query (30s range needs at least 30s of data)
-	time.Sleep(40 * time.Second) // Wait for Prometheus to scrape (need at least 30s for range query)
-	time.Sleep(15 * time.Second) // Wait for component-monitor to detect recovery
+	// Wait for component-monitor to detect recovery and resolve the outage
+	waitForOutageResolved(t, client, componentName, subComponentName, outageId, 30*time.Second)
 
 	verifyNoActiveOutages(t, client, componentName, subComponentName, "after Prometheus queries recover")
 
@@ -351,5 +297,73 @@ func cleanupActiveOutages(t *testing.T, client *TestHTTPClient, componentName, s
 	// Wait a bit after cleanup to ensure the deletion is processed
 	if len(activeOutages) > 0 {
 		time.Sleep(2 * time.Second)
+	}
+}
+
+// waitForOutageCreated polls the outage API until an outage is created by component-monitor or times out.
+func waitForOutageCreated(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, timeout time.Duration) *types.Outage {
+	var foundOutage *types.Outage
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		outages := getOutages(t, client, componentName, subComponentName)
+		activeOutages := filterActiveOutages(outages)
+
+		for i := range activeOutages {
+			if activeOutages[i].DiscoveredFrom == "component-monitor" &&
+				activeOutages[i].ComponentName == utils.Slugify(componentName) &&
+				activeOutages[i].SubComponentName == utils.Slugify(subComponentName) {
+				foundOutage = &activeOutages[i]
+				assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
+				assert.Equal(t, "e2e-component-monitor", foundOutage.CreatedBy)
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		t.Fatalf("Timeout waiting for component-monitor to create outage for %s/%s: %v", componentName, subComponentName, err)
+	}
+	return foundOutage
+}
+
+// waitForOutageResolved polls the outage API until the specified outage is resolved or times out.
+func waitForOutageResolved(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, outageId uint, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		outages := getOutages(t, client, componentName, subComponentName)
+		for i := range outages {
+			if outages[i].ID == outageId {
+				if outages[i].EndTime.Valid {
+					return true, nil // Outage is resolved
+				}
+				break
+			}
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		t.Fatalf("Timeout waiting for outage %d to be resolved for %s/%s: %v", outageId, componentName, subComponentName, err)
+	}
+}
+
+// waitForNoActiveOutages polls the outage API until there are no active outages or times out.
+func waitForNoActiveOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		outages := getOutages(t, client, componentName, subComponentName)
+		activeOutages := filterActiveOutages(outages)
+		return len(activeOutages) == 0, nil
+	})
+
+	if err != nil {
+		t.Fatalf("Timeout waiting for no active outages for %s/%s: %v", componentName, subComponentName, err)
 	}
 }

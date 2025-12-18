@@ -41,6 +41,10 @@ cleanup() {
   PROXY_PORT=${PROXY_PORT:-8443}
   DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
   
+  if [ ! -z "$TAIL_PID" ]; then
+    kill "$TAIL_PID" 2>/dev/null || true
+  fi
+  
   kill_processes_on_port "$PROXY_PORT"
   kill_processes_on_port "$DASHBOARD_PORT"
   
@@ -85,14 +89,16 @@ DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-local-dev.log"
 echo "Dashboard server logs: $DASHBOARD_LOG"
 
-go run ./cmd/dashboard --config hack/local/dashboard/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" 2>&1 &
-tail "$DASHBOARD_LOG"
+go run ./cmd/dashboard --config hack/local/dashboard/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" > "$DASHBOARD_LOG" 2>&1 &
 DASHBOARD_PID=$!
 
 echo "Waiting for dashboard server to be ready..."
 for i in {1..30}; do
   if curl -s http://localhost:$DASHBOARD_PORT/health > /dev/null 2>&1; then
     echo "Dashboard server is ready on port $DASHBOARD_PORT"
+    echo "Starting to tail dashboard logs..."
+    tail -f "$DASHBOARD_LOG" &
+    TAIL_PID=$!
     break
   fi
   if [ $i -eq 30 ]; then
@@ -110,7 +116,7 @@ PROXY_PID=""
 PROXY_LOG="/tmp/mock-oauth-proxy-local-dev.log"
 echo "Mock oauth-proxy logs: $PROXY_LOG"
 
-go run ./cmd/mock-oauth-proxy --config hack/local/dashboard/mock-oauth-proxy-config.yaml --port $PROXY_PORT --upstream "http://localhost:$DASHBOARD_PORT" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$PROXY_LOG" &
+go run ./cmd/mock-oauth-proxy --config hack/local/dashboard/mock-oauth-proxy-config.yaml --port $PROXY_PORT --upstream "http://localhost:$DASHBOARD_PORT" --hmac-secret-file "$HMAC_SECRET_FILE" > "$PROXY_LOG" 2>&1 &
 PROXY_PID=$!
 
 echo "Waiting for mock oauth-proxy to be ready..."
@@ -152,15 +158,14 @@ echo "    REACT_APP_PUBLIC_DOMAIN=http://localhost:$DASHBOARD_PORT"
 echo "    REACT_APP_PROTECTED_DOMAIN=http://localhost:$PROXY_PORT"
 echo ""
 echo "Log files:"
-echo "  Dashboard server: $DASHBOARD_LOG"
+echo "  Dashboard server: $DASHBOARD_LOG (tailing in terminal)"
 echo "  Mock oauth-proxy: $PROXY_LOG"
 echo ""
-echo "Dashboard server logs will be displayed in the terminal"
 echo "Press Ctrl+C to stop"
+echo ""
 
 set +e
-while kill -0 $DASHBOARD_PID 2>/dev/null || kill -0 $PROXY_PID 2>/dev/null; do
+while kill -0 $DASHBOARD_PID 2>/dev/null && kill -0 $PROXY_PID 2>/dev/null; do
   sleep 1
 done
-exit 0
 

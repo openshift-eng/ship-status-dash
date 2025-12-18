@@ -1,4 +1,4 @@
-.PHONY: build e2e test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend
+.PHONY: build e2e test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor
 
 build: build-frontend build-dashboard
 
@@ -25,3 +25,6 @@ build-frontend: npm
 	REACT_APP_PUBLIC_DOMAIN=https://ship-status.ci.openshift.org \
 	REACT_APP_PROTECTED_DOMAIN=https://protected.ship-status.ci.openshift.org \
 	npm run build
+
+build-component-monitor:
+	@go build -mod=vendor -o component-monitor ./cmd/component-monitor
