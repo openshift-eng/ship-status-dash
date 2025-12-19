@@ -12,6 +12,7 @@ import (
 	promapi "github.com/prometheus/client_golang/api"
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -44,52 +45,80 @@ func setDefaultStepValues(config *types.ComponentMonitorConfig) {
 
 // validatePrometheusConfiguration validates Prometheus monitor configuration including locations, durations, and steps.
 func validatePrometheusConfiguration(components []types.MonitoringComponent, kubeconfigDir string) error {
+	var errors []error
 	for _, component := range components {
 		if component.PrometheusMonitor == nil {
 			continue
 		}
 
 		location := component.PrometheusMonitor.PrometheusLocation
-		if location == "" {
-			return fmt.Errorf("prometheusLocation is required for component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+
+		// Validate that either url or cluster is set, but not both
+		hasURL := location.URL != ""
+		hasCluster := location.Cluster != ""
+		hasNamespace := location.Namespace != ""
+		hasRoute := location.Route != ""
+
+		if !hasURL && !hasCluster {
+			errors = append(errors, fmt.Errorf("prometheusLocation must have either url or cluster set for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
+			continue
 		}
 
-		if kubeconfigDir != "" {
-			// When kubeconfig-dir is provided, location must be a cluster name (not a URL)
-			if isURL(location) {
-				return fmt.Errorf("prometheusLocation must be a cluster name (not a URL) when --kubeconfig-dir is set, got: %s", location)
-			}
+		if hasURL && hasCluster {
+			errors = append(errors, fmt.Errorf("prometheusLocation cannot have both url and cluster set for component %s/%s (they are mutually exclusive)", component.ComponentSlug, component.SubComponentSlug))
+		}
 
-			// Check if kubeconfig file exists for this cluster
-			kubeconfigPath := filepath.Join(kubeconfigDir, location+".config")
-			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-				return fmt.Errorf("kubeconfig file not found for cluster %s", location)
+		if hasURL && (hasNamespace || hasRoute) {
+			errors = append(errors, fmt.Errorf("prometheusLocation cannot have url set together with namespace or route for component %s/%s (url is mutually exclusive with cluster/namespace/route)", component.ComponentSlug, component.SubComponentSlug))
+		}
+
+		// If cluster is set, namespace and route must also be set
+		if hasCluster {
+			if !hasNamespace {
+				errors = append(errors, fmt.Errorf("prometheusLocation namespace is required when cluster is set for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
 			}
-		} else {
-			// When kubeconfig-dir is not provided, location must be a URL
-			if !isURL(location) {
-				return fmt.Errorf("prometheusLocation must be a URL when --kubeconfig-dir is not set, got: %s", location)
+			if !hasRoute {
+				errors = append(errors, fmt.Errorf("prometheusLocation route is required when cluster is set for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
+			}
+			// kubeconfigDir is required when using cluster-based location
+			if kubeconfigDir == "" {
+				errors = append(errors, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s", location.Cluster))
+			}
+		}
+
+		// Validate URL format if provided
+		if hasURL {
+			if !isURL(location.URL) {
+				errors = append(errors, fmt.Errorf("prometheusLocation url must be a valid URL for component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, location.URL))
+			}
+		}
+
+		// If kubeconfigDir is provided and cluster is set, check if kubeconfig file exists
+		if hasCluster && kubeconfigDir != "" {
+			kubeconfigPath := filepath.Join(kubeconfigDir, location.Cluster+".config")
+			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
+				errors = append(errors, fmt.Errorf("kubeconfig file not found for cluster %s", location.Cluster))
 			}
 		}
 
 		for _, query := range component.PrometheusMonitor.Queries {
 			if query.Step != "" && query.Duration == "" {
-				return fmt.Errorf("step cannot be set without duration for component %s/%s, query %q", component.ComponentSlug, component.SubComponentSlug, query.Query)
+				errors = append(errors, fmt.Errorf("step cannot be set without duration for component %s/%s, query %q", component.ComponentSlug, component.SubComponentSlug, query.Query))
 			}
 			if query.Duration != "" {
 				if _, err := time.ParseDuration(query.Duration); err != nil {
-					return fmt.Errorf("failed to parse duration for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err)
+					errors = append(errors, fmt.Errorf("failed to parse duration for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err))
 				}
 			}
 			if query.Step != "" {
 				if _, err := time.ParseDuration(query.Step); err != nil {
-					return fmt.Errorf("failed to parse step for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err)
+					errors = append(errors, fmt.Errorf("failed to parse step for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err))
 				}
 			}
 		}
 	}
 
-	return nil
+	return apimachineryerrors.NewAggregate(errors)
 }
 
 // isURL checks if a string is a valid URL
@@ -98,86 +127,88 @@ func isURL(s string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
+// getPrometheusLocationKey returns a unique key for a PrometheusLocation.
+// For URL-based locations, returns the URL. For cluster-based locations, returns "cluster/namespace/route".
+func getPrometheusLocationKey(loc types.PrometheusLocation) string {
+	if loc.URL != "" {
+		return loc.URL
+	}
+	return fmt.Sprintf("%s/%s/%s", loc.Cluster, loc.Namespace, loc.Route)
+}
+
 func createPrometheusClients(components []types.MonitoringComponent, kubeconfigDir string) (map[string]promclientv1.API, error) {
 	clients := make(map[string]promclientv1.API)
 
-	// Collect unique Prometheus locations
-	prometheusLocations := make(map[string]bool)
+	// Collect unique Prometheus locations with their keys
+	locationMap := make(map[string]types.PrometheusLocation)
 	for _, component := range components {
-		if component.PrometheusMonitor != nil {
-			prometheusLocations[component.PrometheusMonitor.PrometheusLocation] = true
+		if component.PrometheusMonitor == nil {
+			continue
 		}
+		loc := component.PrometheusMonitor.PrometheusLocation
+		key := getPrometheusLocationKey(loc)
+		locationMap[key] = loc
 	}
 
-	if len(prometheusLocations) == 0 {
+	if len(locationMap) == 0 {
 		return clients, nil
 	}
 
-	// If kubeconfigDir is not set, treat all locations as URLs (for e2e/local dev)
-	if kubeconfigDir == "" {
-		for location := range prometheusLocations {
-			if !isURL(location) {
-				return nil, fmt.Errorf("prometheusLocation must be a URL when --kubeconfig-dir is not set, got: %s", location)
+	for key, loc := range locationMap {
+		if loc.Cluster != "" {
+			if kubeconfigDir == "" {
+				return nil, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s", loc.Cluster)
 			}
+
+			kubeconfigPath := filepath.Join(kubeconfigDir, loc.Cluster+".config")
+			config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build config from kubeconfig for cluster %s: %w", loc.Cluster, err)
+			}
+
+			roundTripper, err := rest.TransportFor(config)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create transport for cluster %s: %w", loc.Cluster, err)
+			}
+
+			prometheusURL, err := discoverPrometheusRoute(config, loc.Namespace, loc.Route)
+			if err != nil {
+				return nil, fmt.Errorf("failed to discover Prometheus route for cluster %s: %w", loc.Cluster, err)
+			}
+
 			client, err := promapi.NewClient(promapi.Config{
-				Address: location,
+				Address:      prometheusURL,
+				RoundTripper: roundTripper,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("failed to create prometheus client for %s: %w", location, err)
+				return nil, fmt.Errorf("failed to create prometheus client for cluster %s: %w", loc.Cluster, err)
 			}
 			prometheusAPI := promclientv1.NewAPI(client)
-			clients[location] = prometheusAPI
+			clients[key] = prometheusAPI
+		} else if loc.URL != "" {
+			client, err := promapi.NewClient(promapi.Config{
+				Address: loc.URL,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create prometheus client for %s: %w", loc.URL, err)
+			}
+			prometheusAPI := promclientv1.NewAPI(client)
+			clients[key] = prometheusAPI
 		}
-		return clients, nil
-	}
-
-	// kubeconfigDir is set - treat locations as cluster names
-	clusterConfigs := make(map[string]*rest.Config)
-	for location := range prometheusLocations {
-		kubeconfigPath := filepath.Join(kubeconfigDir, location+".config")
-		config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build config from kubeconfig for cluster %s: %w", location, err)
-		}
-		clusterConfigs[location] = config
-	}
-
-	for location := range prometheusLocations {
-		config := clusterConfigs[location]
-
-		roundTripper, err := rest.TransportFor(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create transport for cluster %s: %w", location, err)
-		}
-
-		prometheusURL, err := discoverPrometheusRoute(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to discover Prometheus route for cluster %s: %w", location, err)
-		}
-
-		client, err := promapi.NewClient(promapi.Config{
-			Address:      prometheusURL,
-			RoundTripper: roundTripper,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create prometheus client for cluster %s: %w", location, err)
-		}
-		prometheusAPI := promclientv1.NewAPI(client)
-		clients[location] = prometheusAPI
 	}
 
 	return clients, nil
 }
 
-func discoverPrometheusRoute(config *rest.Config) (string, error) {
+func discoverPrometheusRoute(config *rest.Config, namespace, routeName string) (string, error) {
 	routeClient, err := routeclientset.NewForConfig(config)
 	if err != nil {
 		return "", fmt.Errorf("failed to create route client: %w", err)
 	}
 
-	route, err := routeClient.Routes("openshift-monitoring").Get(context.Background(), "prometheus-k8s", metav1.GetOptions{})
+	route, err := routeClient.Routes(namespace).Get(context.Background(), routeName, metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to get prometheus route: %w", err)
+		return "", fmt.Errorf("failed to get prometheus route %s/%s: %w", namespace, routeName, err)
 	}
 
 	var addr string

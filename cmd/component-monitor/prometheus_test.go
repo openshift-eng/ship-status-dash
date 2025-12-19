@@ -85,8 +85,10 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "http://localhost:9090",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
@@ -98,8 +100,12 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "app.ci",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "app.ci",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
@@ -112,13 +118,14 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "http://localhost:9090",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
 			kubeconfigDir: tmpDir,
-			expectedErr:   errors.New("prometheusLocation must be a cluster name (not a URL) when --kubeconfig-dir is set, got: http://localhost:9090"),
 		},
 		{
 			name: "invalid - cluster name when kubeconfigDir not set",
@@ -127,12 +134,16 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "app.ci",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "app.ci",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
-			expectedErr: errors.New("prometheusLocation must be a URL when --kubeconfig-dir is not set, got: app.ci"),
+			expectedErr: errors.New("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci"),
 		},
 		{
 			name: "invalid - empty prometheusLocation",
@@ -141,13 +152,13 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "",
+						PrometheusLocation: types.PrometheusLocation{},
 						Queries:            []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
 			kubeconfigDir: tmpDir,
-			expectedErr:   errors.New("prometheusLocation is required for component test/test"),
+			expectedErr:   errors.New("prometheusLocation must have either url or cluster set for component test/test"),
 		},
 		{
 			name: "invalid - kubeconfig file not found",
@@ -156,8 +167,12 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "nonexistent",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "nonexistent",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
@@ -191,8 +206,12 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test2",
 					SubComponentSlug: "test2",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "app.ci",
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "app.ci",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
 					},
 				},
 			},
@@ -205,7 +224,9 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "http://localhost:9090",
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
 						Queries: []types.PrometheusQuery{
 							{
 								Query:    "up",
@@ -224,7 +245,9 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "http://localhost:9090",
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
 						Queries: []types.PrometheusQuery{
 							{
 								Query:    "up",
@@ -244,7 +267,9 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					ComponentSlug:    "test",
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
-						PrometheusLocation: "http://localhost:9090",
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
 						Queries: []types.PrometheusQuery{
 							{
 								Query: "up",
@@ -255,6 +280,92 @@ func TestValidatePrometheusLocations(t *testing.T) {
 				},
 			},
 			expectedErr: errors.New(`step cannot be set without duration for component test/test, query "up"`),
+		},
+		{
+			name: "invalid - url and cluster both set",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							URL:     "http://localhost:9090",
+							Cluster: "app.ci",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New("[prometheusLocation cannot have both url and cluster set for component test/test (they are mutually exclusive), prometheusLocation namespace is required when cluster is set for component test/test, prometheusLocation route is required when cluster is set for component test/test, kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci]"),
+		},
+		{
+			name: "invalid - url and namespace both set",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							URL:       "http://localhost:9090",
+							Namespace: "openshift-monitoring",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New("prometheusLocation cannot have url set together with namespace or route for component test/test (url is mutually exclusive with cluster/namespace/route)"),
+		},
+		{
+			name: "invalid - cluster set without namespace",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster: "app.ci",
+							Route:   "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			kubeconfigDir: tmpDir,
+			expectedErr:   errors.New("prometheusLocation namespace is required when cluster is set for component test/test"),
+		},
+		{
+			name: "invalid - cluster set without route",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "app.ci",
+							Namespace: "openshift-monitoring",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			kubeconfigDir: tmpDir,
+			expectedErr:   errors.New("prometheusLocation route is required when cluster is set for component test/test"),
+		},
+		{
+			name: "invalid - invalid URL format",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "not-a-url",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New("prometheusLocation url must be a valid URL for component test/test, got: not-a-url"),
 		},
 	}
 

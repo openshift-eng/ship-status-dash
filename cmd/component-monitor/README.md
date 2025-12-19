@@ -40,7 +40,10 @@ components:
       code: 200
       retry_after: 4m
     prometheus_monitor:
-      prometheus_location: "app.ci"
+      prometheus_location:
+        cluster: "app.ci"
+        namespace: "openshift-monitoring"
+        route: "thanos-querier"
       queries:
         - query: "up{job=\"deck\"} == 1"
           failure_query: "up{job=\"deck\"}"
@@ -56,22 +59,52 @@ components:
 
 ## Prometheus Location Configuration
 
-The `prometheus_location` field can be configured in two ways:
+The `prometheus_location` field is a struct that specifies how to connect to a Prometheus instance. It can be configured in two ways:
 
-**1. URL (for local development and e2e testing):**
-- Set `prometheus_location` to a URL (e.g., `http://localhost:9090`)
+### 1. URL-based (for local development and e2e testing)
+
+Use the `url` field to connect directly to Prometheus without authentication:
+
+```yaml
+prometheus_monitor:
+  prometheus_location:
+    url: "http://localhost:9090"  # Direct URL to Prometheus
+  queries:
+    - query: "up{job=\"test\"} == 1"
+```
+
+**Requirements:**
+- Only `url` field should be set (mutually exclusive with `cluster`, `namespace`, `route`)
 - Do not provide `--kubeconfig-dir` flag
 - The component-monitor connects directly to Prometheus without authentication
 
-**2. Cluster Name (for production deployments):**
-- Set `prometheus_location` to a cluster name (e.g., `app.ci`)
+### 2. Cluster-based (for production deployments)
+
+Use `cluster`, `namespace`, and `route` fields to connect via OpenShift Routes:
+
+```yaml
+prometheus_monitor:
+  prometheus_location:
+    cluster: "app.ci"                    # Cluster name (must match kubeconfig filename)
+    namespace: "openshift-monitoring"   # Namespace where the Prometheus route exists
+    route: "thanos-querier"             # Name of the OpenShift Route to Prometheus
+  queries:
+    - query: "up{job=\"deck\"} == 1"
+      duration: "5m"
+      step: "30s"
+```
+
+**Requirements:**
+- All three fields (`cluster`, `namespace`, `route`) must be set together
+- `url` field must not be set (mutually exclusive)
 - Provide `--kubeconfig-dir` flag pointing to a directory with kubeconfig files
 - Each kubeconfig file should be named after the cluster with a `.config` suffix (e.g., `app.ci.config`)
-- The component-monitor will:
-  1. Load the kubeconfig file for the specified cluster
-  2. Use the kubeconfig's authentication (bearer token, TLS certificates)
-  3. Discover the Prometheus route via OpenShift Routes API
-  4. Create an authenticated Prometheus client
+
+**How it works:**
+1. Loads the kubeconfig file for the specified cluster
+2. Uses the kubeconfig's authentication (bearer token, TLS certificates)
+3. Discovers the Prometheus route via OpenShift Routes API using the provided namespace and route name
+4. Creates an authenticated Prometheus client
 
 ## Service Account Authentication
 

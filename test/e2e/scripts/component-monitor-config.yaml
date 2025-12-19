@@ -9,7 +9,8 @@ components:
   - component_slug: "sippy"
     sub_component_slug: "api"
     prometheus_monitor:
-      prometheus_location: "${TEST_PROMETHEUS_URL}"
+      prometheus_location:
+        url: "${TEST_PROMETHEUS_URL}"
       queries:
         - query: "success_rate >= 0.9"
           failure_query: "success_rate"
@@ -18,7 +19,8 @@ components:
   - component_slug: "sippy"
     sub_component_slug: "data-load"
     prometheus_monitor:
-      prometheus_location: "${TEST_PROMETHEUS_URL}"
+      prometheus_location:
+        url: "${TEST_PROMETHEUS_URL}"
       queries:
         - query: "data_load_failure{component=\"api\"} < 1"
           failure_query: "data_load_failure{component=\"api\"}"

@@ -81,14 +81,26 @@ type MonitoringComponent struct {
 }
 
 type PrometheusMonitor struct {
-	// PrometheusLocation is either:
-	// - A URL (for e2e and local development), e.g., "http://localhost:9090"
-	// - A cluster name (when --kubeconfig-dir is provided), e.g., "app.ci"
-	//   The cluster name must correspond to a kubeconfig file in the kubeconfig directory.
-	//   When using a cluster name, the Prometheus route will be discovered automatically via OpenShift Routes.
-	PrometheusLocation string `json:"prometheus_location" yaml:"prometheus_location"`
+	PrometheusLocation PrometheusLocation `json:"prometheus_location" yaml:"prometheus_location"`
 	// Queries is the list of Prometheus queries to perform
 	Queries []PrometheusQuery `json:"queries" yaml:"queries"`
+}
+
+// PrometheusLocation specifies how to connect to a Prometheus instance.
+// Either url (for e2e/local-dev) or cluster+namespace+route (for production) must be set, but not both.
+type PrometheusLocation struct {
+	// URL is the direct URL to Prometheus (for e2e and local development).
+	// Mutually exclusive with cluster, namespace, and route.
+	URL string `json:"url,omitempty" yaml:"url,omitempty"`
+	// Cluster is the cluster name.
+	// When set, namespace and route must also be set.
+	Cluster string `json:"cluster,omitempty" yaml:"cluster,omitempty"`
+	// Namespace is the namespace where the Prometheus route exists.
+	// Required when cluster is set.
+	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	// Route is the name of the OpenShift Route to Prometheus.
+	// Required when cluster is set.
+	Route string `json:"route,omitempty" yaml:"route,omitempty"`
 }
 
 type PrometheusQuery struct {
