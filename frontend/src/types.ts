@@ -36,6 +36,7 @@ export interface SubComponent {
 
 export interface Component {
   name: string
+  slug: string
   description: string
   ship_team: string
   slack_channel: string

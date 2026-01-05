@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Component } from '../../types'
-import { getComponentsEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
+import { getComponentInfoEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
 import { getStatusBackgroundColor } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
@@ -129,19 +129,18 @@ const ComponentDetailsPage = () => {
 
     // Fetch component configuration and its specific status
     Promise.all([
-      fetch(getComponentsEndpoint()).then((res) => res.json()),
-      fetch(getComponentStatusEndpoint(componentName)).then((res) => res.json()),
-    ])
-      .then(([componentsData, statusData]) => {
-        const foundComponent = componentsData.find((comp: Component) => comp.name === componentName)
-
-        if (!foundComponent) {
+      fetch(getComponentInfoEndpoint(componentName)).then((res) => {
+        if (!res.ok) {
           throw new Error(`Component "${componentName}" not found`)
         }
-
+        return res.json()
+      }),
+      fetch(getComponentStatusEndpoint(componentName)).then((res) => res.json()),
+    ])
+      .then(([componentData, statusData]) => {
         // Add status to the component
         return {
-          ...foundComponent,
+          ...componentData,
           status: statusData.status || 'Unknown',
         }
       })
