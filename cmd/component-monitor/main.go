@@ -171,7 +171,8 @@ func main() {
 			probers = append(probers, prober)
 		}
 		if component.PrometheusMonitor != nil {
-			prometheusProber := NewPrometheusProber(component.ComponentSlug, component.SubComponentSlug, prometheusClients[component.PrometheusMonitor.PrometheusLocation], component.PrometheusMonitor.Queries)
+			locationKey := getPrometheusLocationKey(component.PrometheusMonitor.PrometheusLocation)
+			prometheusProber := NewPrometheusProber(component.ComponentSlug, component.SubComponentSlug, prometheusClients[locationKey], component.PrometheusMonitor.Queries)
 			componentLogger.Info("Added Prometheus prober for component")
 			probers = append(probers, prometheusProber)
 		}
