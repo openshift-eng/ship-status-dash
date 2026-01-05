@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
-import type { Outage } from '../../types'
+import type { ComponentStatus, Outage } from '../../types'
 import {
   getComponentInfoEndpoint,
   getSubComponentOutagesEndpoint,
@@ -86,7 +86,7 @@ const SubComponentDetails = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
-  const [subComponentStatus, setSubComponentStatus] = useState<string>('Unknown')
+  const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
     useState<boolean>(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
@@ -143,7 +143,7 @@ const SubComponentDetails = () => {
             }
           }
           if (statusData) {
-            setSubComponentStatus(statusData.status)
+            setSubComponentStatus(statusData)
           }
           if (componentData) {
             // Set the confirmation requirement based on the subcomponent configuration
@@ -353,11 +353,18 @@ const SubComponentDetails = () => {
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <StyledPaper status={subComponentStatus}>
-        <HeaderBox status={subComponentStatus}>
-          <Typography variant="h4">
-            {componentName} / {subComponentName} - Outages
-          </Typography>
+      <StyledPaper status={subComponentStatus?.status || 'Unknown'}>
+        <HeaderBox status={subComponentStatus?.status || 'Unknown'}>
+          <Box>
+            <Typography variant="h4">
+              {componentName} / {subComponentName} - Outages
+            </Typography>
+            {subComponentStatus?.last_ping_time && (
+              <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
+                Last ping: {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())}
+              </Typography>
+            )}
+          </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
             {isAdmin && (
               <Button

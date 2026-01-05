@@ -19,17 +19,19 @@ const (
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
-	repo   OutageRepository
-	config *types.DashboardConfig
-	logger *logrus.Logger
+	outageRepo OutageRepository
+	pingRepo   ComponentPingRepository
+	config     *types.DashboardConfig
+	logger     *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
 func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
-		repo:   NewGORMOutageRepository(db),
-		config: config,
-		logger: logger,
+		outageRepo: NewGORMOutageRepository(db),
+		pingRepo:   NewGORMComponentPingRepository(db),
+		config:     config,
+		logger:     logger,
 	}
 }
 
@@ -102,8 +104,14 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			return fmt.Errorf("sub-component not found: %s/%s", status.ComponentSlug, status.SubComponentSlug)
 		}
 
+		now := time.Now()
+		if err := p.pingRepo.UpsertComponentReportPing(status.ComponentSlug, status.SubComponentSlug, now); err != nil {
+			statusLogger.WithField("error", err).Error("Failed to upsert component report ping")
+			return err
+		}
+
 		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
-		activeOutages, err := p.repo.GetActiveOutagesFromSource(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
+		activeOutages, err := p.outageRepo.GetActiveOutagesFromSource(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
 		if err != nil {
 			statusLogger.WithField("error", err).Error("Failed to query active outages")
 			return err
@@ -119,12 +127,10 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				statusLogger.Debug("Auto-resolve disabled, skipping healthy status processing")
 				continue
 			}
-
-			now := time.Now()
 			for i := range activeOutages {
 				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
 				activeOutages[i].ResolvedBy = &req.ComponentMonitor
-				if err := p.repo.SaveOutage(&activeOutages[i]); err != nil {
+				if err := p.outageRepo.SaveOutage(&activeOutages[i]); err != nil {
 					statusLogger.WithFields(logrus.Fields{
 						"outage_id": activeOutages[i].ID,
 						"error":     err,
@@ -150,7 +156,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
-			err = p.repo.Transaction(func(repo OutageRepository) error {
+			err = p.outageRepo.Transaction(func(repo OutageRepository) error {
 				var descriptionParts []string
 				for _, reason := range status.Reasons {
 					descriptionParts = append(descriptionParts, fmt.Sprintf("%s - check: %s, results: %s", reason.Type, reason.Check, reason.Results))

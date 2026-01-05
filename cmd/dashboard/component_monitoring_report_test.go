@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
@@ -29,6 +30,18 @@ type mockOutageRepository struct {
 	createdReasons []*types.Reason
 	createdOutages []*types.Outage
 	saveCount      int
+}
+
+// mockComponentPingRepository is a mock implementation of ComponentPingRepository for testing.
+type mockComponentPingRepository struct {
+	upsertError error
+	upsertFn    func(string, string, time.Time)
+	// Captured data for assertions
+	upsertedPings []struct {
+		componentSlug    string
+		subComponentSlug string
+		timestamp        time.Time
+	}
 }
 
 func (m *mockOutageRepository) GetActiveOutagesFromSource(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
@@ -76,6 +89,18 @@ func (m *mockOutageRepository) Transaction(fn func(OutageRepository) error) erro
 	return fn(m)
 }
 
+func (m *mockComponentPingRepository) UpsertComponentReportPing(componentSlug, subComponentSlug string, timestamp time.Time) error {
+	m.upsertedPings = append(m.upsertedPings, struct {
+		componentSlug    string
+		subComponentSlug string
+		timestamp        time.Time
+	}{componentSlug, subComponentSlug, timestamp})
+	if m.upsertFn != nil {
+		m.upsertFn(componentSlug, subComponentSlug, timestamp)
+	}
+	return m.upsertError
+}
+
 func testConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 	subComponent := types.SubComponent{
 		Slug: "test-subcomponent",
@@ -109,6 +134,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 		setupRepo                func(*mockOutageRepository)
 		wantErr                  error
 		verifyOutageExpectations func(*testing.T, *mockOutageRepository)
+		verifyPingExpectations   func(*testing.T, *mockComponentPingRepository)
 	}{
 		{
 			name:   "healthy status with no active outages",
@@ -126,6 +152,13 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			setupRepo: func(repo *mockOutageRepository) {
 				repo.activeOutages = []types.Outage{}
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
+				ping := pingRepo.upsertedPings[0]
+				assert.Equal(t, "test-component", ping.componentSlug)
+				assert.Equal(t, "test-subcomponent", ping.subComponentSlug)
+				assert.False(t, ping.timestamp.IsZero())
 			},
 		},
 		{
@@ -157,6 +190,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					assert.Equal(t, "test-monitor", *outage.ResolvedBy)
 				}
 			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
+				ping := pingRepo.upsertedPings[0]
+				assert.Equal(t, "test-component", ping.componentSlug)
+				assert.Equal(t, "test-subcomponent", ping.subComponentSlug)
+			},
 		},
 		{
 			name:   "healthy status with active outages and auto-resolve disabled",
@@ -181,6 +220,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Empty(t, repo.savedOutages)
 				assert.Empty(t, repo.createdOutages)
 				assert.Empty(t, repo.createdReasons)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
 			},
 		},
 		{
@@ -214,12 +256,20 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdReasons, 1)
-				assert.Equal(t, types.CheckTypePrometheus, repo.createdReasons[0].Type)
+				reason := repo.createdReasons[0]
+				assert.Equal(t, types.CheckTypePrometheus, reason.Type)
 				assert.Len(t, repo.createdOutages, 1)
-				assert.Equal(t, "test-component", repo.createdOutages[0].ComponentName)
-				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
-				assert.Equal(t, "test-monitor", *repo.createdOutages[0].ConfirmedBy)
-				assert.True(t, repo.createdOutages[0].ConfirmedAt.Valid)
+				outage := repo.createdOutages[0]
+				assert.Equal(t, "test-component", outage.ComponentName)
+				assert.Equal(t, types.SeverityDown, outage.Severity)
+				assert.Equal(t, "test-monitor", *outage.ConfirmedBy)
+				assert.True(t, outage.ConfirmedAt.Valid)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
+				ping := pingRepo.upsertedPings[0]
+				assert.Equal(t, "test-component", ping.componentSlug)
+				assert.Equal(t, "test-subcomponent", ping.subComponentSlug)
 			},
 		},
 		{
@@ -254,8 +304,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdReasons, 1)
 				assert.Len(t, repo.createdOutages, 1)
-				assert.Nil(t, repo.createdOutages[0].ConfirmedBy)
-				assert.False(t, repo.createdOutages[0].ConfirmedAt.Valid)
+				outage := repo.createdOutages[0]
+				assert.Nil(t, outage.ConfirmedBy)
+				assert.False(t, outage.ConfirmedAt.Valid)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
 			},
 		},
 		{
@@ -281,6 +335,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Empty(t, repo.createdOutages)
 				assert.Empty(t, repo.createdReasons)
 			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
+			},
 		},
 		{
 			name:   "component not found returns error",
@@ -298,6 +355,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			setupRepo: func(*mockOutageRepository) {},
 			wantErr:   errors.New("component not found: nonexistent"),
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Empty(t, pingRepo.upsertedPings, "ping should not be called when component not found")
+			},
 		},
 		{
 			name:   "sub-component not found returns error",
@@ -315,6 +375,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			setupRepo: func(*mockOutageRepository) {},
 			wantErr:   errors.New("sub-component not found: test-component/nonexistent"),
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Empty(t, pingRepo.upsertedPings, "ping should not be called when sub-component not found")
+			},
 		},
 		{
 			name:   "get active outages error returns error",
@@ -334,6 +397,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				repo.activeOutagesError = errors.New("database error")
 			},
 			wantErr: errors.New("database error"),
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1, "ping should be called before checking active outages")
+			},
 		},
 		{
 			name:   "save outage error continues processing",
@@ -354,6 +420,9 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
 				}
 				repo.saveOutageError = errors.New("save error")
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
 			},
 		},
 		{
@@ -393,9 +462,18 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdReasons, 1)
-				assert.Equal(t, types.CheckTypeHTTP, repo.createdReasons[0].Type)
+				reason := repo.createdReasons[0]
+				assert.Equal(t, types.CheckTypeHTTP, reason.Type)
 				assert.Len(t, repo.createdOutages, 1)
-				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
+				outage := repo.createdOutages[0]
+				assert.Equal(t, types.SeverityDown, outage.Severity)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 2, "ping should be called for each status")
+				ping1 := pingRepo.upsertedPings[0]
+				ping2 := pingRepo.upsertedPings[1]
+				assert.Equal(t, "test-component", ping1.componentSlug)
+				assert.Equal(t, "test-component", ping2.componentSlug)
 			},
 		},
 		{
@@ -439,10 +517,14 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *mockOutageRepository) {
 				assert.Len(t, repo.createdOutages, 1)
-				assert.Equal(t, "test-component", repo.createdOutages[0].ComponentName)
-				assert.Equal(t, types.SeverityDown, repo.createdOutages[0].Severity)
+				outage := repo.createdOutages[0]
+				assert.Equal(t, "test-component", outage.ComponentName)
+				assert.Equal(t, types.SeverityDown, outage.Severity)
 
 				assert.Len(t, repo.createdReasons, 3, "Should create all three reasons")
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *mockComponentPingRepository) {
+				assert.Len(t, pingRepo.upsertedPings, 1)
 			},
 		},
 	}
@@ -451,11 +533,13 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := new(mockOutageRepository)
 			tt.setupRepo(repo)
+			pingRepo := new(mockComponentPingRepository)
 
 			processor := &ComponentMonitorReportProcessor{
-				repo:   repo,
-				config: tt.config,
-				logger: logger,
+				outageRepo: repo,
+				pingRepo:   pingRepo,
+				config:     tt.config,
+				logger:     logger,
 			}
 
 			err := processor.Process(tt.request)
@@ -466,6 +550,10 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 
 			if tt.verifyOutageExpectations != nil {
 				tt.verifyOutageExpectations(t, repo)
+			}
+
+			if tt.verifyPingExpectations != nil {
+				tt.verifyPingExpectations(t, pingRepo)
 			}
 		})
 	}
@@ -618,9 +706,10 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			processor := &ComponentMonitorReportProcessor{
-				repo:   new(mockOutageRepository),
-				config: tt.config,
-				logger: logger,
+				outageRepo: new(mockOutageRepository),
+				pingRepo:   new(mockComponentPingRepository),
+				config:     tt.config,
+				logger:     logger,
 			}
 
 			err := processor.ValidateRequest(tt.request, tt.serviceAccount)

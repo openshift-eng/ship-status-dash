@@ -498,10 +498,19 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		status = determineStatusFromSeverity(outages)
 	}
 
+	var ping types.ComponentReportPing
+	var lastPingTime *time.Time
+	if err := h.db.Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).First(&ping).Error; err == nil {
+		lastPingTime = &ping.Time
+	} else if err != gorm.ErrRecordNotFound {
+		logger.WithField("error", err).Warn("Failed to query component report ping")
+	}
+
 	response := types.ComponentStatus{
 		ComponentName: fmt.Sprintf("%s/%s", componentName, subComponentName),
 		Status:        status,
 		ActiveOutages: outages,
+		LastPingTime:  lastPingTime,
 	}
 	respondWithJSON(w, http.StatusOK, response)
 }
@@ -568,10 +577,21 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		status = determineStatusFromSeverity(outages)
 	}
 
+	// The last ping time is the time of the most recent ping for ANY of the sub-components in the component.
+	var lastPingTime *time.Time
+	var ping types.ComponentReportPing
+	err := h.db.Where("component_name = ?", component.Slug).Order("time DESC").First(&ping).Error
+	if err == nil {
+		lastPingTime = &ping.Time
+	} else if err != gorm.ErrRecordNotFound {
+		logger.WithField("error", err).Warn("Failed to query component report pings")
+	}
+
 	return types.ComponentStatus{
 		ComponentName: component.Name,
 		Status:        status,
 		ActiveOutages: outages,
+		LastPingTime:  lastPingTime,
 	}, nil
 }
 

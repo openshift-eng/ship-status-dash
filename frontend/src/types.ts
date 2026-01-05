@@ -1,5 +1,12 @@
 export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' | 'Unknown'
 
+export interface ComponentStatus {
+  component_name: string
+  status: Status
+  active_outages: Outage[]
+  last_ping_time?: string
+}
+
 export interface Outage {
   ID: number
   CreatedAt: string
@@ -47,4 +54,5 @@ export interface Component {
     user?: string
   }>
   status?: string
+  last_ping_time?: string
 }

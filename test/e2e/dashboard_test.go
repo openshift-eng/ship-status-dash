@@ -654,6 +654,84 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, types.StatusDegraded, status.Status)
 			assert.Len(t, status.ActiveOutages, 2)
 		})
+
+		t.Run("GET status for sub-component without ping returns no last_ping_time", func(t *testing.T) {
+			status := getStatus(t, client, "Prow", "Deck")
+
+			assert.Equal(t, types.StatusHealthy, status.Status)
+			assert.Nil(t, status.LastPingTime, "last_ping_time should be nil when no ping has been sent")
+		})
+
+		t.Run("GET status for sub-component with ping returns last_ping_time", func(t *testing.T) {
+			// Send a component monitor report to create a ping
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			reportSentTime := time.Now()
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			status := getStatus(t, client, "Prow", "Deck")
+
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
+		})
+
+		t.Run("GET status for sub-component updates last_ping_time on subsequent reports", func(t *testing.T) {
+			// Send first report
+			reportPayload1 := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Tide"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes1, err := json.Marshal(reportPayload1)
+			require.NoError(t, err)
+
+			resp1, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes1, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp1.Body.Close()
+			assert.Equal(t, http.StatusOK, resp1.StatusCode)
+
+			status1 := getStatus(t, client, "Prow", "Tide")
+			require.NotNil(t, status1.LastPingTime, "first report should set last_ping_time")
+			firstPingTime := *status1.LastPingTime
+
+			// Wait a moment to ensure timestamp is different
+			time.Sleep(200 * time.Millisecond)
+
+			// Send second report
+			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes1, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			status2 := getStatus(t, client, "Prow", "Tide")
+			require.NotNil(t, status2.LastPingTime, "second report should update last_ping_time")
+			secondPingTime := *status2.LastPingTime
+
+			assert.True(t, secondPingTime.After(firstPingTime), "second ping time should be after first ping time")
+		})
 	}
 }
 
@@ -924,6 +1002,53 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, types.StatusDown, prowStatus.Status)
 			assert.Len(t, prowStatus.ActiveOutages, 2)
 		})
+
+		t.Run("GET status for all components includes last_ping_time when available", func(t *testing.T) {
+			// Send a component monitor report for Prow/Deck
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Deck"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			reportSentTime := time.Now()
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			allStatuses := getAllComponentsStatus(t, client)
+
+			// Find Prow component
+			var prowStatus *types.ComponentStatus
+			var buildFarmStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == prowComponentName {
+					prowStatus = &allStatuses[i]
+				}
+				if allStatuses[i].ComponentName == "Build Farm" {
+					buildFarmStatus = &allStatuses[i]
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			require.NotNil(t, buildFarmStatus, "Build Farm component should be present")
+
+			// Prow should have last_ping_time since we sent a report
+			assert.NotNil(t, prowStatus.LastPingTime, "Prow should have last_ping_time after report")
+			assert.WithinDuration(t, reportSentTime, *prowStatus.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
+
+			// Build Farm should not have last_ping_time since no report was sent
+			assert.Nil(t, buildFarmStatus.LastPingTime, "Build Farm should not have last_ping_time without reports")
+		})
 	}
 }
 
@@ -978,6 +1103,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
+			reportSentTime := time.Now()
 			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -1006,6 +1132,11 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, types.CheckTypePrometheus, foundOutage.Reasons[0].Type)
 			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reasons[0].Check)
 			assert.Equal(t, "No healthy instances found", foundOutage.Reasons[0].Results)
+
+			// Verify that ping time was set
+			status := getStatus(t, client, "Prow", "Deck")
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
 
 			// Cleanup
 			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
@@ -1176,6 +1307,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			healthyBytes, err := json.Marshal(healthyReport)
 			require.NoError(t, err)
 
+			reportSentTime := time.Now()
 			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp2.Body.Close()
@@ -1194,6 +1326,11 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
 			assert.NotNil(t, resolvedOutage.ResolvedBy)
 			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
+
+			// Verify that ping time was updated
+			status := getStatus(t, client, "Prow", "Deck")
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
 		})
 
 		t.Run("POST report with Healthy status does not resolve when auto_resolve is false", func(t *testing.T) {
