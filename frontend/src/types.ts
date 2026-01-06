@@ -32,11 +32,19 @@ export interface Outage {
   triage_notes?: string
 }
 
+export interface Monitoring {
+  frequency: string
+  component_monitor: string
+  auto_resolve: boolean
+}
+
 export interface SubComponent {
   name: string
+  slug: string
   description: string
   managed: boolean
   requires_confirmation: boolean
+  monitoring?: Monitoring
   status?: Status
   active_outages?: Outage[]
 }

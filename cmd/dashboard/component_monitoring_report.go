@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 
+	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
 
@@ -19,17 +19,17 @@ const (
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
-	outageRepo OutageRepository
-	pingRepo   ComponentPingRepository
+	outageRepo repositories.OutageRepository
+	pingRepo   repositories.ComponentPingRepository
 	config     *types.DashboardConfig
 	logger     *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(db *gorm.DB, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
-		outageRepo: NewGORMOutageRepository(db),
-		pingRepo:   NewGORMComponentPingRepository(db),
+		outageRepo: outageRepo,
+		pingRepo:   pingRepo,
 		config:     config,
 		logger:     logger,
 	}
@@ -111,7 +111,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 		}
 
 		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
-		activeOutages, err := p.outageRepo.GetActiveOutagesFromSource(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
+		activeOutages, err := p.outageRepo.GetActiveOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
 		if err != nil {
 			statusLogger.WithField("error", err).Error("Failed to query active outages")
 			return err
@@ -156,7 +156,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
-			err = p.outageRepo.Transaction(func(repo OutageRepository) error {
+			err = p.outageRepo.Transaction(func(repo repositories.OutageRepository) error {
 				var descriptionParts []string
 				for _, reason := range status.Reasons {
 					descriptionParts = append(descriptionParts, fmt.Sprintf("%s - check: %s, results: %s", reason.Type, reason.Check, reason.Results))

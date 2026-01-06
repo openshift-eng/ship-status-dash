@@ -257,7 +257,7 @@ const ComponentDetailsPage = () => {
               {component.last_ping_time && (
                 <InfoCard>
                   <CardContent>
-                    <InfoTitle>Last Ping</InfoTitle>
+                    <InfoTitle>Last Checked</InfoTitle>
                     <InfoValue>
                       {relativeTime(new Date(component.last_ping_time), new Date())}
                     </InfoValue>

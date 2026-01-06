@@ -1,4 +1,4 @@
-package main
+package repositories
 
 import (
 	"time"
@@ -11,6 +11,8 @@ import (
 // ComponentPingRepository defines the interface for component report ping database operations.
 type ComponentPingRepository interface {
 	UpsertComponentReportPing(componentSlug, subComponentSlug string, timestamp time.Time) error
+	GetLastPingTime(componentSlug, subComponentSlug string) (*time.Time, error)
+	GetMostRecentPingTimeForAnySubComponent(componentSlug string) (*time.Time, error)
 }
 
 // gormComponentPingRepository is a GORM implementation of ComponentPingRepository.
@@ -55,4 +57,32 @@ func (r *gormComponentPingRepository) UpsertComponentReportPing(componentSlug, s
 
 	existing.Time = timestamp
 	return r.db.Save(&existing).Error
+}
+
+// GetLastPingTime retrieves the last ping time for a component/sub-component combination.
+// Returns nil if no ping record exists.
+func (r *gormComponentPingRepository) GetLastPingTime(componentSlug, subComponentSlug string) (*time.Time, error) {
+	var ping types.ComponentReportPing
+	err := r.db.Where("component_name = ? AND sub_component_name = ?", componentSlug, subComponentSlug).First(&ping).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ping.Time, nil
+}
+
+// GetMostRecentPingTimeForAnySubComponent retrieves the most recent ping time for any sub-component of a component.
+// Returns nil if no ping record exists.
+func (r *gormComponentPingRepository) GetMostRecentPingTimeForAnySubComponent(componentSlug string) (*time.Time, error) {
+	var ping types.ComponentReportPing
+	err := r.db.Where("component_name = ?", componentSlug).Order("time DESC").First(&ping).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ping.Time, nil
 }

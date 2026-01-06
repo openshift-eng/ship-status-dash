@@ -19,18 +19,20 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
 )
 
 // Options contains command-line configuration options for the dashboard server.
 type Options struct {
-	ConfigPath     string
-	Port           string
-	DatabaseDSN    string
-	HMACSecretFile string
-	CORSOrigin     string
-	KubeconfigPath string
+	ConfigPath                string
+	Port                      string
+	DatabaseDSN               string
+	HMACSecretFile            string
+	CORSOrigin                string
+	KubeconfigPath            string
+	AbsentReportCheckInterval time.Duration
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -43,6 +45,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.HMACSecretFile, "hmac-secret-file", "", "File containing HMAC secret")
 	flag.StringVar(&opts.CORSOrigin, "cors-origin", "*", "CORS allowed origin")
 	flag.StringVar(&opts.KubeconfigPath, "kubeconfig", "", "Path to kubeconfig file (empty string uses in-cluster config)")
+	flag.DurationVar(&opts.AbsentReportCheckInterval, "absent-report-check-interval", 5*time.Minute, "Interval for checking absent monitored component reports")
 	flag.Parse()
 
 	return opts
@@ -191,7 +194,15 @@ func main() {
 	db := connectDatabase(log, opts.DatabaseDSN)
 	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
 	groupCache := loadGroupMembership(log, config, opts.KubeconfigPath)
-	server := NewServer(config, db, log, opts.CORSOrigin, hmacSecret, groupCache)
+	outageRepo := repositories.NewGORMOutageRepository(db)
+	pingRepo := repositories.NewGORMComponentPingRepository(db)
+	server := NewServer(config, log, opts.CORSOrigin, hmacSecret, groupCache, outageRepo, pingRepo)
+
+	// Start absent monitored component report checker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	absentReportChecker := NewAbsentMonitoredComponentReportChecker(config, outageRepo, pingRepo, opts.AbsentReportCheckInterval, log)
+	go absentReportChecker.Start(ctx)
 
 	addr := ":" + opts.Port
 	// Run server in a goroutine
@@ -208,9 +219,9 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Stop(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer shutdownCancel()
+	if err := server.Stop(shutdownCtx); err != nil {
 		log.WithField("error", err).Error("Graceful shutdown failed")
 	}
 }

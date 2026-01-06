@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
-import type { ComponentStatus, Outage } from '../../types'
+import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
   getSubComponentOutagesEndpoint,
@@ -87,8 +87,7 @@ const SubComponentDetails = () => {
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
-  const [subComponentRequiresConfirmation, setSubComponentRequiresConfirmation] =
-    useState<boolean>(false)
+  const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
   const componentName = componentSlug ? deslugify(componentSlug) : ''
@@ -146,12 +145,13 @@ const SubComponentDetails = () => {
             setSubComponentStatus(statusData)
           }
           if (componentData) {
-            // Set the confirmation requirement based on the subcomponent configuration
-            const subComponent = componentData.sub_components.find(
-              (sub: { name: string; requires_confirmation: boolean }) =>
-                sub.name === subComponentName,
+            // Store the entire subcomponent configuration
+            const foundSubComponent = componentData.sub_components.find(
+              (sub: SubComponent) => sub.slug === subComponentSlug,
             )
-            setSubComponentRequiresConfirmation(subComponent?.requires_confirmation || false)
+            if (foundSubComponent) {
+              setSubComponent(foundSubComponent)
+            }
           }
         }
       })
@@ -161,7 +161,7 @@ const SubComponentDetails = () => {
       .finally(() => {
         setLoading(false)
       })
-  }, [componentName, subComponentName])
+  }, [componentName, subComponentName, subComponentSlug])
 
   useEffect(() => {
     fetchData()
@@ -212,7 +212,7 @@ const SubComponentDetails = () => {
         />
       ),
     },
-    ...(subComponentRequiresConfirmation
+    ...(subComponent?.requires_confirmation
       ? [
           {
             field: 'confirmation',
@@ -359,9 +359,11 @@ const SubComponentDetails = () => {
             <Typography variant="h4">
               {componentName} / {subComponentName} - Outages
             </Typography>
-            {subComponentStatus?.last_ping_time && (
+            {subComponentStatus?.last_ping_time && subComponent?.monitoring?.frequency && (
               <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
-                Last ping: {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())}
+                Last Checked:{' '}
+                {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())} · Expected
+                Frequency: {subComponent.monitoring.frequency}
               </Typography>
             )}
           </Box>

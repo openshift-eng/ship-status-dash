@@ -166,7 +166,7 @@ DASHBOARD_LOG="/tmp/dashboard-server.log"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config test/e2e/scripts/dashboard-config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config test/e2e/scripts/dashboard-config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready

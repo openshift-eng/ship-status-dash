@@ -10,9 +10,9 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 
 	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
 
@@ -21,7 +21,6 @@ type Server struct {
 	logger     *logrus.Logger
 	config     *types.DashboardConfig
 	handlers   *Handlers
-	db         *gorm.DB
 	corsOrigin string
 	hmacSecret []byte
 	groupCache *auth.GroupMembershipCache
@@ -29,12 +28,11 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance
-func NewServer(config *types.DashboardConfig, db *gorm.DB, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache) *Server {
+func NewServer(config *types.DashboardConfig, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository) *Server {
 	return &Server{
 		logger:     logger,
 		config:     config,
-		handlers:   NewHandlers(logger, config, db, groupCache),
-		db:         db,
+		handlers:   NewHandlers(logger, config, outageRepo, pingRepo, groupCache),
 		corsOrigin: corsOrigin,
 		hmacSecret: hmacSecret,
 		groupCache: groupCache,

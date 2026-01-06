@@ -89,7 +89,7 @@ DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-local-dev.log"
 echo "Dashboard server logs: $DASHBOARD_LOG"
 
-go run ./cmd/dashboard --config hack/local/dashboard/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" > "$DASHBOARD_LOG" 2>&1 &
+go run ./cmd/dashboard --config hack/local/dashboard/config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --cors-origin "http://localhost:3000" --absent-report-check-interval 15s > "$DASHBOARD_LOG" 2>&1 &
 DASHBOARD_PID=$!
 
 echo "Waiting for dashboard server to be ready..."
