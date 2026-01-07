@@ -126,3 +126,12 @@ type Reason struct {
 	// Results summarizes the results of the check
 	Results string `json:"results"`
 }
+
+// ComponentReportPing represents a ping report from a component monitor.
+// This is used to track the last time that any status has been reported for a component/sub-component.
+type ComponentReportPing struct {
+	gorm.Model
+	ComponentName    string    `json:"component_name" gorm:"column:component_name;not null;index;uniqueIndex:idx_component_subcomponent"`
+	SubComponentName string    `json:"sub_component_name" gorm:"column:sub_component_name;not null;index;uniqueIndex:idx_component_subcomponent"`
+	Time             time.Time `json:"time" gorm:"column:time;not null;index"`
+}

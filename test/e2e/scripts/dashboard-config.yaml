@@ -7,15 +7,36 @@ components:
       - name: Tide
         description: Merges PRs
         requires_confirmation: true
+      - name: Deck
+        description: The frontend for Prow
+        requires_confirmation: false
+      - name: Hook
+        description: Webhook handler for Prow
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+      - name: Plank
+        description: Job execution controller for Prow
+        requires_confirmation: false
         monitoring:
           frequency: 5m
           component_monitor: "app-ci-component-monitor"
           auto_resolve: false
-      - name: Deck
-        description: The frontend for Prow
+    owners:
+      - user: developer
+      - service_account: system:serviceaccount:ship-status:component-monitor
+  - name: Downstream CI
+    description: Downstream CI system
+    ship_team: TestPlatform
+    slack_channel: "#test-channel"
+    sub_components:
+      - name: Retester
+        description: Retests failed jobs
         requires_confirmation: false
         monitoring:
-          frequency: 5m
+          frequency: 5s
           component_monitor: "app-ci-component-monitor"
           auto_resolve: true
     owners:

@@ -55,6 +55,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate Reason table")
 	}
 
+	if err = db.AutoMigrate(&types.ComponentReportPing{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate ComponentReportPing table")
+	}
+
 	log.Info("Migration completed successfully")
 
 	var tableCount int64

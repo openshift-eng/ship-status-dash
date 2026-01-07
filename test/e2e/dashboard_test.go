@@ -2,6 +2,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const (
@@ -37,6 +39,8 @@ func TestE2E_Dashboard(t *testing.T) {
 	client, err := NewTestHTTPClient(serverURL, mockOauthProxyURL)
 	require.NoError(t, err)
 
+	cleanupAbsentReportOutages(t, client)
+
 	t.Run("Health", testHealth(client))
 	t.Run("Components", testComponents(client))
 	t.Run("ComponentInfo", testComponentInfo(client))
@@ -49,6 +53,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
+	t.Run("AbsentReport", testAbsentReport(client))
 }
 
 func testHealth(client *TestHTTPClient) func(*testing.T) {
@@ -73,31 +78,40 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 3)
+		assert.Len(t, components, 4)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
 		assert.Equal(t, "#test-channel", components[0].SlackChannel)
-		assert.Len(t, components[0].Subcomponents, 2)
+		assert.Len(t, components[0].Subcomponents, 4)
 		assert.Equal(t, "Tide", components[0].Subcomponents[0].Name)
 		assert.Equal(t, "Deck", components[0].Subcomponents[1].Name)
+		assert.Equal(t, "Hook", components[0].Subcomponents[2].Name)
+		assert.Equal(t, "Plank", components[0].Subcomponents[3].Name)
 
-		assert.Equal(t, "Build Farm", components[1].Name)
-		assert.Equal(t, "Where the CI jobs are run", components[1].Description)
-		assert.Equal(t, "DPTP", components[1].ShipTeam)
-		assert.Equal(t, "#ops-testplatform", components[1].SlackChannel)
-		assert.Len(t, components[1].Subcomponents, 2)
-		assert.Equal(t, "Build01", components[1].Subcomponents[0].Name)
-		assert.Equal(t, "Build02", components[1].Subcomponents[1].Name)
+		assert.Equal(t, "Downstream CI", components[1].Name)
+		assert.Equal(t, "Downstream CI system", components[1].Description)
+		assert.Equal(t, "TestPlatform", components[1].ShipTeam)
+		assert.Equal(t, "#test-channel", components[1].SlackChannel)
+		assert.Len(t, components[1].Subcomponents, 1)
+		assert.Equal(t, "Retester", components[1].Subcomponents[0].Name)
 
-		assert.Equal(t, "Sippy", components[2].Name)
-		assert.Equal(t, "CI private investigator", components[2].Description)
-		assert.Equal(t, "TRT", components[2].ShipTeam)
-		assert.Equal(t, "#trt-alert", components[2].SlackChannel)
-		assert.Len(t, components[2].Subcomponents, 3)
-		assert.Equal(t, "Sippy", components[2].Subcomponents[0].Name)
-		assert.Equal(t, "api", components[2].Subcomponents[1].Name)
-		assert.Equal(t, "data-load", components[2].Subcomponents[2].Name)
+		assert.Equal(t, "Build Farm", components[2].Name)
+		assert.Equal(t, "Where the CI jobs are run", components[2].Description)
+		assert.Equal(t, "DPTP", components[2].ShipTeam)
+		assert.Equal(t, "#ops-testplatform", components[2].SlackChannel)
+		assert.Len(t, components[2].Subcomponents, 2)
+		assert.Equal(t, "Build01", components[2].Subcomponents[0].Name)
+		assert.Equal(t, "Build02", components[2].Subcomponents[1].Name)
+
+		assert.Equal(t, "Sippy", components[3].Name)
+		assert.Equal(t, "CI private investigator", components[3].Description)
+		assert.Equal(t, "TRT", components[3].ShipTeam)
+		assert.Equal(t, "#trt-alert", components[3].SlackChannel)
+		assert.Len(t, components[3].Subcomponents, 3)
+		assert.Equal(t, "Sippy", components[3].Subcomponents[0].Name)
+		assert.Equal(t, "api", components[3].Subcomponents[1].Name)
+		assert.Equal(t, "data-load", components[3].Subcomponents[2].Name)
 	}
 }
 
@@ -110,9 +124,11 @@ func testComponentInfo(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "Backbone of the CI system", component.Description)
 			assert.Equal(t, "TestPlatform", component.ShipTeam)
 			assert.Equal(t, "#test-channel", component.SlackChannel)
-			assert.Len(t, component.Subcomponents, 2)
+			assert.Len(t, component.Subcomponents, 4)
 			assert.Equal(t, "Tide", component.Subcomponents[0].Name)
 			assert.Equal(t, "Deck", component.Subcomponents[1].Name)
+			assert.Equal(t, "Hook", component.Subcomponents[2].Name)
+			assert.Equal(t, "Plank", component.Subcomponents[3].Name)
 		})
 
 		t.Run("GET component info for non-existent component returns 404", func(t *testing.T) {
@@ -654,6 +670,84 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, types.StatusDegraded, status.Status)
 			assert.Len(t, status.ActiveOutages, 2)
 		})
+
+		t.Run("GET status for sub-component without ping returns no last_ping_time", func(t *testing.T) {
+			status := getStatus(t, client, "Prow", "Deck")
+
+			assert.Equal(t, types.StatusHealthy, status.Status)
+			assert.Nil(t, status.LastPingTime, "last_ping_time should be nil when no ping has been sent")
+		})
+
+		t.Run("GET status for sub-component with ping returns last_ping_time", func(t *testing.T) {
+			// Send a component monitor report to create a ping
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Hook"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			reportSentTime := time.Now()
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			status := getStatus(t, client, "Prow", "Hook")
+
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
+		})
+
+		t.Run("GET status for sub-component updates last_ping_time on subsequent reports", func(t *testing.T) {
+			// Send first report
+			reportPayload1 := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Prow"),
+						SubComponentSlug: utils.Slugify("Hook"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes1, err := json.Marshal(reportPayload1)
+			require.NoError(t, err)
+
+			resp1, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes1, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp1.Body.Close()
+			assert.Equal(t, http.StatusOK, resp1.StatusCode)
+
+			status1 := getStatus(t, client, "Prow", "Hook")
+			require.NotNil(t, status1.LastPingTime, "first report should set last_ping_time")
+			firstPingTime := *status1.LastPingTime
+
+			// Wait a moment to ensure timestamp is different
+			time.Sleep(200 * time.Millisecond)
+
+			// Send second report
+			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes1, componentMonitorSAToken)
+			require.NoError(t, err)
+			resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			status2 := getStatus(t, client, "Prow", "Hook")
+			require.NotNil(t, status2.LastPingTime, "second report should update last_ping_time")
+			secondPingTime := *status2.LastPingTime
+
+			assert.True(t, secondPingTime.After(firstPingTime), "second ping time should be after first ping time")
+		})
 	}
 }
 
@@ -679,13 +773,17 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for component with all sub-components down returns Down", func(t *testing.T) {
-			// Create Down outages for both sub-components
+			// Create Down outages for all sub-components
 			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			hookOutage := createOutageWithSeverity(t, client, "Prow", "Hook", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			plankOutage := createOutageWithSeverity(t, client, "Prow", "Plank", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 
-			// Confirm Tide outage (Deck should be auto-confirmed)
+			// Confirm Tide outage (others should be auto-confirmed)
 			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
 				"confirmed": true,
 			})
@@ -693,18 +791,22 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			status := getStatus(t, client, "Prow", "")
 
 			assert.Equal(t, types.StatusDown, status.Status)
-			assert.Len(t, status.ActiveOutages, 2)
+			assert.Len(t, status.ActiveOutages, 4)
 			for _, outage := range status.ActiveOutages {
 				assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
 			}
 		})
 
 		t.Run("GET status for component with mixed severity outages returns most severe", func(t *testing.T) {
-			// Create outages with different severities
+			// Create outages with different severities for all sub-components
 			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDegraded))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			hookOutage := createOutageWithSeverity(t, client, "Prow", "Hook", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			plankOutage := createOutageWithSeverity(t, client, "Prow", "Plank", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 
 			// Confirm the Tide outage to test most severe logic
 			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
@@ -713,15 +815,9 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 
 			status := getStatus(t, client, "Prow", "")
 
+			// Should return Down (most severe), not Degraded
 			assert.Equal(t, types.StatusDown, status.Status)
-			assert.Len(t, status.ActiveOutages, 2)
-			// Verify we have both severities present
-			severities := make(map[string]bool)
-			for _, outage := range status.ActiveOutages {
-				severities[string(outage.Severity)] = true
-			}
-			assert.True(t, severities[string(types.SeverityDown)])
-			assert.True(t, severities[string(types.SeverityDegraded)])
+			assert.Len(t, status.ActiveOutages, 4)
 		})
 
 		t.Run("GET status for component with unconfirmed outages on one sub-component returns Partial", func(t *testing.T) {
@@ -737,9 +833,13 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for component with mixed confirmed/unconfirmed outages shows confirmed severity", func(t *testing.T) {
-			// Create outage for Deck (should be auto-confirmed)
+			// Create outages for all sub-components (auto-confirmed for Deck, Hook, Plank)
 			deckOutage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			hookOutage := createOutage(t, client, "Prow", "Hook")
+			defer deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			plankOutage := createOutage(t, client, "Prow", "Plank")
+			defer deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 
 			// Create unconfirmed outage for Tide (requires_confirmation: true)
 			tideOutage := createOutage(t, client, "Prow", "Tide")
@@ -749,7 +849,7 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 
 			// Should return Down (confirmed) not Suspected (unconfirmed)
 			assert.Equal(t, types.StatusDown, status.Status)
-			assert.Len(t, status.ActiveOutages, 2)
+			assert.Len(t, status.ActiveOutages, 4)
 		})
 
 		t.Run("GET status for non-existent component returns 404", func(t *testing.T) {
@@ -790,8 +890,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 3 components (Prow, Build Farm, and Sippy) based on test config
-			assert.Len(t, allStatuses, 3)
+			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI) based on test config
+			assert.Len(t, allStatuses, 4)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
@@ -812,21 +912,25 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for all components with outages shows correct statuses", func(t *testing.T) {
-			// Create outages for different sub-components
+			// Create outages for all sub-components with mixed severities
 			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 			deckOutage := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			hookOutage := createOutageWithSeverity(t, client, "Prow", "Hook", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			plankOutage := createOutageWithSeverity(t, client, "Prow", "Plank", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 
-			// Confirm Tide outage (Deck should be auto-confirmed)
+			// Confirm Tide outage (others should be auto-confirmed)
 			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
 				"confirmed": true,
 			})
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
-			assert.Len(t, allStatuses, 3)
+			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
+			assert.Len(t, allStatuses, 4)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -838,15 +942,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			require.NotNil(t, prowStatus, "Prow component should be present")
 			assert.Equal(t, "Prow", prowStatus.ComponentName)
 			assert.Equal(t, types.StatusDown, prowStatus.Status) // Most severe status
-			assert.Len(t, prowStatus.ActiveOutages, 2)
-
-			// Verify we have both severities present
-			severities := make(map[string]bool)
-			for _, outage := range prowStatus.ActiveOutages {
-				severities[string(outage.Severity)] = true
-			}
-			assert.True(t, severities[string(types.SeverityDown)])
-			assert.True(t, severities[string(types.SeverityDegraded)])
+			assert.Len(t, prowStatus.ActiveOutages, 4)
 		})
 
 		t.Run("GET status for all components with partial outages shows Partial status", func(t *testing.T) {
@@ -856,8 +952,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
-			assert.Len(t, allStatuses, 3)
+			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
+			assert.Len(t, allStatuses, 4)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -880,8 +976,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
-			assert.Len(t, allStatuses, 3)
+			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
+			assert.Len(t, allStatuses, 4)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -898,9 +994,13 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET status for all components with mixed confirmed/unconfirmed outages shows confirmed severity", func(t *testing.T) {
-			// Create outage for Deck (should be auto-confirmed)
+			// Create outages for all sub-components (auto-confirmed for Deck, Hook, Plank)
 			deckOutage := createOutage(t, client, "Prow", "Deck")
 			defer deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
+			hookOutage := createOutage(t, client, "Prow", "Hook")
+			defer deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			plankOutage := createOutage(t, client, "Prow", "Plank")
+			defer deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 
 			// Create unconfirmed outage for Tide (requires_confirmation: true)
 			tideOutage := createOutage(t, client, "Prow", "Tide")
@@ -908,8 +1008,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 3 components (Prow, Build Farm, and Sippy)
-			assert.Len(t, allStatuses, 3)
+			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
+			assert.Len(t, allStatuses, 4)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -922,7 +1022,32 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "Prow", prowStatus.ComponentName)
 			// Should return Down (confirmed) not Suspected (unconfirmed)
 			assert.Equal(t, types.StatusDown, prowStatus.Status)
-			assert.Len(t, prowStatus.ActiveOutages, 2)
+			assert.Len(t, prowStatus.ActiveOutages, 4)
+		})
+
+		t.Run("GET status for all components includes last_ping_time when available", func(t *testing.T) {
+			// Prow should already have a last_ping_time from the initial seed, just verify it
+			allStatuses := getAllComponentsStatus(t, client)
+
+			// Find Prow and Build Farm components
+			var prowStatus *types.ComponentStatus
+			var buildFarmStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == prowComponentName {
+					prowStatus = &allStatuses[i]
+				}
+				if allStatuses[i].ComponentName == "Build Farm" {
+					buildFarmStatus = &allStatuses[i]
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			require.NotNil(t, buildFarmStatus, "Build Farm component should be present")
+
+			// Prow should have last_ping_time since Hook and Plank were pinged at test start
+			assert.NotNil(t, prowStatus.LastPingTime, "Prow should have last_ping_time from seeded pings")
+
+			// Build Farm should not have last_ping_time since no report was sent
+			assert.Nil(t, buildFarmStatus.LastPingTime, "Build Farm should not have last_ping_time without reports")
 		})
 	}
 }
@@ -962,12 +1087,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -978,6 +1103,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			payloadBytes, err := json.Marshal(reportPayload)
 			require.NoError(t, err)
 
+			reportSentTime := time.Now()
 			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -990,7 +1116,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "processed", response["status"])
 
 			// Verify outage was created
-			outages := getOutages(t, client, "Prow", "Deck")
+			outages := getOutages(t, client, "Prow", "Hook")
 			var foundOutage *types.Outage
 			for i := range outages {
 				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypePrometheus {
@@ -1004,11 +1130,16 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "app-ci-component-monitor", foundOutage.CreatedBy)
 			require.Len(t, foundOutage.Reasons, 1)
 			assert.Equal(t, types.CheckTypePrometheus, foundOutage.Reasons[0].Type)
-			assert.Equal(t, "up{job=\"deck\"} == 0", foundOutage.Reasons[0].Check)
+			assert.Equal(t, "up{job=\"hook\"} == 0", foundOutage.Reasons[0].Check)
 			assert.Equal(t, "No healthy instances found", foundOutage.Reasons[0].Results)
 
+			// Verify that ping time was set
+			status := getStatus(t, client, "Prow", "Hook")
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
+
 			// Cleanup
-			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
+			deleteOutage(t, client, "Prow", "Hook", foundOutage.ID)
 		})
 
 		t.Run("POST report with Degraded status creates outage", func(t *testing.T) {
@@ -1017,12 +1148,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDegraded,
 						Reasons: []types.Reason{
 							{
 								Type:    "http",
-								Check:   "https://deck.example.com/health",
+								Check:   "https://hook.example.com/health",
 								Results: "Response time > 5s",
 							},
 						},
@@ -1040,7 +1171,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 			// Verify outage was created
-			outages := getOutages(t, client, "Prow", "Deck")
+			outages := getOutages(t, client, "Prow", "Hook")
 			var foundOutage *types.Outage
 			for i := range outages {
 				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypeHTTP {
@@ -1052,7 +1183,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, string(types.SeverityDegraded), string(foundOutage.Severity))
 
 			// Cleanup
-			deleteOutage(t, client, "Prow", "Deck", foundOutage.ID)
+			deleteOutage(t, client, "Prow", "Hook", foundOutage.ID)
 		})
 
 		t.Run("POST report does not create duplicate outage for same Reason.Type", func(t *testing.T) {
@@ -1061,12 +1192,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1084,7 +1215,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp1.StatusCode)
 
 			// Get the created outage
-			outages1 := getOutages(t, client, "Prow", "Deck")
+			outages1 := getOutages(t, client, "Prow", "Hook")
 			var firstOutage *types.Outage
 			for i := range outages1 {
 				if outages1[i].DiscoveredFrom == "component-monitor" && len(outages1[i].Reasons) > 0 && outages1[i].Reasons[0].Type == "prometheus" {
@@ -1101,7 +1232,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
 			// Verify no duplicate was created
-			outages2 := getOutages(t, client, "Prow", "Deck")
+			outages2 := getOutages(t, client, "Prow", "Hook")
 			count := 0
 			for i := range outages2 {
 				if outages2[i].DiscoveredFrom == "component-monitor" && len(outages2[i].Reasons) > 0 && outages2[i].Reasons[0].Type == "prometheus" && outages2[i].EndTime.Valid == false {
@@ -1111,7 +1242,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, 1, count, "Should only have one active outage created by the same component-monitor")
 
 			// Cleanup
-			deleteOutage(t, client, "Prow", "Deck", firstOutage.ID)
+			deleteOutage(t, client, "Prow", "Hook", firstOutage.ID)
 		})
 
 		t.Run("POST report with Healthy status auto-resolves outage when auto_resolve is true", func(t *testing.T) {
@@ -1121,12 +1252,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"), // Deck has auto_resolve: true
+						SubComponentSlug: utils.Slugify("Hook"), // Hook has auto_resolve: true
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1143,7 +1274,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 			// Get the created outage
-			outages := getOutages(t, client, "Prow", "Deck")
+			outages := getOutages(t, client, "Prow", "Hook")
 			var outage *types.Outage
 			for i := range outages {
 				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
@@ -1160,12 +1291,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusHealthy,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "All instances healthy",
 							},
 						},
@@ -1176,13 +1307,14 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			healthyBytes, err := json.Marshal(healthyReport)
 			require.NoError(t, err)
 
+			reportSentTime := time.Now()
 			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
 			require.NoError(t, err)
 			resp2.Body.Close()
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
 			// Verify outage was resolved
-			outages2 := getOutages(t, client, "Prow", "Deck")
+			outages2 := getOutages(t, client, "Prow", "Hook")
 			var resolvedOutage *types.Outage
 			for i := range outages2 {
 				if outages2[i].ID == outage.ID {
@@ -1194,21 +1326,26 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
 			assert.NotNil(t, resolvedOutage.ResolvedBy)
 			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
+
+			// Verify that ping time was updated
+			status := getStatus(t, client, "Prow", "Hook")
+			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
+			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
 		})
 
 		t.Run("POST report with Healthy status does not resolve when auto_resolve is false", func(t *testing.T) {
-			// Create an outage first for Tide (which has auto_resolve: false)
+			// Create an outage first for Plank (which has auto_resolve: false)
 			downReport := types.ComponentMonitorReportRequest{
 				ComponentMonitor: "app-ci-component-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Tide"), // Tide has auto_resolve: false
+						SubComponentSlug: utils.Slugify("Plank"), // Plank has auto_resolve: false
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"tide\"} == 0",
+								Check:   "up{job=\"plank\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1225,7 +1362,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 			// Get the created outage
-			outages := getOutages(t, client, "Prow", "Tide")
+			outages := getOutages(t, client, "Prow", "Plank")
 			var outage *types.Outage
 			for i := range outages {
 				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
@@ -1241,12 +1378,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Tide"),
+						SubComponentSlug: utils.Slugify("Plank"),
 						Status:           types.StatusHealthy,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"tide\"} == 0",
+								Check:   "up{job=\"plank\"} == 0",
 								Results: "All instances healthy",
 							},
 						},
@@ -1263,7 +1400,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
 			// Verify outage was NOT resolved
-			outages2 := getOutages(t, client, "Prow", "Tide")
+			outages2 := getOutages(t, client, "Prow", "Plank")
 			var stillActiveOutage *types.Outage
 			for i := range outages2 {
 				if outages2[i].ID == outage.ID {
@@ -1275,7 +1412,7 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.False(t, stillActiveOutage.EndTime.Valid, "Outage should still be active")
 
 			// Cleanup
-			deleteOutage(t, client, "Prow", "Tide", outage.ID)
+			deleteOutage(t, client, "Prow", "Plank", outage.ID)
 		})
 
 		t.Run("POST report with invalid component returns 400", func(t *testing.T) {
@@ -1352,24 +1489,24 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
 					},
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Tide"),
+						SubComponentSlug: utils.Slugify("Plank"),
 						Status:           types.StatusDegraded,
 						Reasons: []types.Reason{
 							{
 								Type:    "http",
-								Check:   "https://tide.example.com/health",
+								Check:   "https://plank.example.com/health",
 								Results: "Response time > 5s",
 							},
 						},
@@ -1387,29 +1524,29 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 			// Verify both outages were created
-			deckOutages := getOutages(t, client, "Prow", "Deck")
-			var deckOutage *types.Outage
-			for i := range deckOutages {
-				if deckOutages[i].DiscoveredFrom == "component-monitor" && len(deckOutages[i].Reasons) > 0 && deckOutages[i].Reasons[0].Type == "prometheus" {
-					deckOutage = &deckOutages[i]
+			hookOutages := getOutages(t, client, "Prow", "Hook")
+			var hookOutage *types.Outage
+			for i := range hookOutages {
+				if hookOutages[i].DiscoveredFrom == "component-monitor" && len(hookOutages[i].Reasons) > 0 && hookOutages[i].Reasons[0].Type == "prometheus" {
+					hookOutage = &hookOutages[i]
 					break
 				}
 			}
-			require.NotNil(t, deckOutage, "Deck outage should be created")
+			require.NotNil(t, hookOutage, "Hook outage should be created")
 
-			tideOutages := getOutages(t, client, "Prow", "Tide")
-			var tideOutage *types.Outage
-			for i := range tideOutages {
-				if tideOutages[i].DiscoveredFrom == "component-monitor" && len(tideOutages[i].Reasons) > 0 && tideOutages[i].Reasons[0].Type == "http" {
-					tideOutage = &tideOutages[i]
+			plankOutages := getOutages(t, client, "Prow", "Plank")
+			var plankOutage *types.Outage
+			for i := range plankOutages {
+				if plankOutages[i].DiscoveredFrom == "component-monitor" && len(plankOutages[i].Reasons) > 0 && plankOutages[i].Reasons[0].Type == "http" {
+					plankOutage = &plankOutages[i]
 					break
 				}
 			}
-			require.NotNil(t, tideOutage, "Tide outage should be created")
+			require.NotNil(t, plankOutage, "Plank outage should be created")
 
 			// Cleanup
-			deleteOutage(t, client, "Prow", "Deck", deckOutage.ID)
-			deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+			deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
+			deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
 		})
 
 		t.Run("POST report with empty component_monitor returns 400", func(t *testing.T) {
@@ -1418,12 +1555,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1473,12 +1610,12 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1533,18 +1670,18 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("POST report with wrong component monitor instance returns 400", func(t *testing.T) {
-			// Prow/Deck is configured for "app-ci-component-monitor", not "wrong-monitor"
+			// Prow/Hook is configured for "app-ci-component-monitor", not "wrong-monitor"
 			reportPayload := types.ComponentMonitorReportRequest{
 				ComponentMonitor: "wrong-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
 					{
 						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Deck"),
+						SubComponentSlug: utils.Slugify("Hook"),
 						Status:           types.StatusDown,
 						Reasons: []types.Reason{
 							{
 								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
+								Check:   "up{job=\"hook\"} == 0",
 								Results: "No healthy instances found",
 							},
 						},
@@ -1566,5 +1703,139 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "Invalid request", errorResponse["error"])
 		})
+	}
+}
+
+func testAbsentReport(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("Absent report checker creates outage when no ping exists, and resolves when ping is received", func(t *testing.T) {
+			var outage *types.Outage
+			ctx := context.Background()
+			err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true, func(ctx context.Context) (bool, error) {
+				outages := getOutages(t, client, "Downstream CI", "Retester")
+				for i := range outages {
+					if outages[i].DiscoveredFrom == "absent-monitored-component-report" && !outages[i].EndTime.Valid {
+						outage = &outages[i]
+						return true, nil
+					}
+				}
+				return false, nil
+			})
+
+			require.NoError(t, err, "Absent report outage should be created within 20 seconds")
+			require.NotNil(t, outage, "Absent report outage should exist")
+			assert.Equal(t, "downstream-ci", outage.ComponentName)
+			assert.Equal(t, "retester", outage.SubComponentName)
+			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
+			assert.Equal(t, "absent-monitored-component-report", outage.DiscoveredFrom)
+			assert.Equal(t, "dashboard", outage.CreatedBy)
+			assert.Contains(t, outage.Description, "Component-monitor has not reported status within expected time")
+			assert.True(t, outage.ConfirmedAt.Valid, "Outage should be auto-confirmed since component doesn't require confirmation")
+
+			// Verify the component status reflects the outage
+			status := getStatus(t, client, "Downstream CI", "Retester")
+			assert.Equal(t, types.StatusDown, status.Status)
+			assert.Len(t, status.ActiveOutages, 1)
+
+			// Store outage ID for later verification
+			outageID := outage.ID
+
+			// Send a healthy report to create a ping and trigger auto-resolve
+			reportPayload := types.ComponentMonitorReportRequest{
+				ComponentMonitor: "app-ci-component-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    utils.Slugify("Downstream CI"),
+						SubComponentSlug: utils.Slugify("Retester"),
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			}
+
+			payloadBytes, err := json.Marshal(reportPayload)
+			require.NoError(t, err)
+
+			reportSentTime := time.Now()
+			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// Wait for the absent report checker to run and auto-resolve the outage
+			// The checker runs every 15s in e2e tests, so wait up to 20s
+			var resolvedOutage *types.Outage
+			err = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true, func(ctx context.Context) (bool, error) {
+				updatedOutages := getOutages(t, client, "Downstream CI", "Retester")
+				for i := range updatedOutages {
+					if updatedOutages[i].ID == outageID {
+						resolvedOutage = &updatedOutages[i]
+						if resolvedOutage.EndTime.Valid {
+							return true, nil
+						}
+						break
+					}
+				}
+				return false, nil
+			})
+
+			require.NoError(t, err, "Outage should be resolved within 20 seconds")
+			require.NotNil(t, resolvedOutage, "Outage should still exist after resolution")
+			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
+			assert.NotNil(t, resolvedOutage.ResolvedBy)
+			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
+
+			// Verify the component status is now healthy
+			updatedStatus := getStatus(t, client, "Downstream CI", "Retester")
+			assert.Equal(t, types.StatusHealthy, updatedStatus.Status)
+			assert.Len(t, updatedStatus.ActiveOutages, 0)
+			assert.NotNil(t, updatedStatus.LastPingTime, "Should have a last ping time after report")
+			assert.WithinDuration(t, reportSentTime, *updatedStatus.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
+		})
+	}
+}
+
+// Prepares the test data by ensuring no outages exist for absent pings from prior to the tests starting
+func cleanupAbsentReportOutages(t *testing.T, client *TestHTTPClient) {
+	// Seed pings for monitored sub-components to prevent absent report checker from creating outages
+	sendAllClearPing(t, client, "Prow", "Hook")
+	sendAllClearPing(t, client, "Prow", "Plank")
+
+	// Clean up any outages created by absent report checker before the pings were seeded
+	deleteOutagesFromAbsentReport(t, client, "Prow", "Hook")
+	deleteOutagesFromAbsentReport(t, client, "Prow", "Plank")
+}
+
+// sendAllClearPing sends a healthy component monitor report to seed a ping in the database,
+// preventing the absent report checker from creating an immediate outage.
+func sendAllClearPing(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
+	reportPayload := types.ComponentMonitorReportRequest{
+		ComponentMonitor: "app-ci-component-monitor",
+		Statuses: []types.ComponentMonitorReportComponentStatus{
+			{
+				ComponentSlug:    utils.Slugify(componentName),
+				SubComponentSlug: utils.Slugify(subComponentName),
+				Status:           types.StatusHealthy,
+				Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+			},
+		},
+	}
+
+	payloadBytes, err := json.Marshal(reportPayload)
+	require.NoError(t, err)
+
+	resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Failed to send all-clear ping for %s/%s", componentName, subComponentName)
+}
+
+// cleanupAbsentReportOutages deletes any outages created by the absent report checker for a given component.
+func deleteOutagesFromAbsentReport(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
+	outages := getOutages(t, client, componentName, subComponentName)
+	for _, outage := range outages {
+		if outage.DiscoveredFrom == "absent-monitored-component-report" {
+			deleteOutage(t, client, componentName, subComponentName, outage.ID)
+		}
 	}
 }

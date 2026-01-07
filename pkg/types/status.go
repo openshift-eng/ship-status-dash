@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 type Status string
 
 const (
@@ -23,7 +25,8 @@ func (s Status) ToSeverity() Severity {
 }
 
 type ComponentStatus struct {
-	ComponentName string   `json:"component_name"`
-	Status        Status   `json:"status"`
-	ActiveOutages []Outage `json:"active_outages"`
+	ComponentName string     `json:"component_name"`
+	Status        Status     `json:"status"`
+	ActiveOutages []Outage   `json:"active_outages"`
+	LastPingTime  *time.Time `json:"last_ping_time,omitempty"`
 }

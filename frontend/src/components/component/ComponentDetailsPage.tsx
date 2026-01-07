@@ -18,7 +18,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Component } from '../../types'
 import { getComponentInfoEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
-import { getStatusBackgroundColor } from '../../utils/helpers'
+import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
@@ -138,10 +138,11 @@ const ComponentDetailsPage = () => {
       fetch(getComponentStatusEndpoint(componentName)).then((res) => res.json()),
     ])
       .then(([componentData, statusData]) => {
-        // Add status to the component
+        // Add status and last ping time to the component
         return {
           ...componentData,
           status: statusData.status || 'Unknown',
+          last_ping_time: statusData.last_ping_time,
         }
       })
       .then((data) => {
@@ -253,6 +254,16 @@ const ComponentDetailsPage = () => {
                   </InfoValue>
                 </CardContent>
               </InfoCard>
+              {component.last_ping_time && (
+                <InfoCard>
+                  <CardContent>
+                    <InfoTitle>Last Checked</InfoTitle>
+                    <InfoValue>
+                      {relativeTime(new Date(component.last_ping_time), new Date())}
+                    </InfoValue>
+                  </CardContent>
+                </InfoCard>
+              )}
             </Box>
           </ComponentHeader>
 

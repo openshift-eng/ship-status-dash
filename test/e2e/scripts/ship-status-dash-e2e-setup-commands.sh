@@ -262,6 +262,7 @@ spec:
       - "--port=8080"
       - "--dsn=${DSN}"
       - "--hmac-secret-file=/etc/hmac/secret"
+      - "--absent-report-check-interval=15s"
     volumeMounts:
     - mountPath: /etc/config
       name: dashboard-config

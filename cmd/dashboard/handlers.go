@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
 
@@ -20,19 +21,21 @@ import (
 type Handlers struct {
 	logger                 *logrus.Logger
 	config                 *types.DashboardConfig
-	db                     *gorm.DB
+	outageRepo             repositories.OutageRepository
+	pingRepo               repositories.ComponentPingRepository
 	groupCache             *auth.GroupMembershipCache
 	monitorReportProcessor *ComponentMonitorReportProcessor
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, config *types.DashboardConfig, db *gorm.DB, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, config *types.DashboardConfig, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		config:                 config,
-		db:                     db,
+		outageRepo:             outageRepo,
+		pingRepo:               pingRepo,
 		groupCache:             groupCache,
-		monitorReportProcessor: NewComponentMonitorReportProcessor(db, config, logger),
+		monitorReportProcessor: NewComponentMonitorReportProcessor(outageRepo, pingRepo, config, logger),
 	}
 }
 
@@ -111,8 +114,8 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 		subComponentSlugs[i] = subComponent.Slug
 	}
 
-	var outages []types.Outage
-	if err := h.db.Preload("Reasons").Where("component_name = ? AND sub_component_name IN ?", componentName, subComponentSlugs).Order("start_time DESC").Find(&outages).Error; err != nil {
+	outages, err := h.outageRepo.GetOutagesForComponent(componentName, subComponentSlugs)
+	if err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -144,8 +147,8 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var outages []types.Outage
-	if err := h.db.Preload("Reasons").Where("component_name = ? AND sub_component_name = ?", componentName, subComponentName).Order("start_time DESC").Find(&outages).Error; err != nil {
+	outages, err := h.outageRepo.GetOutagesForSubComponent(componentName, subComponentName)
+	if err != nil {
 		logger.WithField("error", err).Error("Failed to query outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
@@ -242,7 +245,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.Create(&outage).Error; err != nil {
+	if err := h.outageRepo.CreateOutage(&outage); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return
@@ -298,8 +301,8 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", uint(outageID), componentName, subComponentName).First(&outage).Error; err != nil {
+	outage, err := h.outageRepo.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -353,7 +356,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		outage.TriageNotes = updateReq.TriageNotes
 	}
 
-	if err := h.db.Save(&outage).Error; err != nil {
+	if err := h.outageRepo.SaveOutage(outage); err != nil {
 		logger.WithField("error", err).Error("Failed to update outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to update outage")
 		return
@@ -389,8 +392,14 @@ func (h *Handlers) GetOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var outage types.Outage
-	if err := h.db.Preload("Reasons").Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
+	outageID, err := strconv.ParseUint(outageId, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	outage, err := h.outageRepo.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -442,8 +451,14 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var outage types.Outage
-	if err := h.db.Where("id = ? AND component_name = ? AND sub_component_name = ?", outageId, componentName, subComponentName).First(&outage).Error; err != nil {
+	outageID, err := strconv.ParseUint(outageId, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	outage, err := h.outageRepo.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -453,7 +468,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.Delete(&outage).Error; err != nil {
+	if err := h.outageRepo.DeleteOutage(outage); err != nil {
 		logger.WithField("error", err).Error("Failed to delete outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete outage")
 		return
@@ -486,8 +501,8 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentName, subComponentName, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
+	outages, err := h.outageRepo.GetActiveOutagesForSubComponent(componentName, subComponentName)
+	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
 		return
@@ -498,10 +513,16 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		status = determineStatusFromSeverity(outages)
 	}
 
+	lastPingTime, err := h.pingRepo.GetLastPingTime(componentName, subComponentName)
+	if err != nil {
+		logger.WithField("error", err).Warn("Failed to query component report ping")
+	}
+
 	response := types.ComponentStatus{
 		ComponentName: fmt.Sprintf("%s/%s", componentName, subComponentName),
 		Status:        status,
 		ActiveOutages: outages,
+		LastPingTime:  lastPingTime,
 	}
 	respondWithJSON(w, http.StatusOK, response)
 }
@@ -548,8 +569,8 @@ func (h *Handlers) GetAllComponentsStatusJSON(w http.ResponseWriter, r *http.Req
 
 // getComponentStatus calculates the status of a component based on its sub-components and active outages
 func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus.Entry) (types.ComponentStatus, error) {
-	var outages []types.Outage
-	if err := h.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", component.Slug, time.Now()).Order("start_time DESC").Find(&outages).Error; err != nil {
+	outages, err := h.outageRepo.GetActiveOutagesForComponent(component.Slug)
+	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		return types.ComponentStatus{}, err
 	}
@@ -568,10 +589,17 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		status = determineStatusFromSeverity(outages)
 	}
 
+	// The last ping time is the time of the most recent ping for ANY of the sub-components in the component.
+	lastPingTime, err := h.pingRepo.GetMostRecentPingTimeForAnySubComponent(component.Slug)
+	if err != nil {
+		logger.WithField("error", err).Warn("Failed to query component report pings")
+	}
+
 	return types.ComponentStatus{
 		ComponentName: component.Name,
 		Status:        status,
 		ActiveOutages: outages,
+		LastPingTime:  lastPingTime,
 	}, nil
 }
 
