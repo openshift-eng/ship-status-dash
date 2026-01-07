@@ -38,11 +38,25 @@ func NewAbsentMonitoredComponentReportChecker(config *types.DashboardConfig, out
 
 // Start begins the absent report checker.
 func (a *AbsentMonitoredComponentReportChecker) Start(ctx context.Context) {
-	a.logger.WithField("check_interval", a.checkInterval).Info("Starting absent monitored component report checker")
+	initialDelay := 3 * a.checkInterval
+	a.logger.WithFields(logrus.Fields{
+		"check_interval": a.checkInterval,
+		"initial_delay":  initialDelay,
+	}).Info("Starting absent monitored component report checker after initial delay")
 	ticker := time.NewTicker(a.checkInterval)
 	defer ticker.Stop()
 
-	a.checkForAbsentReports()
+	initialTimer := time.NewTimer(initialDelay)
+	defer initialTimer.Stop()
+
+	// Wait for initial delay before first check
+	select {
+	case <-ctx.Done():
+		a.logger.Info("Stopping absent monitored component report checker")
+		return
+	case <-initialTimer.C:
+		a.checkForAbsentReports()
+	}
 
 	for {
 		select {
