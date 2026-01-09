@@ -135,6 +135,8 @@ if [ ${postgres_retVal} -ne 0 ]; then
   exit 1
 fi
 
+e2e_pause # This pause is important to give the postgres pod time to start up and be ready to accept connections.
+
 ${KUBECTL_CMD} -n ship-status-e2e get po -o wide
 ${KUBECTL_CMD} -n ship-status-e2e get svc,ep
 
