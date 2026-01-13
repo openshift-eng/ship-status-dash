@@ -166,6 +166,6 @@ When a `duration` is specified for a Prometheus query, the component-monitor exe
 - If the dashboard API is unavailable, errors are logged and the component-monitor continues running
 - Configuration validation errors (invalid durations, steps, or prometheus locations) cause the component-monitor to exit immediately
 
-## Deployment
+## Configuration Testing
 
-For deployment examples, see [`deploy/component-monitor/`](../../deploy/component-monitor/README.md).
+To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md), and the `component-monitor-dry-run` make target.

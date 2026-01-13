@@ -62,6 +62,15 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 	}
 }
 
+// DryRun runs probes once and outputs the report as JSON to stdout.
+func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
+	o.startProbes(ctx)
+	results := o.collectProbeResults(ctx)
+	if err := o.reportClient.PrintReport(results); err != nil {
+		o.log.Errorf("Error outputting report: %v", err)
+	}
+}
+
 func (o *ProbeOrchestrator) startProbes(ctx context.Context) {
 	o.log.Infof("Probing %d components...", len(o.probers))
 	for _, prober := range o.probers {

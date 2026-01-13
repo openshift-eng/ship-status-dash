@@ -26,6 +26,7 @@ type Options struct {
 	// When this is set, prometheusLocation in the config must be a cluster name, not a URL.
 	KubeconfigDir       string
 	ReportAuthTokenFile string
+	DryRun              bool
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -37,6 +38,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.Name, "name", "", "Name of the component monitor")
 	flag.StringVar(&opts.KubeconfigDir, "kubeconfig-dir", "", "Path to directory containing kubeconfig files for different clusters (each file named after the cluster)")
 	flag.StringVar(&opts.ReportAuthTokenFile, "report-auth-token-file", "", "Path to file containing bearer token for authenticating report requests")
+	flag.BoolVar(&opts.DryRun, "dry-run", false, "Run probes once and output JSON report instead of sending to dashboard")
 	flag.Parse()
 
 	return opts
@@ -56,12 +58,14 @@ func (o *Options) Validate() error {
 		return errors.New("name is required (use --name flag)")
 	}
 
-	if o.ReportAuthTokenFile == "" {
-		return errors.New("report auth token file is required (use --report-auth-token-file flag)")
-	}
+	if !o.DryRun {
+		if o.ReportAuthTokenFile == "" {
+			return errors.New("report auth token file is required (use --report-auth-token-file flag)")
+		}
 
-	if _, err := os.Stat(o.ReportAuthTokenFile); os.IsNotExist(err) {
-		return errors.New("report auth token file does not exist: " + o.ReportAuthTokenFile)
+		if _, err := os.Stat(o.ReportAuthTokenFile); os.IsNotExist(err) {
+			return errors.New("report auth token file does not exist: " + o.ReportAuthTokenFile)
+		}
 	}
 
 	return nil
@@ -183,6 +187,13 @@ func main() {
 		return
 	}
 
+	if opts.DryRun {
+		log.Info("Running in dry run mode, will not send report to dashboard")
+		orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, "", log)
+		orchestrator.DryRun(ctx)
+		return
+	}
+
 	tokenBytes, err := os.ReadFile(opts.ReportAuthTokenFile)
 	if err != nil {
 		log.WithFields(logrus.Fields{
@@ -191,7 +202,6 @@ func main() {
 		}).Fatal("Failed to read report auth token file")
 	}
 	reportAuthToken := strings.TrimSpace(string(tokenBytes))
-
 	orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, reportAuthToken, log)
 	orchestrator.Run(ctx)
 }
