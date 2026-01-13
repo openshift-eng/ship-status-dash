@@ -17,7 +17,7 @@ components:
       retry_after: 5s
     prometheus_monitor:
       prometheus_location:
-        cluster: "app.ci"
+        cluster: "in-cluster"
         namespace: "openshift-monitoring"
         route: "thanos-querier"
       queries:

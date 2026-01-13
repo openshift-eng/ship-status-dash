@@ -40,6 +40,7 @@ spec:
   backoffLimit: 0
   template:
     spec:
+      serviceAccountName: component-monitor
       restartPolicy: Never
       containers:
       - name: component-monitor
@@ -58,17 +59,10 @@ spec:
         - name: config
           mountPath: /config
           readOnly: true
-        - name: kubeconfigs
-          mountPath: /kubeconfigs
-          readOnly: true
       volumes:
       - name: config
         configMap:
           name: ${CONFIG_MAP_NAME}
-      # This secret contains the kubeconfigs for app.ci and the build_farm clusters
-      - name: kubeconfigs
-        secret:
-          secretName: component-monitor-kubeconfigs
 EOF
 
 echo "Job ${JOB_NAME} created. To view the output:"

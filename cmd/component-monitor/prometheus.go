@@ -19,6 +19,10 @@ import (
 	"ship-status-dash/pkg/types"
 )
 
+// inClusterConfigName is the special cluster name that indicates the component monitor
+// should use in-cluster Kubernetes configuration instead of a kubeconfig file.
+const inClusterConfigName = "in-cluster"
+
 // setDefaultStepValues sets default step values for Prometheus queries that have a duration but no step specified.
 func setDefaultStepValues(config *types.ComponentMonitorConfig) {
 	for i := range config.Components {
@@ -80,9 +84,9 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 			if !hasRoute {
 				errors = append(errors, fmt.Errorf("prometheusLocation route is required when cluster is set for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
 			}
-			// kubeconfigDir is required when using cluster-based location
-			if kubeconfigDir == "" {
-				errors = append(errors, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s", location.Cluster))
+			// kubeconfigDir is required when using cluster-based location, unless cluster is inClusterConfigName
+			if kubeconfigDir == "" && location.Cluster != inClusterConfigName {
+				errors = append(errors, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s (use %q as cluster name to use in-cluster config)", location.Cluster, inClusterConfigName))
 			}
 		}
 
@@ -93,8 +97,8 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 			}
 		}
 
-		// If kubeconfigDir is provided and cluster is set, check if kubeconfig file exists
-		if hasCluster && kubeconfigDir != "" {
+		// If kubeconfigDir is provided and cluster is set (and not inClusterConfigName), check if kubeconfig file exists
+		if hasCluster && kubeconfigDir != "" && location.Cluster != inClusterConfigName {
 			kubeconfigPath := filepath.Join(kubeconfigDir, location.Cluster+".config")
 			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
 				errors = append(errors, fmt.Errorf("kubeconfig file not found for cluster %s", location.Cluster))
@@ -156,14 +160,24 @@ func createPrometheusClients(components []types.MonitoringComponent, kubeconfigD
 
 	for key, loc := range locationMap {
 		if loc.Cluster != "" {
-			if kubeconfigDir == "" {
-				return nil, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s", loc.Cluster)
-			}
+			var config *rest.Config
+			var err error
 
-			kubeconfigPath := filepath.Join(kubeconfigDir, loc.Cluster+".config")
-			config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build config from kubeconfig for cluster %s: %w", loc.Cluster, err)
+			if loc.Cluster == inClusterConfigName {
+				config, err = rest.InClusterConfig()
+				if err != nil {
+					return nil, fmt.Errorf("failed to build in-cluster config: %w", err)
+				}
+			} else {
+				if kubeconfigDir == "" {
+					return nil, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s", loc.Cluster)
+				}
+
+				kubeconfigPath := filepath.Join(kubeconfigDir, loc.Cluster+".config")
+				config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to build config from kubeconfig for cluster %s: %w", loc.Cluster, err)
+				}
 			}
 
 			roundTripper, err := rest.TransportFor(config)
