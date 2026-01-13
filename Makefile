@@ -1,4 +1,4 @@
-.PHONY: build e2e test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor
+.PHONY: build e2e test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run
 
 build: build-frontend build-dashboard
 
@@ -28,3 +28,6 @@ build-frontend: npm
 
 build-component-monitor:
 	@go build -mod=vendor -o component-monitor ./cmd/component-monitor
+
+component-monitor-dry-run:
+	@./hack/component-monitor-dry-run/create-job.sh
