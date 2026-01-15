@@ -77,6 +77,12 @@ components:
           frequency: 10s
           component_monitor: "e2e-component-monitor"
           auto_resolve: true
+      - name: sippy-chat
+        description: Chat component for Sippy
+        monitoring:
+          auto_resolve: true
+          component_monitor: e2e-component-monitor
+          frequency: 10s
     owners:
       - user: developer
       - service_account: system:serviceaccount:ship-status:component-monitor

@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
@@ -18,7 +19,7 @@ const (
 
 // AbsentMonitoredComponentReportChecker handles outages for components where pings have not been received within the expected time.
 type AbsentMonitoredComponentReportChecker struct {
-	config        *types.DashboardConfig
+	configManager *config.Manager[types.DashboardConfig]
 	outageRepo    repositories.OutageRepository
 	pingRepo      repositories.ComponentPingRepository
 	checkInterval time.Duration
@@ -26,9 +27,9 @@ type AbsentMonitoredComponentReportChecker struct {
 }
 
 // NewAbsentMonitoredComponentReportChecker creates a new AbsentMonitoredComponentReportChecker instance.
-func NewAbsentMonitoredComponentReportChecker(config *types.DashboardConfig, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
+func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
 	return &AbsentMonitoredComponentReportChecker{
-		config:        config,
+		configManager: configManager,
 		outageRepo:    outageRepo,
 		pingRepo:      pingRepo,
 		checkInterval: checkInterval,
@@ -75,10 +76,10 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 	logger := a.logger.WithField("check", "absent_report")
 	logger.Info("Checking for absent monitored component reports")
 
-	for _, component := range a.config.Components {
+	for _, component := range a.configManager.Get().Components {
 		for _, subComponent := range component.Subcomponents {
 			// Skip sub-components without monitoring configuration
-			if subComponent.Monitoring.Frequency == "" {
+			if subComponent.Monitoring == nil {
 				continue
 			}
 
@@ -124,7 +125,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 
 			if !componentInOutage {
 				// Ping is healthy - resolve any existing outages if auto-resolve is enabled
-				if subComponent.Monitoring.AutoResolve && len(activeOutages) > 0 {
+				if subComponent.Monitoring != nil && subComponent.Monitoring.AutoResolve && len(activeOutages) > 0 {
 					for i := range activeOutages {
 						activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
 						resolver := subComponent.Monitoring.ComponentMonitor

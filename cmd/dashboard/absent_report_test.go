@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 
@@ -32,7 +33,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "",
 								},
 							},
@@ -55,7 +56,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "invalid",
 								},
 							},
@@ -78,7 +79,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 								RequiresConfirmation: false,
@@ -115,7 +116,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 								RequiresConfirmation: false,
@@ -148,7 +149,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 							},
@@ -179,7 +180,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 							},
@@ -212,7 +213,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "test-subcomponent",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 								RequiresConfirmation: true,
@@ -242,13 +243,13 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "sub-1",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 							},
 							{
 								Slug: "sub-2",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "10m",
 								},
 							},
@@ -259,7 +260,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						Subcomponents: []types.SubComponent{
 							{
 								Slug: "sub-1",
-								Monitoring: types.Monitoring{
+								Monitoring: &types.Monitoring{
 									Frequency: "5m",
 								},
 							},
@@ -314,7 +315,8 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			tt.setupPingRepo(pingRepo)
 			tt.setupOutageRepo(outageRepo)
 
-			checker := NewAbsentMonitoredComponentReportChecker(tt.config, outageRepo, pingRepo, 5*time.Minute, logger)
+			configManager := config.CreateTestConfigManager(tt.config)
+			checker := NewAbsentMonitoredComponentReportChecker(configManager, outageRepo, pingRepo, 5*time.Minute, logger)
 			checker.checkForAbsentReports()
 
 			tt.verifyCreatedOutages(t, outageRepo.CreatedOutages)

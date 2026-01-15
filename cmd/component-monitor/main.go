@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/types"
 )
 
@@ -71,93 +74,48 @@ func (o *Options) Validate() error {
 	return nil
 }
 
-func loadAndValidateComponentsAndFrequency(log *logrus.Logger, configPath string) ([]types.MonitoringComponent, time.Duration) {
+func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir string) (*types.ComponentMonitorConfig, error) {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
-		log.WithFields(logrus.Fields{
-			"config_path": configPath,
-			"error":       err,
-		}).Fatal("Failed to read config file")
+		return nil, err
 	}
 
-	var config types.ComponentMonitorConfig
-	if err := yaml.Unmarshal(configFile, &config); err != nil {
-		log.WithFields(logrus.Fields{
-			"config_path": configPath,
-			"error":       err,
-		}).Fatal("Failed to parse config file")
+	var cfg types.ComponentMonitorConfig
+	if err := yaml.Unmarshal(configFile, &cfg); err != nil {
+		return nil, err
 	}
 
-	frequency, err := time.ParseDuration(config.Frequency)
+	frequency, err := time.ParseDuration(cfg.Frequency)
 	if err != nil {
-		log.WithFields(logrus.Fields{
-			"frequency": config.Frequency,
-			"error":     err,
-		}).Fatal("Failed to parse frequency")
+		return nil, fmt.Errorf("failed to parse frequency: %w", err)
 	}
 	log.Infof("Probing Frequency configured to: %s", frequency)
 
-	for _, component := range config.Components {
+	for _, component := range cfg.Components {
 		if component.HTTPMonitor != nil {
 			retryAfter, err := time.ParseDuration(component.HTTPMonitor.RetryAfter)
 			if err != nil {
-				log.WithField("error", err).Fatal("Failed to parse retry after duration")
+				return nil, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
 			}
 			if retryAfter > frequency {
-				log.WithFields(logrus.Fields{
-					"component":     component.ComponentSlug,
-					"sub_component": component.SubComponentSlug,
-					"retry_after":   component.HTTPMonitor.RetryAfter,
-					"frequency":     frequency,
-				}).Fatal("Retry after duration is greater than frequency")
+				return nil, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, frequency)
 			}
 		}
 	}
 
-	setDefaultStepValues(&config)
+	setDefaultStepValues(&cfg)
 
-	log.Infof("Loaded configuration with %d components", len(config.Components))
-	return config.Components, frequency
+	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir); err != nil {
+		return nil, fmt.Errorf("invalid prometheus location configuration: %w", err)
+	}
+
+	log.Infof("Loaded configuration with %d components", len(cfg.Components))
+	return &cfg, nil
 }
 
-func main() {
-	log := logrus.New()
-	log.SetLevel(logrus.InfoLevel)
-	log.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
-	})
-
-	opts := NewOptions()
-
-	if err := opts.Validate(); err != nil {
-		log.WithField("error", err).Fatal("Invalid command-line options")
-	}
-
-	components, frequency := loadAndValidateComponentsAndFrequency(log, opts.ConfigPath)
-
-	// Validate Prometheus configuration
-	if err := validatePrometheusConfiguration(components, opts.KubeconfigDir); err != nil {
-		log.WithField("error", err).Fatal("Invalid prometheus location configuration")
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Info("Received interrupt signal, shutting down...")
-		cancel()
-	}()
-
-	prometheusClients, err := createPrometheusClients(components, opts.KubeconfigDir)
-	if err != nil {
-		log.WithField("error", err).Fatal("Failed to create prometheus clients")
-	}
-
+func createProbers(components []types.MonitoringComponent, prometheusClients map[string]promclientv1.API, log *logrus.Logger) []Prober {
 	var probers []Prober
 	for _, component := range components {
 		componentLogger := log.WithFields(logrus.Fields{
@@ -181,14 +139,86 @@ func main() {
 			probers = append(probers, prometheusProber)
 		}
 	}
+	return probers
+}
 
+func startOrchestratorWithConfig(config *types.ComponentMonitorConfig, kubeconfigDir, dashboardURL, componentMonitorName, reportAuthToken string, log *logrus.Logger, parentCtx context.Context) (context.CancelFunc, error) {
+	frequency, err := time.ParseDuration(config.Frequency)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse frequency: %w", err)
+	}
+
+	prometheusClients, err := createPrometheusClients(config.Components, kubeconfigDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create prometheus clients: %w", err)
+	}
+
+	probers := createProbers(config.Components, prometheusClients, log)
 	if len(probers) == 0 {
-		log.Warn("No probers configured, exiting")
-		return
+		return nil, fmt.Errorf("no probers configured")
+	}
+
+	orchestratorCtx, orchestratorCancel := context.WithCancel(parentCtx)
+	orchestrator := NewProbeOrchestrator(probers, frequency, dashboardURL, componentMonitorName, reportAuthToken, log)
+	go orchestrator.Run(orchestratorCtx)
+
+	return orchestratorCancel, nil
+}
+
+func main() {
+	log := logrus.New()
+	log.SetLevel(logrus.InfoLevel)
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
+	opts := NewOptions()
+
+	if err := opts.Validate(); err != nil {
+		log.WithField("error", err).Fatal("Invalid command-line options")
+	}
+
+	loadFunc := func(path string) (*types.ComponentMonitorConfig, error) {
+		return loadAndValidateConfig(log, path, opts.KubeconfigDir)
+	}
+
+	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, config.DefaultDebounceDelay)
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to create config manager")
+	}
+	defer configManager.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Info("Received interrupt signal, shutting down...")
+		cancel()
+	}()
+
+	if err := configManager.Watch(ctx); err != nil {
+		log.WithField("error", err).Fatal("Failed to start config watcher")
 	}
 
 	if opts.DryRun {
 		log.Info("Running in dry run mode, will not send report to dashboard")
+		monitoringConfig := configManager.Get()
+		frequency, err := time.ParseDuration(monitoringConfig.Frequency)
+		if err != nil {
+			log.WithField("error", err).Fatal("Failed to parse frequency")
+		}
+		prometheusClients, err := createPrometheusClients(monitoringConfig.Components, opts.KubeconfigDir)
+		if err != nil {
+			log.WithField("error", err).Fatal("Failed to create prometheus clients")
+		}
+		probers := createProbers(monitoringConfig.Components, prometheusClients, log)
+		if len(probers) == 0 {
+			log.Warn("No probers configured, exiting")
+			return
+		}
 		orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, "", log)
 		orchestrator.DryRun(ctx)
 		return
@@ -202,6 +232,29 @@ func main() {
 		}).Fatal("Failed to read report auth token file")
 	}
 	reportAuthToken := strings.TrimSpace(string(tokenBytes))
-	orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, reportAuthToken, log)
-	orchestrator.Run(ctx)
+
+	orchestratorCancel, err := startOrchestratorWithConfig(configManager.Get(), opts.KubeconfigDir, opts.DashboardURL, opts.Name, reportAuthToken, log, ctx)
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to start orchestrator")
+	}
+	defer orchestratorCancel()
+
+	// If the monitoring config changes, we need to stop the current orchestrator and start a new one with the new config
+	startOrchestrator := func() {
+		newCancel, startErr := startOrchestratorWithConfig(configManager.Get(), opts.KubeconfigDir, opts.DashboardURL, opts.Name, reportAuthToken, log, ctx)
+		if startErr != nil {
+			log.WithField("error", startErr).Error("Failed to start orchestrator with updated monitoringConfig, keeping existing orchestrator")
+			return
+		}
+
+		log.Info("Stopping current orchestrator and starting new one with updated monitoringConfig")
+		orchestratorCancel()
+		orchestratorCancel = newCancel
+	}
+
+	configManager.OnUpdate(func(newConfig *types.ComponentMonitorConfig) {
+		startOrchestrator()
+	})
+
+	<-ctx.Done()
 }

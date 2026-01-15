@@ -177,7 +177,7 @@ func (m *MockComponentPingRepository) GetMostRecentPingTimeForAnySubComponent(co
 func TestConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 	subComponent := types.SubComponent{
 		Slug: "test-subcomponent",
-		Monitoring: types.Monitoring{
+		Monitoring: &types.Monitoring{
 			AutoResolve:      autoResolve,
 			ComponentMonitor: "test-monitor",
 		},

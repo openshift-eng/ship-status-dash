@@ -36,11 +36,11 @@ func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
 
 // SubComponent represents a sub-component that can have outages tracked against it.
 type SubComponent struct {
-	Name                 string     `json:"name" yaml:"name"`
-	Slug                 string     `json:"slug"`
-	Description          string     `json:"description" yaml:"description"`
-	Monitoring           Monitoring `json:"monitoring" yaml:"monitoring"`
-	RequiresConfirmation bool       `json:"requires_confirmation" yaml:"requires_confirmation"`
+	Name                 string      `json:"name" yaml:"name"`
+	Slug                 string      `json:"slug"`
+	Description          string      `json:"description" yaml:"description"`
+	Monitoring           *Monitoring `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
+	RequiresConfirmation bool        `json:"requires_confirmation" yaml:"requires_confirmation"`
 }
 
 // Monitoring defines how this sub-component is automatically monitored.

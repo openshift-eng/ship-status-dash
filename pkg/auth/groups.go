@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 
 	userv1client "github.com/openshift/client-go/user/clientset/versioned/typed/user/v1"
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,7 @@ import (
 
 // GroupMembershipCache stores the mapping of rover_group names to their member users.
 type GroupMembershipCache struct {
+	mu     sync.RWMutex
 	groups map[string][]string
 	logger *logrus.Logger
 }
@@ -58,7 +60,9 @@ func (c *GroupMembershipCache) LoadGroups(groupNames []string, kubeconfigPath st
 
 		users := make([]string, len(group.Users))
 		copy(users, group.Users)
+		c.mu.Lock()
 		c.groups[groupName] = users
+		c.mu.Unlock()
 
 		c.logger.WithFields(logrus.Fields{
 			"group":      groupName,
@@ -71,7 +75,9 @@ func (c *GroupMembershipCache) LoadGroups(groupNames []string, kubeconfigPath st
 
 // IsUserInGroup checks if a user is a member of the specified group.
 func (c *GroupMembershipCache) IsUserInGroup(user, groupName string) bool {
+	c.mu.RLock()
 	users, exists := c.groups[groupName]
+	c.mu.RUnlock()
 	if !exists {
 		return false
 	}
@@ -81,7 +87,9 @@ func (c *GroupMembershipCache) IsUserInGroup(user, groupName string) bool {
 
 // GetGroupMembers returns the list of users in the specified group.
 func (c *GroupMembershipCache) GetGroupMembers(groupName string) []string {
+	c.mu.RLock()
 	users, exists := c.groups[groupName]
+	c.mu.RUnlock()
 	if !exists {
 		return nil
 	}

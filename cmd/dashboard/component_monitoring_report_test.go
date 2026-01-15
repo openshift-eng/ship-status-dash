@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
@@ -425,11 +426,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			tt.setupRepo(repo)
 			pingRepo := &repositories.MockComponentPingRepository{}
 
+			configManager := config.CreateTestConfigManager(tt.config)
 			processor := &ComponentMonitorReportProcessor{
-				outageRepo: repo,
-				pingRepo:   pingRepo,
-				config:     tt.config,
-				logger:     logger,
+				outageRepo:    repo,
+				pingRepo:      pingRepo,
+				configManager: configManager,
+				logger:        logger,
 			}
 
 			err := processor.Process(tt.request)
@@ -569,7 +571,7 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 						Subcomponents: []types.SubComponent{
 							{
 								Slug:       "test-subcomponent",
-								Monitoring: types.Monitoring{ComponentMonitor: "test-monitor"},
+								Monitoring: &types.Monitoring{ComponentMonitor: "test-monitor"},
 							},
 						},
 						Owners: []types.Owner{
@@ -595,11 +597,12 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			configManager := config.CreateTestConfigManager(tt.config)
 			processor := &ComponentMonitorReportProcessor{
-				outageRepo: &repositories.MockOutageRepository{},
-				pingRepo:   &repositories.MockComponentPingRepository{},
-				config:     tt.config,
-				logger:     logger,
+				outageRepo:    &repositories.MockOutageRepository{},
+				pingRepo:      &repositories.MockComponentPingRepository{},
+				configManager: configManager,
+				logger:        logger,
 			}
 
 			err := processor.ValidateRequest(tt.request, tt.serviceAccount)

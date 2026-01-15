@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
@@ -19,19 +20,19 @@ const (
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
-	outageRepo repositories.OutageRepository
-	pingRepo   repositories.ComponentPingRepository
-	config     *types.DashboardConfig
-	logger     *logrus.Logger
+	outageRepo    repositories.OutageRepository
+	pingRepo      repositories.ComponentPingRepository
+	configManager *config.Manager[types.DashboardConfig]
+	logger        *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, config *types.DashboardConfig, logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
-		outageRepo: outageRepo,
-		pingRepo:   pingRepo,
-		config:     config,
-		logger:     logger,
+		outageRepo:    outageRepo,
+		pingRepo:      pingRepo,
+		configManager: configManager,
+		logger:        logger,
 	}
 }
 
@@ -39,7 +40,7 @@ func (p *ComponentMonitorReportProcessor) ValidateRequest(req *types.ComponentMo
 	var errors []error
 	for _, status := range req.Statuses {
 		// Component must exist
-		component := p.config.GetComponentBySlug(status.ComponentSlug)
+		component := p.configManager.Get().GetComponentBySlug(status.ComponentSlug)
 		if component == nil {
 			errors = append(errors, fmt.Errorf("component not found: %s", status.ComponentSlug))
 			continue
@@ -69,7 +70,7 @@ func (p *ComponentMonitorReportProcessor) ValidateRequest(req *types.ComponentMo
 		}
 
 		// This component-monitor instance must be configured for the sub-component
-		if subComponent.Monitoring.ComponentMonitor != req.ComponentMonitor {
+		if subComponent.Monitoring == nil || subComponent.Monitoring.ComponentMonitor != req.ComponentMonitor {
 			errors = append(errors, fmt.Errorf("improper component monitor source: %s for: %s/%s", req.ComponentMonitor, status.ComponentSlug, status.SubComponentSlug))
 		}
 	}
@@ -92,7 +93,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			"status":        string(status.Status),
 		})
 
-		component := p.config.GetComponentBySlug(status.ComponentSlug)
+		component := p.configManager.Get().GetComponentBySlug(status.ComponentSlug)
 		if component == nil {
 			// This should never happen, since the request validation should have caught this.
 			return fmt.Errorf("component not found: %s", status.ComponentSlug)
@@ -123,7 +124,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
-			if !subComponent.Monitoring.AutoResolve {
+			if subComponent.Monitoring == nil || !subComponent.Monitoring.AutoResolve {
 				statusLogger.Debug("Auto-resolve disabled, skipping healthy status processing")
 				continue
 			}
