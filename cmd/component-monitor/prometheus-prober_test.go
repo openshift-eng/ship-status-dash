@@ -331,3 +331,120 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    model.Value
+		expected string
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: "no result",
+		},
+		{
+			name:     "empty vector",
+			input:    model.Vector{},
+			expected: "empty vector",
+		},
+		{
+			name: "single-element vector",
+			input: model.Vector{
+				&model.Sample{
+					Metric: model.Metric{"job": "test"},
+					Value:  1.0,
+				},
+			},
+			expected: "1",
+		},
+		{
+			name: "multi-element vector with single label",
+			input: model.Vector{
+				&model.Sample{
+					Metric: model.Metric{"state": "free"},
+					Value:  0.0,
+				},
+				&model.Sample{
+					Metric: model.Metric{"state": "leased"},
+					Value:  10.0,
+				},
+				&model.Sample{
+					Metric: model.Metric{"state": "dirty"},
+					Value:  2.0,
+				},
+			},
+			expected: "{state=free}=0, {state=leased}=10, {state=dirty}=2",
+		},
+		{
+			name: "multi-element vector with multiple labels",
+			input: model.Vector{
+				&model.Sample{
+					Metric: model.Metric{"type": "aws-quota-slice", "state": "free"},
+					Value:  5.0,
+				},
+				&model.Sample{
+					Metric: model.Metric{"type": "aws-quota-slice", "state": "leased"},
+					Value:  15.0,
+				},
+			},
+			expected: "{state=free,type=aws-quota-slice}=5, {state=leased,type=aws-quota-slice}=15",
+		},
+		{
+			name:     "scalar",
+			input:    &model.Scalar{Value: 42.5},
+			expected: "42.5",
+		},
+		{
+			name:     "nil scalar",
+			input:    (*model.Scalar)(nil),
+			expected: "nil scalar",
+		},
+		{
+			name: "matrix with values",
+			input: model.Matrix{
+				&model.SampleStream{
+					Metric: model.Metric{"job": "test"},
+					Values: []model.SamplePair{
+						{Timestamp: 1000, Value: 1.0},
+						{Timestamp: 2000, Value: 2.0},
+						{Timestamp: 3000, Value: 3.0},
+					},
+				},
+			},
+			expected: "3",
+		},
+		{
+			name:     "empty matrix",
+			input:    model.Matrix{},
+			expected: "empty matrix",
+		},
+		{
+			name: "matrix with empty values",
+			input: model.Matrix{
+				&model.SampleStream{
+					Metric: model.Metric{"job": "test"},
+					Values: []model.SamplePair{},
+				},
+			},
+			expected: "empty matrix",
+		},
+		{
+			name:     "string",
+			input:    &model.String{Value: "test string"},
+			expected: "test string",
+		},
+		{
+			name:     "nil string",
+			input:    (*model.String)(nil),
+			expected: "nil string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractValue(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
