@@ -143,7 +143,76 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: errors.New("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci"),
+			expectedErr: errors.New(`kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci (use "in-cluster" as cluster name to use in-cluster config)`),
+		},
+		{
+			name: "valid - in-cluster config when kubeconfigDir not set",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "in-cluster",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+		},
+		{
+			name: "valid - in-cluster config when kubeconfigDir is set (kubeconfig file check skipped)",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "in-cluster",
+							Namespace: "openshift-monitoring",
+							Route:     "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			kubeconfigDir: tmpDir,
+		},
+		{
+			name: "invalid - in-cluster config without namespace",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster: "in-cluster",
+							Route:   "thanos-querier",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New("prometheusLocation namespace is required when cluster is set for component test/test"),
+		},
+		{
+			name: "invalid - in-cluster config without route",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							Cluster:   "in-cluster",
+							Namespace: "openshift-monitoring",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New("prometheusLocation route is required when cluster is set for component test/test"),
 		},
 		{
 			name: "invalid - empty prometheusLocation",
@@ -296,7 +365,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: errors.New("[prometheusLocation cannot have both url and cluster set for component test/test (they are mutually exclusive), prometheusLocation namespace is required when cluster is set for component test/test, prometheusLocation route is required when cluster is set for component test/test, kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci]"),
+			expectedErr: errors.New("[prometheusLocation cannot have both url and cluster set for component test/test (they are mutually exclusive), prometheusLocation namespace is required when cluster is set for component test/test, prometheusLocation route is required when cluster is set for component test/test, kubeconfig-dir is required when using cluster-based prometheusLocation for cluster app.ci (use \"in-cluster\" as cluster name to use in-cluster config)]"),
 		},
 		{
 			name: "invalid - url and namespace both set",

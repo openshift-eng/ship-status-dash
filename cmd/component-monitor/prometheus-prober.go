@@ -72,6 +72,24 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 	}
 
 	if err != nil {
+		logFields := logrus.Fields{
+			"component_slug":     p.componentSlug,
+			"sub_component_slug": p.subComponentSlug,
+			"query":              query,
+			"duration":           duration,
+			"step":               step,
+			"error":              err.Error(),
+		}
+
+		// Try to extract response body from Prometheus client error
+		if promErr, ok := err.(*promclientv1.Error); ok {
+			logFields["error_type"] = string(promErr.Type)
+			if promErr.Detail != "" {
+				logFields["response_body"] = promErr.Detail
+			}
+		}
+
+		logrus.WithFields(logFields).Error("Prometheus query failed")
 		return nil, err
 	}
 

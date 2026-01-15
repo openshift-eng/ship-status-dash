@@ -106,6 +106,35 @@ prometheus_monitor:
 3. Discovers the Prometheus route via OpenShift Routes API using the provided namespace and route name
 4. Creates an authenticated Prometheus client
 
+### 3. In-cluster configuration
+
+Use `"in-cluster"` as the cluster name to use the in-cluster Kubernetes configuration:
+
+```yaml
+prometheus_monitor:
+  prometheus_location:
+    cluster: "in-cluster"              # Special cluster name for in-cluster config
+    namespace: "openshift-monitoring"   # Namespace where the Prometheus route exists
+    route: "thanos-querier"             # Name of the OpenShift Route to Prometheus
+  queries:
+    - query: "up{job=\"deck\"} == 1"
+      duration: "5m"
+      step: "30s"
+```
+
+**Requirements:**
+- Set `cluster` to `"in-cluster"`
+- All three fields (`cluster`, `namespace`, `route`) must be set together
+- `url` field must not be set (mutually exclusive)
+- Do not provide `--kubeconfig-dir` flag (uses in-cluster service account credentials)
+
+**How it works:**
+1. Uses the in-cluster Kubernetes configuration (service account token and CA certificate)
+2. Discovers the Prometheus route via OpenShift Routes API using the provided namespace and route name
+3. Creates an authenticated Prometheus client
+
+**Note:** Options 2 (cluster-based) and 3 (in-cluster) can be used together within the same deployment. You can configure some components to use cluster-based configuration (with kubeconfig files) and others to use in-cluster configuration, all in the same component-monitor instance.
+
 ## Service Account Authentication
 
 The component-monitor authenticates to the dashboard API using OpenShift ServiceAccount bearer tokens:
