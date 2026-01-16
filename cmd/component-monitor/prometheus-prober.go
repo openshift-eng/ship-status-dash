@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -163,7 +166,21 @@ func extractValue(result model.Value) string {
 		if len(v) == 0 {
 			return "empty vector"
 		}
-		return v[0].Value.String()
+		if len(v) == 1 {
+			return v[0].Value.String()
+		}
+		var parts []string
+		for _, sample := range v {
+			var labelParts []string
+			for name, value := range sample.Metric {
+				labelParts = append(labelParts, fmt.Sprintf("%s=%s", name, value))
+			}
+			sort.Strings(labelParts)
+			labelStr := strings.Join(labelParts, ",")
+			valueStr := sample.Value.String()
+			parts = append(parts, fmt.Sprintf("{%s}=%s", labelStr, valueStr))
+		}
+		return strings.Join(parts, ", ")
 	case *model.Scalar:
 		if v == nil {
 			return "nil scalar"
