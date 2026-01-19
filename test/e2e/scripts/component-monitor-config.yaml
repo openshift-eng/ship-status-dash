@@ -16,6 +16,7 @@ components:
           failure_query: "success_rate"
           duration: "30s"
           step: "15s"
+          severity: "Degraded"
   - component_slug: "sippy"
     sub_component_slug: "data-load"
     prometheus_monitor:
@@ -24,7 +25,10 @@ components:
       queries:
         - query: "data_load_failure{component=\"api\"} < 1"
           failure_query: "data_load_failure{component=\"api\"}"
+          severity: "Degraded"
         - query: "data_load_failure{component=\"db\"} < 1"
           failure_query: "data_load_failure{component=\"db\"}"
+          severity: "Degraded"
         - query: "data_load_failure{component=\"cache\"} < 1"
           failure_query: "data_load_failure{component=\"cache\"}"
+          severity: "Degraded"

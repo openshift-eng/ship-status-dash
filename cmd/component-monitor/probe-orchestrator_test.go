@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
@@ -241,6 +242,229 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 
 			result := orchestrator.waitForNextCycle(ctx, tt.elapsed)
 			assert.Equal(t, tt.expectContinue, result)
+		})
+	}
+}
+
+func TestMergeStatusesByComponent(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []types.ComponentMonitorReportComponentStatus
+		expected []types.ComponentMonitorReportComponentStatus
+	}{
+		{
+			name:     "empty input returns empty",
+			input:    []types.ComponentMonitorReportComponentStatus{},
+			expected: []types.ComponentMonitorReportComponentStatus{},
+		},
+		{
+			name: "single status returns unchanged",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200"},
+					},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200"},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple components remain separate",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://comp1.com"}},
+				},
+				{
+					ComponentSlug:    "comp2",
+					SubComponentSlug: "sub2",
+					Status:           types.StatusDown,
+					Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up"}},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://comp1.com"}},
+				},
+				{
+					ComponentSlug:    "comp2",
+					SubComponentSlug: "sub2",
+					Status:           types.StatusDown,
+					Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up"}},
+				},
+			},
+		},
+		{
+			name: "HTTP and Prometheus probes merge - all healthy",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+					},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned successfully"},
+					},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned successfully"},
+					},
+				},
+			},
+		},
+		{
+			name: "HTTP and Prometheus probes merge - mixed statuses",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+					},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDown,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned unsuccessful"},
+					},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDown,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned unsuccessful"},
+					},
+				},
+			},
+		},
+		{
+			name: "status priority - most critical status wins",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusSuspected,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypePrometheus, Check: "query1", Results: "failed"},
+					},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusCapacityExhausted,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypePrometheus, Check: "query2", Results: "failed"},
+					},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDegraded,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 503 (expected 200)"},
+					},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDown,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypeHTTP, Check: "http://example2.com", Results: "Status code 500 (expected 200)"},
+					},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDown,
+					Reasons: []types.Reason{
+						{Type: types.CheckTypePrometheus, Check: "query1", Results: "failed"},
+						{Type: types.CheckTypePrometheus, Check: "query2", Results: "failed"},
+						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 503 (expected 200)"},
+						{Type: types.CheckTypeHTTP, Check: "http://example2.com", Results: "Status code 500 (expected 200)"},
+					},
+				},
+			},
+		},
+		{
+			name: "different sub-components remain separate",
+			input: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub1.com"}},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub2",
+					Status:           types.StatusDown,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub2.com"}},
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusHealthy,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub1.com"}},
+				},
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub2",
+					Status:           types.StatusDown,
+					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub2.com"}},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeStatusesByComponent(tt.input)
+			diff := cmp.Diff(tt.expected, result)
+			if diff != "" {
+				t.Errorf("mergeStatusesByComponent() mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

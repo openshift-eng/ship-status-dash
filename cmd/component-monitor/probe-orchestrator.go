@@ -49,7 +49,8 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 		startTime := time.Now()
 		o.startProbes(ctx)
 		results := o.collectProbeResults(ctx)
-		if err := o.reportClient.SendReport(results); err != nil {
+		mergedResults := mergeStatusesByComponent(results)
+		if err := o.reportClient.SendReport(mergedResults); err != nil {
 			o.log.Errorf("Error sending report: %v", err)
 		} else {
 			o.log.Infof("Report sent successfully")
@@ -66,7 +67,8 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
 	o.startProbes(ctx)
 	results := o.collectProbeResults(ctx)
-	if err := o.reportClient.PrintReport(results); err != nil {
+	mergedResults := mergeStatusesByComponent(results)
+	if err := o.reportClient.PrintReport(mergedResults); err != nil {
 		o.log.Errorf("Error outputting report: %v", err)
 	}
 }
@@ -135,4 +137,60 @@ func (o *ProbeOrchestrator) waitForNextCycle(ctx context.Context, elapsed time.D
 		}
 	}
 	return true
+}
+
+// mergeStatusesByComponent merges multiple status reports for the same component/sub-component
+// into a single unified status. It groups by (ComponentSlug, SubComponentSlug), combines all
+// reasons, and determines the most critical status when multiple probes report different statuses.
+func mergeStatusesByComponent(statuses []types.ComponentMonitorReportComponentStatus) []types.ComponentMonitorReportComponentStatus {
+	if len(statuses) == 0 {
+		return statuses
+	}
+
+	type componentKey struct {
+		component    string
+		subComponent string
+	}
+
+	grouped := make(map[componentKey][]types.ComponentMonitorReportComponentStatus)
+	for _, status := range statuses {
+		key := componentKey{
+			component:    status.ComponentSlug,
+			subComponent: status.SubComponentSlug,
+		}
+		grouped[key] = append(grouped[key], status)
+	}
+
+	merged := make([]types.ComponentMonitorReportComponentStatus, 0, len(grouped))
+	for key, group := range grouped {
+		if len(group) == 1 {
+			merged = append(merged, group[0])
+			continue
+		}
+
+		var allReasons []types.Reason
+		var mostCriticalStatus types.Status
+
+		for i, status := range group {
+			allReasons = append(allReasons, status.Reasons...)
+			if i == 0 {
+				mostCriticalStatus = status.Status
+			} else {
+				currentLevel := types.GetSeverityLevel(status.Status.ToSeverity())
+				mostCriticalLevel := types.GetSeverityLevel(mostCriticalStatus.ToSeverity())
+				if currentLevel > mostCriticalLevel {
+					mostCriticalStatus = status.Status
+				}
+			}
+		}
+
+		merged = append(merged, types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    key.component,
+			SubComponentSlug: key.subComponent,
+			Status:           mostCriticalStatus,
+			Reasons:          allReasons,
+		})
+	}
+
+	return merged
 }
