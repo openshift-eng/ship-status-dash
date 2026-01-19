@@ -335,9 +335,12 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		outage.StartTime = *updateReq.StartTime
 	}
 	if updateReq.EndTime != nil {
+		wasAlreadyResolved := outage.EndTime.Valid
 		if updateReq.EndTime.Time != outage.EndTime.Time {
 			outage.EndTime = *updateReq.EndTime
-			outage.ResolvedBy = &activeUser
+			if updateReq.EndTime.Valid && updateReq.ResolvedBy != nil && !wasAlreadyResolved {
+				outage.ResolvedBy = updateReq.ResolvedBy
+			}
 		}
 		if !updateReq.EndTime.Valid {
 			outage.ResolvedBy = nil
@@ -345,9 +348,6 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	if updateReq.Description != nil {
 		outage.Description = *updateReq.Description
-	}
-	if updateReq.ResolvedBy != nil {
-		outage.ResolvedBy = updateReq.ResolvedBy
 	}
 	if updateReq.Confirmed != nil {
 		if *updateReq.Confirmed && !outage.ConfirmedAt.Valid {

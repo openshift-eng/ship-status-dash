@@ -98,7 +98,7 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.Com
 			probesCompleted++
 		case err := <-o.errChan:
 			o.log.Errorf("Error: %v", err)
-			probesCompleted++
+			// In case of an error, there will be a matching failure result for the component/sub-component in the results channel, so no need to increment probesCompleted
 		case <-ctx.Done():
 			o.log.Warn("Context canceled during probe collection, exiting")
 			return results
