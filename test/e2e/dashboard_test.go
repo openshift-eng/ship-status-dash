@@ -54,6 +54,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 	t.Run("AbsentReport", testAbsentReport(client))
+	t.Run("ConfigHotReload", testConfigHotReload(client))
 }
 
 func testHealth(client *TestHTTPClient) func(*testing.T) {
@@ -108,7 +109,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "CI private investigator", components[3].Description)
 		assert.Equal(t, "TRT", components[3].ShipTeam)
 		assert.Equal(t, "#trt-alert", components[3].SlackChannel)
-		assert.Len(t, components[3].Subcomponents, 3)
+		assert.Len(t, components[3].Subcomponents, 4)
 		assert.Equal(t, "Sippy", components[3].Subcomponents[0].Name)
 		assert.Equal(t, "api", components[3].Subcomponents[1].Name)
 		assert.Equal(t, "data-load", components[3].Subcomponents[2].Name)
@@ -1837,5 +1838,96 @@ func deleteOutagesFromAbsentReport(t *testing.T, client *TestHTTPClient, compone
 		if outage.DiscoveredFrom == "absent-monitored-component-report" {
 			deleteOutage(t, client, componentName, subComponentName, outage.ID)
 		}
+	}
+}
+
+func updateDashboardConfig(t *testing.T, modifier func(*types.DashboardConfig)) {
+	configPath := os.Getenv("TEST_DASHBOARD_CONFIG_PATH")
+	require.NotEmpty(t, configPath, "TEST_DASHBOARD_CONFIG_PATH must be set")
+	modifyConfig(t, configPath, modifier)
+}
+
+func testConfigHotReload(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		configPath := os.Getenv("TEST_DASHBOARD_CONFIG_PATH")
+		require.NotEmpty(t, configPath, "TEST_DASHBOARD_CONFIG_PATH must be set")
+
+		// Read original config
+		originalConfig := readConfig(t, configPath)
+
+		// Restore original config at the end
+		defer func() {
+			restoreConfig(t, configPath, originalConfig)
+			// Wait a bit for config to reload
+			time.Sleep(1 * time.Second)
+		}()
+
+		t.Run("Config changes are reflected after reload", func(t *testing.T) {
+			updateDashboardConfig(t, func(config *types.DashboardConfig) {
+				// Update existing component description
+				var prowFound bool
+				for _, comp := range config.Components {
+					if comp.Name == "Prow" {
+						comp.Description = "Updated description for hot-reload test"
+						prowFound = true
+						break
+					}
+				}
+				require.True(t, prowFound, "Prow component should exist in config")
+
+				// Add new component
+				newComponent := &types.Component{
+					Name:         "Test Component",
+					Description:  "A test component for hot-reload",
+					ShipTeam:     "TestTeam",
+					SlackChannel: "#test-channel",
+					Subcomponents: []types.SubComponent{
+						{
+							Name:        "TestSub",
+							Description: "Test sub-component",
+						},
+					},
+					Owners: []types.Owner{
+						{
+							User: "developer",
+						},
+					},
+				}
+				config.Components = append(config.Components, newComponent)
+			})
+
+			// Wait for config to reload and verify both changes
+			ctx := context.Background()
+			err := wait.PollUntilContextTimeout(ctx, 200*time.Millisecond, 10*time.Second, true, func(ctx context.Context) (bool, error) {
+				// Check that Prow description was updated
+				prowComponent := getComponent(t, client, "Prow")
+				if prowComponent.Description != "Updated description for hot-reload test" {
+					return false, nil
+				}
+
+				// Check that new component appears
+				components := getComponents(t, client)
+				var testComponentFound bool
+				for _, comp := range components {
+					if comp.Name == "Test Component" {
+						testComponentFound = true
+						break
+					}
+				}
+				return testComponentFound, nil
+			})
+			require.NoError(t, err, "Config changes should be reflected within 10 seconds")
+
+			// Verify Prow description change
+			prowComponent := getComponent(t, client, "Prow")
+			assert.Equal(t, "Updated description for hot-reload test", prowComponent.Description)
+
+			// Verify the new component exists
+			testComponent := getComponent(t, client, "Test Component")
+			assert.Equal(t, "Test Component", testComponent.Name)
+			assert.Equal(t, "A test component for hot-reload", testComponent.Description)
+			assert.Len(t, testComponent.Subcomponents, 1)
+			assert.Equal(t, "TestSub", testComponent.Subcomponents[0].Name)
+		})
 	}
 }

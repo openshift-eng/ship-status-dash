@@ -11,11 +11,16 @@ DB_NAME="ship_status_test"
 
 cleanup() {
   echo "Cleaning up component-monitor processes..."
+  # Kill by PID first if we have it
   if [ ! -z "$COMPONENT_MONITOR_PID" ]; then
     kill -TERM $COMPONENT_MONITOR_PID 2>/dev/null || true
     sleep 1
     kill -KILL $COMPONENT_MONITOR_PID 2>/dev/null || true
   fi
+  # Also kill all component-monitor processes by pattern to catch any orphaned processes
+  pkill -TERM -f "component-monitor.*e2e-component-monitor" 2>/dev/null || true
+  sleep 1
+  pkill -KILL -f "component-monitor.*e2e-component-monitor" 2>/dev/null || true
 
   # It seems important to stop the Prometheus container prior to stopping the mock-monitored-component, apparently podman can crash otherwise.
   echo "Stopping Prometheus container..."
@@ -49,6 +54,9 @@ cleanup() {
   podman rm -f $POSTGRES_CONTAINER_NAME > /dev/null 2>&1 || true
   
   echo "Cleaning up temporary files..."
+  if [ ! -z "$DASHBOARD_CONFIG" ]; then
+    rm -f "$DASHBOARD_CONFIG" 2>/dev/null || true
+  fi
   if [ ! -z "$HMAC_SECRET_FILE" ] && [ -f "$HMAC_SECRET_FILE" ]; then
     rm -f "$HMAC_SECRET_FILE"
   fi
@@ -164,9 +172,15 @@ echo "Starting dashboard server..."
 DASHBOARD_PID=""
 DASHBOARD_LOG="/tmp/dashboard-server.log"
 
+# Create temporary dashboard config file so tests don't modify the original
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DASHBOARD_CONFIG=$(mktemp)
+cp "$SCRIPT_DIR/dashboard-config.yaml" "$DASHBOARD_CONFIG"
+export TEST_DASHBOARD_CONFIG_PATH="$DASHBOARD_CONFIG"
+
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config test/e2e/scripts/dashboard-config.yaml --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
@@ -284,6 +298,7 @@ export TEST_PROMETHEUS_URL="http://localhost:$PROMETHEUS_PORT"
 # Create temporary config file with substituted values
 COMPONENT_MONITOR_CONFIG=$(mktemp)
 envsubst < test/e2e/scripts/component-monitor-config.yaml > "$COMPONENT_MONITOR_CONFIG"
+export TEST_COMPONENT_MONITOR_CONFIG_PATH="$COMPONENT_MONITOR_CONFIG"
 
 # Create temporary token file for component-monitor authentication
 COMPONENT_MONITOR_TOKEN=$(mktemp)
@@ -304,14 +319,17 @@ if [ $TEST_EXIT_CODE -ne 0 ]; then
   echo ""
   echo "=== Component Monitor Log (last 50 lines) ==="
   tail -n 50 "$COMPONENT_MONITOR_LOG" 2>/dev/null || echo "No log found"
+  echo "Full log: $COMPONENT_MONITOR_LOG"
   
   echo ""
   echo "=== Dashboard Server Log (last 50 lines) ==="
   tail -n 50 "$DASHBOARD_LOG" 2>/dev/null || echo "No log found"
+  echo "Full log: $DASHBOARD_LOG"
 
   echo ""
   echo "=== Mock OAuth Proxy Log (last 50 lines) ==="
   tail -n 50 "$PROXY_LOG" 2>/dev/null || echo "No log found"
+  echo "Full log: $PROXY_LOG"
   echo ""
 fi
 if [ $TEST_EXIT_CODE -eq 0 ]; then

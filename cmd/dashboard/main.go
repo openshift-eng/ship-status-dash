@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
@@ -90,43 +92,35 @@ func setupLogger() *logrus.Logger {
 	return log
 }
 
-func loadAndValidateConfig(log *logrus.Logger, configPath string) *types.DashboardConfig {
+func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.DashboardConfig, error) {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
-		log.WithFields(logrus.Fields{
-			"config_path": configPath,
-			"error":       err,
-		}).Fatal("Failed to read config file")
+		return nil, err
 	}
 
-	var config types.DashboardConfig
-	if err := yaml.Unmarshal(configFile, &config); err != nil {
-		log.WithFields(logrus.Fields{
-			"config_path": configPath,
-			"error":       err,
-		}).Fatal("Failed to parse config file")
+	var cfg types.DashboardConfig
+	if err := yaml.Unmarshal(configFile, &cfg); err != nil {
+		return nil, err
 	}
 
-	for _, component := range config.Components {
+	for _, component := range cfg.Components {
 		if len(component.Owners) == 0 {
-			log.WithFields(logrus.Fields{
-				"component": component.Name,
-			}).Fatal("Component must have at least one owner")
+			return nil, fmt.Errorf("component must have at least one owner: %s", component.Name)
 		}
 	}
 
 	// We need to compute and store all the slugs to match by them later
-	for _, component := range config.Components {
+	for _, component := range cfg.Components {
 		component.Slug = utils.Slugify(component.Name)
 		for i := range component.Subcomponents {
 			component.Subcomponents[i].Slug = utils.Slugify(component.Subcomponents[i].Name)
 		}
 	}
 
-	log.Infof("Loaded configuration with %d components", len(config.Components))
-	return &config
+	log.Infof("Loaded configuration with %d components", len(cfg.Components))
+	return &cfg, nil
 }
 
 func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
@@ -190,22 +184,45 @@ func main() {
 		log.WithField("error", err).Fatal("Invalid command-line options")
 	}
 
-	config := loadAndValidateConfig(log, opts.ConfigPath)
-	db := connectDatabase(log, opts.DatabaseDSN)
-	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
-	groupCache := loadGroupMembership(log, config, opts.KubeconfigPath)
-	outageRepo := repositories.NewGORMOutageRepository(db)
-	pingRepo := repositories.NewGORMComponentPingRepository(db)
-	server := NewServer(config, log, opts.CORSOrigin, hmacSecret, groupCache, outageRepo, pingRepo)
+	loadFunc := func(path string) (*types.DashboardConfig, error) {
+		return loadAndValidateConfig(log, path)
+	}
 
-	// Start absent monitored component report checker
+	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, config.DefaultDebounceDelay)
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to create config manager")
+	}
+	defer configManager.Close()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	absentReportChecker := NewAbsentMonitoredComponentReportChecker(config, outageRepo, pingRepo, opts.AbsentReportCheckInterval, log)
+
+	if err := configManager.Watch(ctx); err != nil {
+		log.WithField("error", err).Fatal("Failed to start config watcher")
+	}
+
+	db := connectDatabase(log, opts.DatabaseDSN)
+	hmacSecret := getHMACSecret(log, opts.HMACSecretFile)
+	groupCache := loadGroupMembership(log, configManager.Get(), opts.KubeconfigPath)
+
+	configManager.OnUpdate(func(newConfig *types.DashboardConfig) {
+		log.Info("Config updated, reloading group membership")
+		newGroups := extractRoverGroups(newConfig)
+		if err := groupCache.LoadGroups(newGroups, opts.KubeconfigPath); err != nil {
+			log.WithField("error", err).Error("Failed to reload group membership")
+		} else {
+			log.Info("Successfully reloaded group membership")
+		}
+	})
+
+	outageRepo := repositories.NewGORMOutageRepository(db)
+	pingRepo := repositories.NewGORMComponentPingRepository(db)
+	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageRepo, pingRepo)
+
+	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageRepo, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)
 
 	addr := ":" + opts.Port
-	// Run server in a goroutine
 	go func() {
 		if err := server.Start(addr); err != nil && err != http.ErrServerClosed {
 			log.WithFields(logrus.Fields{
@@ -215,7 +232,6 @@ func main() {
 		}
 	}()
 
-	// Handle graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

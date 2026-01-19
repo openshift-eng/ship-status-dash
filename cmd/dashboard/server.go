@@ -12,30 +12,31 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/auth"
+	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
 
 // Server represents the HTTP server for the dashboard API.
 type Server struct {
-	logger     *logrus.Logger
-	config     *types.DashboardConfig
-	handlers   *Handlers
-	corsOrigin string
-	hmacSecret []byte
-	groupCache *auth.GroupMembershipCache
-	httpServer *http.Server
+	logger        *logrus.Logger
+	configManager *config.Manager[types.DashboardConfig]
+	handlers      *Handlers
+	corsOrigin    string
+	hmacSecret    []byte
+	groupCache    *auth.GroupMembershipCache
+	httpServer    *http.Server
 }
 
 // NewServer creates a new Server instance
-func NewServer(config *types.DashboardConfig, logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository) *Server {
+func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository) *Server {
 	return &Server{
-		logger:     logger,
-		config:     config,
-		handlers:   NewHandlers(logger, config, outageRepo, pingRepo, groupCache),
-		corsOrigin: corsOrigin,
-		hmacSecret: hmacSecret,
-		groupCache: groupCache,
+		logger:        logger,
+		configManager: configManager,
+		handlers:      NewHandlers(logger, configManager, outageRepo, pingRepo, groupCache),
+		corsOrigin:    corsOrigin,
+		hmacSecret:    hmacSecret,
+		groupCache:    groupCache,
 	}
 }
 

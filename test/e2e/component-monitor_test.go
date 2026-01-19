@@ -52,6 +52,7 @@ func TestE2E_ComponentMonitor(t *testing.T) {
 
 	t.Run("HTTPComponentMonitorProbe", testHTTPComponentMonitorProbe(client, mockMonitoredComponentURL))
 	t.Run("PrometheusComponentMonitorProbe", testPrometheusComponentMonitorProbe(client, mockMonitoredComponentURL, prometheusURL))
+	t.Run("ConfigHotReload", testComponentMonitorConfigHotReload(client, mockMonitoredComponentURL, prometheusURL))
 }
 
 func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponentURL string) func(*testing.T) {
@@ -365,5 +366,141 @@ func waitForNoActiveOutages(t *testing.T, client *TestHTTPClient, componentName,
 
 	if err != nil {
 		t.Fatalf("Timeout waiting for no active outages for %s/%s: %v", componentName, subComponentName, err)
+	}
+}
+
+func updateComponentMonitorConfig(t *testing.T, modifier func(*types.ComponentMonitorConfig)) {
+	configPath := os.Getenv("TEST_COMPONENT_MONITOR_CONFIG_PATH")
+	require.NotEmpty(t, configPath, "TEST_COMPONENT_MONITOR_CONFIG_PATH must be set")
+	modifyConfig(t, configPath, modifier)
+}
+
+func testComponentMonitorConfigHotReload(client *TestHTTPClient, mockMonitoredComponentURL, prometheusURL string) func(*testing.T) {
+	return func(t *testing.T) {
+		configPath := os.Getenv("TEST_COMPONENT_MONITOR_CONFIG_PATH")
+		require.NotEmpty(t, configPath, "TEST_COMPONENT_MONITOR_CONFIG_PATH must be set")
+
+		// Read original config
+		originalConfig := readConfig(t, configPath)
+
+		// Restore original config at the end
+		defer func() {
+			restoreConfig(t, configPath, originalConfig)
+			// Wait a bit for config to reload
+			time.Sleep(1 * time.Second)
+		}()
+
+		t.Run("Component addition is reflected after config reload", func(t *testing.T) {
+			// Clean up any existing outages for sippy-chat
+			cleanupActiveOutages(t, client, "Sippy", "sippy-chat")
+
+			// Add monitoring for sippy-chat (which exists in dashboard config but not in component-monitor config)
+			updateComponentMonitorConfig(t, func(config *types.ComponentMonitorConfig) {
+				// Find the existing sippy/sippy component to copy its configuration.
+				// We copy instead of constructing manually to ensure we use the exact same URL
+				// that was substituted during setup (service URL in CI, not localhost).
+				// This avoids needing to determine the correct URL or add/modify env vars.
+				var sippyComponent *types.MonitoringComponent
+				for i := range config.Components {
+					if config.Components[i].ComponentSlug == "sippy" && config.Components[i].SubComponentSlug == "sippy" {
+						sippyComponent = &config.Components[i]
+						break
+					}
+				}
+				require.NotNil(t, sippyComponent, "Should find existing sippy/sippy component to copy")
+
+				newComponent := types.MonitoringComponent{
+					ComponentSlug:    sippyComponent.ComponentSlug,
+					SubComponentSlug: "sippy-chat",
+				}
+				if sippyComponent.HTTPMonitor != nil {
+					httpMonitor := *sippyComponent.HTTPMonitor
+					newComponent.HTTPMonitor = &httpMonitor
+				}
+				if sippyComponent.PrometheusMonitor != nil {
+					promMonitor := *sippyComponent.PrometheusMonitor
+					newComponent.PrometheusMonitor = &promMonitor
+				}
+
+				config.Components = append(config.Components, newComponent)
+			})
+
+			// Verify the new component is being monitored by bringing down the service
+			resp, err := http.Get(mockMonitoredComponentURL + "/down")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			resp.Body.Close()
+
+			// Wait for component-monitor to detect the failure
+			foundOutage := waitForOutageCreated(t, client, "Sippy", "sippy-chat", 15*time.Second)
+			require.NotNil(t, foundOutage, "New component should be monitored after config reload")
+
+			// Cleanup
+			resp, err = http.Get(mockMonitoredComponentURL + "/up")
+			require.NoError(t, err)
+			resp.Body.Close()
+			waitForOutageResolved(t, client, "Sippy", "sippy-chat", foundOutage.ID, 15*time.Second)
+			cleanupActiveOutages(t, client, "Sippy", "sippy-chat")
+
+			// Remove the component from config to restore original state
+			restoreConfig(t, configPath, originalConfig)
+			// Wait a bit for config to reload
+			time.Sleep(1 * time.Second)
+		})
+
+		t.Run("Component removal stops monitoring after config reload", func(t *testing.T) {
+			// Clean up any existing outages first
+			cleanupActiveOutages(t, client, "Sippy", "sippy")
+
+			// Verify the component is currently being monitored by bringing it down
+			resp, err := http.Get(mockMonitoredComponentURL + "/down")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			resp.Body.Close()
+
+			// Wait for component-monitor to detect the failure
+			outageBefore := waitForOutageCreated(t, client, "Sippy", "sippy", 15*time.Second)
+			require.NotNil(t, outageBefore, "Component should be monitored before removal")
+
+			// Cleanup the outage
+			resp, err = http.Get(mockMonitoredComponentURL + "/up")
+			require.NoError(t, err)
+			resp.Body.Close()
+			waitForOutageResolved(t, client, "Sippy", "sippy", outageBefore.ID, 15*time.Second)
+			cleanupActiveOutages(t, client, "Sippy", "sippy")
+
+			// Remove the component from config
+			updateComponentMonitorConfig(t, func(config *types.ComponentMonitorConfig) {
+				// Filter out sippy/sippy component
+				filtered := []types.MonitoringComponent{}
+				for _, comp := range config.Components {
+					if comp.ComponentSlug == "sippy" && comp.SubComponentSlug == "sippy" {
+						continue // Skip this component
+					}
+					filtered = append(filtered, comp)
+				}
+				config.Components = filtered
+			})
+
+			// Bring the service down
+			resp, err = http.Get(mockMonitoredComponentURL + "/down")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			resp.Body.Close()
+
+			// Wait 15 seconds to ensure the orchestrator has had time to probe if it were still monitoring
+			// If the orchestrator is still monitoring, it would create an outage during this time
+			time.Sleep(15 * time.Second)
+
+			// Verify no outage was created (component should not be monitored)
+			outages := getOutages(t, client, "Sippy", "sippy")
+			activeOutages := filterActiveOutages(outages)
+			assert.Empty(t, activeOutages, "Component should not be monitored after removal from config")
+
+			// Cleanup - bring service back up
+			resp, err = http.Get(mockMonitoredComponentURL + "/up")
+			require.NoError(t, err)
+			resp.Body.Close()
+		})
 	}
 }
