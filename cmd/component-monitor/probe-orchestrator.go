@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"ship-status-dash/pkg/types"
@@ -191,6 +192,14 @@ func mergeStatusesByComponent(statuses []types.ComponentMonitorReportComponentSt
 			Reasons:          allReasons,
 		})
 	}
+
+	// Sort results for deterministic output
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].ComponentSlug != merged[j].ComponentSlug {
+			return merged[i].ComponentSlug < merged[j].ComponentSlug
+		}
+		return merged[i].SubComponentSlug < merged[j].SubComponentSlug
+	})
 
 	return merged
 }

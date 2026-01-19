@@ -75,6 +75,7 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 					server.URL,
 					http.StatusOK,
 					10*time.Millisecond,
+					types.SeverityDown,
 				)
 			}
 

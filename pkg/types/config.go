@@ -129,4 +129,7 @@ type HTTPMonitor struct {
 	Code int `json:"code" yaml:"code"`
 	// RetryAfter is the duration to wait before retrying the probe only when the status code is not as expected
 	RetryAfter string `json:"retry_after" yaml:"retry_after"`
+	// Severity is the severity of the outage that will be created if the HTTP request fails.
+	// If not provided, the severity will default to Down.
+	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 }

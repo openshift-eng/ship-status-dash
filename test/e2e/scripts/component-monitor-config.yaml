@@ -6,6 +6,7 @@ components:
       url: "${TEST_MOCK_MONITORED_COMPONENT_URL}/health"
       code: 200
       retry_after: 2s
+      severity: "Down"
   - component_slug: "sippy"
     sub_component_slug: "api"
     prometheus_monitor:

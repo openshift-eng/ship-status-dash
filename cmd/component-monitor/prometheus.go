@@ -50,13 +50,12 @@ func setDefaultStepValues(config *types.ComponentMonitorConfig) {
 // setDefaultSeverityValues sets default severity values for Prometheus queries that have no severity specified.
 func setDefaultSeverityValues(config *types.ComponentMonitorConfig) {
 	for i := range config.Components {
-		if config.Components[i].PrometheusMonitor == nil {
-			continue
-		}
-		for j := range config.Components[i].PrometheusMonitor.Queries {
-			query := &config.Components[i].PrometheusMonitor.Queries[j]
-			if query.Severity == "" {
-				query.Severity = types.SeverityDown
+		if config.Components[i].PrometheusMonitor != nil {
+			for j := range config.Components[i].PrometheusMonitor.Queries {
+				query := &config.Components[i].PrometheusMonitor.Queries[j]
+				if query.Severity == "" {
+					query.Severity = types.SeverityDown
+				}
 			}
 		}
 	}
