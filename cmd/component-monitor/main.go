@@ -106,6 +106,7 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	}
 
 	setDefaultStepValues(&cfg)
+	setDefaultSeverityValues(&cfg)
 
 	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir); err != nil {
 		return nil, fmt.Errorf("invalid prometheus location configuration: %w", err)

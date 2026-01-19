@@ -47,6 +47,21 @@ func setDefaultStepValues(config *types.ComponentMonitorConfig) {
 	}
 }
 
+// setDefaultSeverityValues sets default severity values for Prometheus queries that have no severity specified.
+func setDefaultSeverityValues(config *types.ComponentMonitorConfig) {
+	for i := range config.Components {
+		if config.Components[i].PrometheusMonitor == nil {
+			continue
+		}
+		for j := range config.Components[i].PrometheusMonitor.Queries {
+			query := &config.Components[i].PrometheusMonitor.Queries[j]
+			if query.Severity == "" {
+				query.Severity = types.SeverityDown
+			}
+		}
+	}
+}
+
 // validatePrometheusConfiguration validates Prometheus monitor configuration including locations, durations, and steps.
 func validatePrometheusConfiguration(components []types.MonitoringComponent, kubeconfigDir string) error {
 	var errors []error
@@ -118,6 +133,10 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 				if _, err := time.ParseDuration(query.Step); err != nil {
 					errors = append(errors, fmt.Errorf("failed to parse step for component %s/%s, query %q: %w", component.ComponentSlug, component.SubComponentSlug, query.Query, err))
 				}
+			}
+			if query.Severity == "" {
+				// This shouldn't ever happen due to setDefaultSeverityValues, but we'll check for it anyway.
+				errors = append(errors, fmt.Errorf("severity is required for component %s/%s, query %q", component.ComponentSlug, component.SubComponentSlug, query.Query))
 			}
 		}
 	}

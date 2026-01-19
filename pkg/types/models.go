@@ -15,6 +15,8 @@ const (
 	SeverityDegraded Severity = "Degraded"
 	//TODO: Suspected might be useful in the future (for the down-detector type voting), but it isn't used anywhere yet.
 	SeveritySuspected Severity = "Suspected"
+	// SeverityCapacityExhausted is for components that can go into outage due to lack of resources. For example, a boskos cloud-account.
+	SeverityCapacityExhausted Severity = "CapacityExhausted"
 )
 
 func (s Severity) ToStatus() Status {
@@ -23,6 +25,8 @@ func (s Severity) ToStatus() Status {
 		return StatusDown
 	case SeverityDegraded:
 		return StatusDegraded
+	case SeverityCapacityExhausted:
+		return StatusCapacityExhausted
 	case SeveritySuspected:
 		return StatusSuspected
 	default:
@@ -33,7 +37,7 @@ func (s Severity) ToStatus() Status {
 // IsValidSeverity checks if the provided severity string is a valid severity level
 func IsValidSeverity(severity string) bool {
 	switch Severity(severity) {
-	case SeverityDown, SeverityDegraded, SeveritySuspected:
+	case SeverityDown, SeverityDegraded, SeveritySuspected, SeverityCapacityExhausted:
 		return true
 	default:
 		return false
@@ -44,8 +48,10 @@ func IsValidSeverity(severity string) bool {
 func GetSeverityLevel(severity Severity) int {
 	switch severity {
 	case SeverityDown:
-		return 3
+		return 4
 	case SeverityDegraded:
+		return 3
+	case SeverityCapacityExhausted:
 		return 2
 	case SeveritySuspected:
 		return 1

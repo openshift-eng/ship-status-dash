@@ -125,6 +125,7 @@ func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, suc
 		}
 	} else {
 		var reasons []types.Reason
+		var mostCriticalSeverity types.Severity
 		for _, query := range failedQueries {
 			resultStr := "query returned unsuccessful"
 			if query.FailureQuery != "" {
@@ -143,13 +144,13 @@ func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, suc
 				Check:   query.Query,
 				Results: resultStr,
 			})
+
+			if types.GetSeverityLevel(query.Severity) > types.GetSeverityLevel(mostCriticalSeverity) {
+				mostCriticalSeverity = query.Severity
+			}
 		}
 
-		if len(successfulQueries) == 0 {
-			status.Status = types.StatusDown
-		} else {
-			status.Status = types.StatusDegraded
-		}
+		status.Status = mostCriticalSeverity.ToStatus()
 		status.Reasons = reasons
 	}
 
