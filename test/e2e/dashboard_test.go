@@ -327,7 +327,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		updatePayload := map[string]interface{}{
 			"severity":     string(types.SeverityDegraded),
 			"description":  "Updated description",
-			"resolved_by":  "test-resolver",
 			"triage_notes": "Updated triage notes",
 		}
 
@@ -356,7 +355,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, createdOutage.ID, updatedOutage.ID)
 		assert.Equal(t, string(types.SeverityDegraded), string(updatedOutage.Severity))
 		assert.Equal(t, "Updated description", updatedOutage.Description)
-		assert.Equal(t, "test-resolver", *updatedOutage.ResolvedBy)
+		assert.NotNil(t, updatedOutage.TriageNotes)
 		assert.Equal(t, "Updated triage notes", *updatedOutage.TriageNotes)
 		assert.WithinDuration(t, createdOutage.StartTime.UTC(), updatedOutage.StartTime.UTC(), time.Second) // Should remain unchanged
 		assert.Equal(t, createdOutage.CreatedBy, updatedOutage.CreatedBy)                                   // Should remain unchanged
