@@ -227,20 +227,29 @@ const OutageDetailsPage = () => {
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const [outage, setOutage] = useState<Outage | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const validationError =
+    !componentName || !subComponentName || !outageId
+      ? 'Missing component, subcomponent, or outage ID'
+      : null
+  const [loading, setLoading] = useState(!!(componentName && subComponentName && outageId))
 
   const fetchOutage = useCallback(() => {
     if (!componentName || !subComponentName || !outageId) {
-      setError('Missing component, subcomponent, or outage ID')
-      setLoading(false)
       return
     }
 
-    setLoading(true)
-    setError(null)
+    const fetchPromise = fetch(
+      getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)),
+    )
 
-    fetch(getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)))
+    fetchPromise.then(() => {
+      setLoading(true)
+      setError(null)
+    })
+
+    fetchPromise
       .then((outageResponse) => {
         if (!outageResponse.ok) {
           // If 404, outage was deleted, navigate back
@@ -270,8 +279,12 @@ const OutageDetailsPage = () => {
   }, [componentName, subComponentName, outageId, navigate])
 
   useEffect(() => {
+    if (!componentName || !subComponentName || !outageId) {
+      return
+    }
+
     fetchOutage()
-  }, [fetchOutage])
+  }, [componentName, subComponentName, outageId, fetchOutage])
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
@@ -328,10 +341,10 @@ const OutageDetailsPage = () => {
     )
   }
 
-  if (error || !outage) {
+  if (validationError || error || !outage) {
     return (
       <StyledContainer maxWidth="lg">
-        <ErrorAlert severity="error">{error || 'Outage not found'}</ErrorAlert>
+        <ErrorAlert severity="error">{validationError || error || 'Outage not found'}</ErrorAlert>
         <BackButton onClick={handleBack} variant="contained" startIcon={<ArrowBack />}>
           {getBackButtonLabel()}
         </BackButton>

@@ -8,7 +8,7 @@ This is a React TypeScript frontend for the SHIP Status Dashboard, built with Ma
 - **UI Library**: Material-UI (MUI) v7
 - **Styling**: MUI's sx prop and theme system
 - **Code Quality**: ESLint + Prettier
-- **Build Tool**: Create React App (react-scripts)
+- **Build Tool**: Vite
 
 ## Code Style and Standards
 
@@ -51,7 +51,8 @@ This is a React TypeScript frontend for the SHIP Status Dashboard, built with Ma
 - Use `Container`, `Box`, `Typography` for layout
 
 ### API Integration
-- Use environment variables for API base URL (`REACT_APP_API_BASE_URL`)
+- Use environment variables for API configuration (prefixed with `VITE_`)
+- Access environment variables via `import.meta.env.VITE_*`
 - Handle API errors gracefully with user-friendly messages
 - Show loading states during API calls
 - Use proper HTTP status code handling
@@ -82,8 +83,9 @@ This is a React TypeScript frontend for the SHIP Status Dashboard, built with Ma
 - Lint code: `npm run lint`
 
 ### Environment Configuration
-- Create `.env.development` with `REACT_APP_API_BASE_URL=http://localhost:8090`
-- Environment variables must start with `REACT_APP_` to be accessible in the app
+- Create `.env.development` with `VITE_PUBLIC_DOMAIN` and `VITE_PROTECTED_DOMAIN`
+- Environment variables must start with `VITE_` to be accessible in the app
+- Access via `import.meta.env.VITE_*` (not `process.env`)
 
 ### Theme Integration Setup
 - Wrap app with `StylesProvider` and `ThemeProvider` for proper theme integration
@@ -99,9 +101,9 @@ const [loading, setLoading] = useState(true)
 const [error, setError] = useState<string | null>(null)
 
 useEffect(() => {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || ''
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN || ''
   
-  fetch(`${apiBaseUrl}/api/endpoint`)
+  fetch(`${publicDomain}/api/endpoint`)
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)

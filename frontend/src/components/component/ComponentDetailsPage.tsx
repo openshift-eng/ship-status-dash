@@ -119,13 +119,13 @@ const ComponentDetailsPage = () => {
   const { componentSlug } = useParams<{ componentSlug: string }>()
   const navigate = useNavigate()
   const [component, setComponent] = useState<Component | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const validationError = !componentSlug ? 'Component name is required' : null
+  const [loading, setLoading] = useState(!!componentSlug)
 
   useEffect(() => {
     if (!componentSlug) {
-      setError('Component name is required')
-      setLoading(false)
       return
     }
 
@@ -176,9 +176,11 @@ const ComponentDetailsPage = () => {
         </LoadingBox>
       )}
 
-      {error && <Alert severity="error">{error}</Alert>}
+      {(validationError || error) && <Alert severity="error">{validationError || error}</Alert>}
 
-      {!component && !loading && !error && <Alert severity="error">Component not found</Alert>}
+      {!component && !loading && !validationError && !error && (
+        <Alert severity="error">Component not found</Alert>
+      )}
 
       {component && !loading && !error && (
         <>

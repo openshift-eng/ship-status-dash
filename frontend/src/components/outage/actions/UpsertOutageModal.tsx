@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material'
 import type { ChangeEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
@@ -68,25 +68,9 @@ const UpsertOutageModal = ({
 }: UpsertOutageModalProps) => {
   const isUpdateMode = !!outage
 
-  const [formData, setFormData] = useState<OutageFormData>({
-    severity: outage?.severity || '',
-    description: outage?.description || '',
-    triage_notes: outage?.triage_notes || '',
-    start_time: outage
-      ? formatDateForDateTimeLocal(new Date(outage.start_time))
-      : getCurrentLocalTime(),
-    end_time: outage?.end_time.Valid
-      ? formatDateForDateTimeLocal(new Date(outage.end_time.Time))
-      : '',
-    confirmed: outage?.confirmed_at.Valid || false,
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Update form data when outage prop changes
-  useEffect(() => {
+  const initialFormData = useMemo((): OutageFormData => {
     if (outage) {
-      setFormData({
+      return {
         severity: outage.severity,
         description: outage.description || '',
         triage_notes: outage.triage_notes || '',
@@ -95,19 +79,35 @@ const UpsertOutageModal = ({
           ? formatDateForDateTimeLocal(new Date(outage.end_time.Time))
           : '',
         confirmed: outage.confirmed_at.Valid,
-      })
-    } else {
-      // Reset to default values for create mode
-      setFormData({
-        severity: '',
-        description: '',
-        triage_notes: '',
-        start_time: getCurrentLocalTime(),
-        end_time: '',
-        confirmed: true,
-      })
+      }
+    }
+    return {
+      severity: '',
+      description: '',
+      triage_notes: '',
+      start_time: getCurrentLocalTime(),
+      end_time: '',
+      confirmed: true,
     }
   }, [outage])
+
+  const [formData, setFormData] = useState<OutageFormData>(initialFormData)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const prevOpenRef = useRef(open)
+
+  useEffect(() => {
+    const modalJustOpened = !prevOpenRef.current && open
+
+    if (modalJustOpened) {
+      Promise.resolve().then(() => {
+        setFormData(initialFormData)
+        setError(null)
+      })
+    }
+
+    prevOpenRef.current = open
+  }, [open, initialFormData])
 
   const handleInputChange =
     (field: keyof OutageFormData) =>

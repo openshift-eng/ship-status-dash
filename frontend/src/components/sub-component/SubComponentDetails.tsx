@@ -87,7 +87,6 @@ const SubComponentDetails = () => {
   }>()
   const { isComponentAdmin } = useAuth()
   const [outages, setOutages] = useState<Outage[]>([])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
@@ -98,78 +97,87 @@ const SubComponentDetails = () => {
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const isAdmin = isComponentAdmin(componentSlug || '')
 
+  const validationError =
+    !componentName || !subComponentName ? 'Missing component or subcomponent name' : null
+  const [loading, setLoading] = useState(!!(componentName && subComponentName))
+
   const fetchData = useCallback(() => {
     if (!componentName || !subComponentName) {
-      setError('Missing component or subcomponent name')
       return
     }
 
-    setLoading(true)
-    setError(null)
+    // Use setTimeout to defer state updates, then start async fetch
+    setTimeout(() => {
+      setLoading(true)
+      setError(null)
 
-    // Fetch outages, status, and component configuration in parallel
-    Promise.all([
-      fetch(getSubComponentOutagesEndpoint(componentName, subComponentName)),
-      fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
-      fetch(getComponentInfoEndpoint(componentName)),
-    ])
-      .then(([outagesResponse, statusResponse, componentResponse]) => {
-        if (!outagesResponse.ok) {
-          setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
-          return
-        }
-        if (!statusResponse.ok) {
-          setError(`Failed to fetch status: ${statusResponse.statusText}`)
-          return
-        }
-        if (!componentResponse.ok) {
-          setError(`Failed to fetch component: ${componentResponse.statusText}`)
-          return
-        }
-        return Promise.all([
-          outagesResponse.json(),
-          statusResponse.json(),
-          componentResponse.json(),
-        ])
-      })
-      .then((results) => {
-        if (results) {
-          const [outagesData, statusData, componentData] = results
-          if (outagesData) {
-            setOutages(outagesData)
-            // Set default filter to 'ongoing' if there are any ongoing outages
-            const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
-            if (hasOngoing) {
-              setStatusFilter('ongoing')
-            } else {
-              setStatusFilter('all')
+      // Fetch outages, status, and component configuration in parallel
+      Promise.all([
+        fetch(getSubComponentOutagesEndpoint(componentName, subComponentName)),
+        fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
+        fetch(getComponentInfoEndpoint(componentName)),
+      ])
+        .then(([outagesResponse, statusResponse, componentResponse]) => {
+          if (!outagesResponse.ok) {
+            setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
+            return
+          }
+          if (!statusResponse.ok) {
+            setError(`Failed to fetch status: ${statusResponse.statusText}`)
+            return
+          }
+          if (!componentResponse.ok) {
+            setError(`Failed to fetch component: ${componentResponse.statusText}`)
+            return
+          }
+          return Promise.all([
+            outagesResponse.json(),
+            statusResponse.json(),
+            componentResponse.json(),
+          ])
+        })
+        .then((results) => {
+          if (results) {
+            const [outagesData, statusData, componentData] = results
+            if (outagesData) {
+              setOutages(outagesData)
+              // Set default filter to 'ongoing' if there are any ongoing outages
+              const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
+              if (hasOngoing) {
+                setStatusFilter('ongoing')
+              } else {
+                setStatusFilter('all')
+              }
+            }
+            if (statusData) {
+              setSubComponentStatus(statusData)
+            }
+            if (componentData) {
+              // Store the entire subcomponent configuration
+              const foundSubComponent = componentData.sub_components.find(
+                (sub: SubComponent) => sub.slug === subComponentSlug,
+              )
+              if (foundSubComponent) {
+                setSubComponent(foundSubComponent)
+              }
             }
           }
-          if (statusData) {
-            setSubComponentStatus(statusData)
-          }
-          if (componentData) {
-            // Store the entire subcomponent configuration
-            const foundSubComponent = componentData.sub_components.find(
-              (sub: SubComponent) => sub.slug === subComponentSlug,
-            )
-            if (foundSubComponent) {
-              setSubComponent(foundSubComponent)
-            }
-          }
-        }
-      })
-      .catch(() => {
-        setError('Failed to fetch data')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
+        })
+        .catch(() => {
+          setError('Failed to fetch data')
+        })
+        .finally(() => {
+          setLoading(false)
+        })
+    }, 0)
   }, [componentName, subComponentName, subComponentSlug])
 
   useEffect(() => {
+    if (!componentName || !subComponentName) {
+      return
+    }
     fetchData()
-  }, [fetchData])
+  }, [componentName, subComponentName, subComponentSlug, fetchData])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
@@ -396,13 +404,13 @@ const SubComponentDetails = () => {
           </LoadingBox>
         )}
 
-        {error && (
+        {(validationError || error) && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
+            {validationError || error}
           </Alert>
         )}
 
-        {!loading && !error && (
+        {!loading && !validationError && !error && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
               <ToggleButtonGroup
