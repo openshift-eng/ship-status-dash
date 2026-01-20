@@ -10,6 +10,8 @@ import {
 } from '@mui/material'
 import type { ReactNode } from 'react'
 
+import { formatStatusSeverityText } from '../../../utils/helpers'
+
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
     borderRadius: theme.spacing(2),
@@ -70,7 +72,7 @@ const ConfirmationModal = ({
         {children}
         <OutageDetailsBox>
           <Typography variant="body2">
-            <strong>Severity:</strong> {outage.severity}
+            <strong>Severity:</strong> {formatStatusSeverityText(outage.severity)}
           </Typography>
           <Typography variant="body2">
             <strong>Description:</strong> {outage.description || 'No description'}

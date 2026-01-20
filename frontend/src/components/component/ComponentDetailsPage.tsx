@@ -18,7 +18,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Component } from '../../types'
 import { getComponentInfoEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
-import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
+import {
+  formatStatusSeverityText,
+  getStatusBackgroundColor,
+  relativeTime,
+} from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
@@ -185,7 +189,7 @@ const ComponentDetailsPage = () => {
                 <ComponentDescription>{component.description}</ComponentDescription>
               </Box>
               <StatusChip
-                label={component.status || 'Unknown'}
+                label={formatStatusSeverityText(component.status || 'Unknown')}
                 status={component.status || 'Unknown'}
                 variant="filled"
               />

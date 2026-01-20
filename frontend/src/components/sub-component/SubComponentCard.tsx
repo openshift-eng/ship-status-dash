@@ -4,7 +4,11 @@ import { useNavigate } from 'react-router-dom'
 
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
-import { getStatusBackgroundColor, getStatusChipColor } from '../../utils/helpers'
+import {
+  formatStatusSeverityText,
+  getStatusBackgroundColor,
+  getStatusChipColor,
+} from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 
@@ -130,7 +134,11 @@ const SubComponentCardComponent = ({
           <SubComponentTitle>{deslugify(subComponent.name)}</SubComponentTitle>
           <StatusChipBox>
             <StatusChip
-              label={loading ? 'Loading...' : subComponentWithStatus.status || 'Unknown'}
+              label={
+                loading
+                  ? 'Loading...'
+                  : formatStatusSeverityText(subComponentWithStatus.status || 'Unknown')
+              }
               status={subComponentWithStatus.status || 'Unknown'}
               size="small"
               variant="filled"

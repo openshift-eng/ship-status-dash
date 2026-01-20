@@ -1,6 +1,14 @@
 import type { Theme } from '@mui/material/styles'
 
+// Hardcoded colors for capacityExhausted status
+const CAPACITY_EXHAUSTED_COLORS = {
+  light: { main: '#f57c00', light: '#ffb74d', dark: '#d68910' },
+  dark: { main: '#d68910', light: '#ffb74d', dark: '#b8620b' },
+}
+
 export const getStatusBackgroundColor = (theme: Theme, status: string) => {
+  const isDark = theme.palette.mode === 'dark'
+
   switch (status) {
     case 'Healthy':
       return theme.palette.success.light
@@ -8,20 +16,22 @@ export const getStatusBackgroundColor = (theme: Theme, status: string) => {
       return theme.palette.warning.light
     case 'Down':
       return theme.palette.error.light
+    case 'CapacityExhausted':
+      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.light : CAPACITY_EXHAUSTED_COLORS.light.light
     case 'Suspected':
       return theme.palette.info.light
     case 'Partial':
-      return theme.palette.mode === 'dark'
-        ? theme.palette.warning.dark
-        : theme.palette.warning.light
+      return isDark ? theme.palette.warning.dark : theme.palette.warning.light
     case 'Unknown':
-      return theme.palette.mode === 'dark' ? theme.palette.grey[700] : theme.palette.grey[300]
+      return isDark ? theme.palette.grey[700] : theme.palette.grey[300]
     default:
-      return theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]
+      return isDark ? theme.palette.grey[800] : theme.palette.grey[100]
   }
 }
 
 export const getStatusChipColor = (theme: Theme, status: string) => {
+  const isDark = theme.palette.mode === 'dark'
+
   switch (status) {
     case 'Healthy':
       return theme.palette.success.main
@@ -29,27 +39,41 @@ export const getStatusChipColor = (theme: Theme, status: string) => {
       return theme.palette.warning.main
     case 'Down':
       return theme.palette.error.main
+    case 'CapacityExhausted':
+      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.main : CAPACITY_EXHAUSTED_COLORS.light.main
     case 'Suspected':
       return theme.palette.info.main
     case 'Partial':
-      return theme.palette.mode === 'dark'
-        ? theme.palette.warning.light
-        : theme.palette.warning.dark
+      return theme.palette.warning.main
     case 'Unknown':
-      return theme.palette.mode === 'dark' ? theme.palette.grey[400] : theme.palette.grey[600]
+      return isDark ? theme.palette.grey[400] : theme.palette.grey[600]
     default:
-      return theme.palette.mode === 'dark' ? theme.palette.grey[300] : theme.palette.grey[500]
+      return isDark ? theme.palette.grey[300] : theme.palette.grey[500]
   }
 }
 
 export const getSeverityColor = (theme: Theme, severity: string) => {
+  const isDark = theme.palette.mode === 'dark'
+
   switch (severity) {
     case 'Down':
       return theme.palette.error.main
     case 'Degraded':
       return theme.palette.warning.main
+    case 'CapacityExhausted':
+      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.main : CAPACITY_EXHAUSTED_COLORS.light.main
     default:
       return theme.palette.info.main
+  }
+}
+
+// Helper function to format status or severity for display
+export const formatStatusSeverityText = (text: string): string => {
+  switch (text) {
+    case 'CapacityExhausted':
+      return 'Capacity Exhausted'
+    default:
+      return text
   }
 }
 
