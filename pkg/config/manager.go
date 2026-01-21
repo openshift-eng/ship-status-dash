@@ -17,7 +17,7 @@ import (
 const ConfigReloadedMessage = "Config reloaded successfully"
 
 // DefaultDebounceDelay is the default debounce delay used to prevent multiple reloads when a config is updated.
-const DefaultDebounceDelay = 500 * time.Millisecond
+const DefaultDebounceDelay = 2 * time.Second
 
 // Manager provides thread-safe configuration management with hot-reload support.
 type Manager[T any] struct {
@@ -87,9 +87,11 @@ func (m *Manager[T]) load() error {
 
 // reload attempts to reload the configuration and update callbacks if successful.
 func (m *Manager[T]) reload() {
+	m.mu.Lock()
 	// Read the file content to compute hash
 	configBytes, err := os.ReadFile(m.configPath)
 	if err != nil {
+		m.mu.Unlock()
 		m.logger.WithFields(logrus.Fields{
 			"config_path": m.configPath,
 			"error":       err,
@@ -101,19 +103,17 @@ func (m *Manager[T]) reload() {
 	newHash := sha256.Sum256(configBytes)
 	newHashStr := hex.EncodeToString(newHash[:])
 
-	m.mu.RLock()
-	lastHash := m.lastHash
-	m.mu.RUnlock()
-
 	// Skip reload if content hasn't changed
-	if newHashStr == lastHash {
-		m.logger.WithField("config_path", m.configPath).Debug("Config file content unchanged, skipping reload")
+	if newHashStr == m.lastHash {
+		m.mu.Unlock()
+		m.logger.WithField("config_path", m.configPath).Info("Config file content unchanged, skipping reload")
 		return
 	}
 
 	// Load and validate the new configuration
 	newConfig, err := m.loadFunc(m.configPath)
 	if err != nil {
+		m.mu.Unlock()
 		m.logger.WithFields(logrus.Fields{
 			"config_path": m.configPath,
 			"error":       err,
@@ -121,16 +121,16 @@ func (m *Manager[T]) reload() {
 		return
 	}
 
-	m.mu.Lock()
 	m.config = newConfig
 	m.lastHash = newHashStr
 	// Copy callbacks to avoid race conditions
 	callbacks := make([]func(*T), len(m.updateCallbacks))
 	copy(callbacks, m.updateCallbacks)
-	m.mu.Unlock()
 
 	m.logger.WithField("config_path", m.configPath).Info(ConfigReloadedMessage)
 
+	// Release lock before calling callbacks to avoid holding lock during potentially slow operations
+	m.mu.Unlock()
 	for _, callback := range callbacks {
 		callback(newConfig)
 	}
