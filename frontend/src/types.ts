@@ -7,6 +7,15 @@ export interface ComponentStatus {
   last_ping_time?: string
 }
 
+export interface Reason {
+  ID: number
+  CreatedAt: string
+  UpdatedAt: string
+  type: string
+  check: string
+  results: string
+}
+
 export interface Outage {
   ID: number
   CreatedAt: string
@@ -30,6 +39,7 @@ export interface Outage {
     Valid: boolean
   }
   triage_notes?: string
+  reasons?: Reason[]
 }
 
 export interface Monitoring {

@@ -1,4 +1,12 @@
-import { AccessTime, ArrowBack, Assignment, Info, Person, Settings } from '@mui/icons-material'
+import {
+  AccessTime,
+  ArrowBack,
+  Assignment,
+  BugReport,
+  Info,
+  Person,
+  Settings,
+} from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -153,6 +161,61 @@ const TopActionsContainer = styled(Box)(({ theme }) => ({
   },
 }))
 
+const ReasonCard = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+  borderRadius: theme.spacing(1),
+  border: `1px solid ${theme.palette.divider}`,
+  '&:last-child': {
+    marginBottom: 0,
+  },
+}))
+
+const ReasonTypeChip = styled(Chip)(({ theme }) => ({
+  marginBottom: theme.spacing(1),
+  fontWeight: 600,
+}))
+
+const ReasonContentBox = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(1),
+  '& > *:not(:last-child)': {
+    marginBottom: theme.spacing(1),
+  },
+}))
+
+const ReasonLabel = styled(Typography)(({ theme }) => ({
+  fontWeight: 600,
+  color: theme.palette.text.secondary,
+  fontSize: '0.875rem',
+  marginBottom: theme.spacing(0.5),
+}))
+
+const ReasonValue = styled(Typography)(() => ({
+  fontFamily: 'monospace',
+  fontSize: '0.875rem',
+  wordBreak: 'break-word',
+}))
+
+const ResultsContainer = styled(Box)(({ theme }) => ({
+  maxHeight: '300px',
+  overflowY: 'auto',
+  padding: theme.spacing(1),
+  backgroundColor: theme.palette.mode === 'dark' ? theme.palette.grey[900] : theme.palette.grey[50],
+  borderRadius: theme.spacing(0.5),
+  border: `1px solid ${theme.palette.divider}`,
+}))
+
+const ResultItem = styled(Typography)(({ theme }) => ({
+  fontFamily: 'monospace',
+  fontSize: '0.8125rem',
+  padding: theme.spacing(0.5),
+  marginBottom: theme.spacing(0.25),
+  wordBreak: 'break-word',
+  '&:last-child': {
+    marginBottom: 0,
+  },
+}))
+
 const OutageDetailsPage = () => {
   const navigate = useNavigate()
   const { componentSlug, subComponentSlug, outageId } = useParams<{
@@ -245,6 +308,15 @@ const OutageDetailsPage = () => {
     return 'Go Back'
   }
 
+  const formatResults = (results: string): string[] => {
+    if (!results) return ['']
+    const items = results
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    return items.length > 0 ? items : [results]
+  }
+
   if (loading) {
     return (
       <StyledContainer maxWidth="lg">
@@ -322,6 +394,39 @@ const OutageDetailsPage = () => {
             valueVariant="primary"
           />
         </Section>
+
+        {outage.reasons && outage.reasons.length > 0 && (
+          <FullWidthGridItem>
+            <Section icon={<BugReport />} title="Automated Monitoring Failures">
+              {outage.reasons.map((reason) => (
+                <ReasonCard key={reason.ID} elevation={0}>
+                  <ReasonTypeChip
+                    label={reason.type}
+                    color="primary"
+                    size="small"
+                    variant="outlined"
+                  />
+                  <ReasonContentBox>
+                    <Box>
+                      <ReasonLabel variant="caption">Health Check</ReasonLabel>
+                      <ReasonValue variant="body2">{reason.check}</ReasonValue>
+                    </Box>
+                    <Box>
+                      <ReasonLabel variant="caption">Failure Results</ReasonLabel>
+                      <ResultsContainer>
+                        {formatResults(reason.results).map((item, index) => (
+                          <ResultItem key={index} variant="body2">
+                            {item}
+                          </ResultItem>
+                        ))}
+                      </ResultsContainer>
+                    </Box>
+                  </ReasonContentBox>
+                </ReasonCard>
+              ))}
+            </Section>
+          </FullWidthGridItem>
+        )}
 
         <Section icon={<Person />} title="User Information">
           <Field label="Created By" value={outage.created_by} />
