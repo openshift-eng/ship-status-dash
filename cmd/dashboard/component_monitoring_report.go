@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -158,11 +157,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			}
 
 			err = p.outageRepo.Transaction(func(repo repositories.OutageRepository) error {
-				var descriptionParts []string
-				for _, reason := range status.Reasons {
-					descriptionParts = append(descriptionParts, fmt.Sprintf("%s - check: %s, results: %s", reason.Type, reason.Check, reason.Results))
-				}
-				description := fmt.Sprintf("Component monitor detected outage via %s", strings.Join(descriptionParts, "; "))
+				description := "Component monitor detected outage"
 
 				outage := types.Outage{
 					ComponentName:    status.ComponentSlug,
