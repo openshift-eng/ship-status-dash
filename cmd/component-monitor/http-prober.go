@@ -15,15 +15,20 @@ type HTTPProber struct {
 	url                string
 	expectedStatusCode int
 	confirmAfter       time.Duration
+	severity           types.Severity
 }
 
-func NewHTTPProber(componentSlug string, subComponentSlug string, url string, expectedStatusCode int, confirmAfter time.Duration) *HTTPProber {
+func NewHTTPProber(componentSlug string, subComponentSlug string, url string, expectedStatusCode int, confirmAfter time.Duration, severity types.Severity) *HTTPProber {
+	if severity == "" {
+		severity = types.SeverityDown
+	}
 	return &HTTPProber{
 		componentSlug:      componentSlug,
 		subComponentSlug:   subComponentSlug,
 		url:                url,
 		expectedStatusCode: expectedStatusCode,
 		confirmAfter:       confirmAfter,
+		severity:           severity,
 	}
 }
 
@@ -32,7 +37,7 @@ func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComp
 	if statusCode == p.expectedStatusCode {
 		status = types.StatusHealthy
 	} else {
-		status = types.StatusDown
+		status = p.severity.ToStatus()
 	}
 
 	return types.ComponentMonitorReportComponentStatus{

@@ -25,6 +25,7 @@ import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
 import {
   formatDuration,
+  formatStatusSeverityText,
   getStatusBackgroundColor,
   getStatusChipColor,
   relativeTime,
@@ -365,7 +366,11 @@ const OutageDetailsPage = () => {
           {isResolved() ? (
             <ResolvedChip label="Resolved" color="success" size="medium" />
           ) : (
-            <HeaderChip label={outage.severity} severity={outage.severity} size="medium" />
+            <HeaderChip
+              label={formatStatusSeverityText(outage.severity)}
+              severity={outage.severity}
+              size="medium"
+            />
           )}
         </HeaderContent>
       </HeaderPaper>
@@ -379,7 +384,11 @@ const OutageDetailsPage = () => {
               Severity
             </FieldLabel>
             <ChipSpacer>
-              <SeverityChip label={outage.severity} severity={outage.severity} size="small" />
+              <SeverityChip
+                label={formatStatusSeverityText(outage.severity)}
+                severity={outage.severity}
+                size="small"
+              />
             </ChipSpacer>
           </FieldBox>
           {outage.description && <Field label="Description" value={outage.description} />}

@@ -106,6 +106,7 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	}
 
 	setDefaultStepValues(&cfg)
+	setDefaultSeverityValues(&cfg)
 
 	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir); err != nil {
 		return nil, fmt.Errorf("invalid prometheus location configuration: %w", err)
@@ -128,7 +129,7 @@ func createProbers(components []types.MonitoringComponent, prometheusClients map
 			if err != nil {
 				componentLogger.WithField("error", err).Fatal("Failed to parse retry after duration")
 			}
-			prober := NewHTTPProber(component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.URL, component.HTTPMonitor.Code, retryAfter)
+			prober := NewHTTPProber(component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.URL, component.HTTPMonitor.Code, retryAfter, component.HTTPMonitor.Severity)
 			componentLogger.Info("Added HTTP prober for component")
 			probers = append(probers, prober)
 		}

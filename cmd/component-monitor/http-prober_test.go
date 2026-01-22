@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/google/go-cmp/cmp"
 
+	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 )
 
@@ -19,11 +21,10 @@ func TestHTTPProber_Probe(t *testing.T) {
 		initialStatusCode  int
 		retryStatusCode    int
 		confirmAfter       time.Duration
-		serverDelay        time.Duration
 		cancelContext      bool
-		expectHealthy      bool
-		expectError        bool
-		expectedReasonType types.CheckType
+		expectedError      error
+		severity           types.Severity
+		expectedResult     *types.ComponentMonitorReportComponentStatus
 	}{
 		{
 			name:               "success - status code matches expected",
@@ -31,8 +32,19 @@ func TestHTTPProber_Probe(t *testing.T) {
 			initialStatusCode:  http.StatusOK,
 			retryStatusCode:    http.StatusOK,
 			confirmAfter:       10 * time.Millisecond,
-			expectHealthy:      true,
-			expectedReasonType: types.CheckTypeHTTP,
+			severity:           types.SeverityDown,
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    "test-component",
+				SubComponentSlug: "test-subcomponent",
+				Status:           types.StatusHealthy,
+				Reasons: []types.Reason{
+					{
+						Type:    types.CheckTypeHTTP,
+						Check:   "", // Will be set to server.URL in test
+						Results: "", // Will be set from actual result
+					},
+				},
+			},
 		},
 		{
 			name:               "failure - status code doesn't match, retry confirms failure",
@@ -40,8 +52,19 @@ func TestHTTPProber_Probe(t *testing.T) {
 			initialStatusCode:  http.StatusInternalServerError,
 			retryStatusCode:    http.StatusInternalServerError,
 			confirmAfter:       10 * time.Millisecond,
-			expectHealthy:      false,
-			expectedReasonType: types.CheckTypeHTTP,
+			severity:           types.SeverityDown,
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    "test-component",
+				SubComponentSlug: "test-subcomponent",
+				Status:           types.StatusDown,
+				Reasons: []types.Reason{
+					{
+						Type:    types.CheckTypeHTTP,
+						Check:   "", // Will be set to server.URL in test
+						Results: "", // Will be set from actual result
+					},
+				},
+			},
 		},
 		{
 			name:               "failure then recovery - status code doesn't match, retry succeeds",
@@ -49,8 +72,19 @@ func TestHTTPProber_Probe(t *testing.T) {
 			initialStatusCode:  http.StatusInternalServerError,
 			retryStatusCode:    http.StatusOK,
 			confirmAfter:       10 * time.Millisecond,
-			expectHealthy:      true,
-			expectedReasonType: types.CheckTypeHTTP,
+			severity:           types.SeverityDown,
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    "test-component",
+				SubComponentSlug: "test-subcomponent",
+				Status:           types.StatusHealthy,
+				Reasons: []types.Reason{
+					{
+						Type:    types.CheckTypeHTTP,
+						Check:   "", // Will be set to server.URL in test
+						Results: "", // Will be set from actual result
+					},
+				},
+			},
 		},
 		{
 			name:               "network error on first request",
@@ -58,9 +92,8 @@ func TestHTTPProber_Probe(t *testing.T) {
 			initialStatusCode:  -1, // Special value to trigger server close
 			retryStatusCode:    http.StatusOK,
 			confirmAfter:       10 * time.Millisecond,
-			expectHealthy:      false,
-			expectError:        true,
-			expectedReasonType: types.CheckTypeHTTP,
+			expectedError:      errors.New("EOF"),
+			severity:           types.SeverityDown,
 		},
 		{
 			name:               "network error on retry",
@@ -68,9 +101,8 @@ func TestHTTPProber_Probe(t *testing.T) {
 			initialStatusCode:  http.StatusInternalServerError,
 			retryStatusCode:    -1, // Special value to trigger server close
 			confirmAfter:       10 * time.Millisecond,
-			expectHealthy:      false,
-			expectError:        true,
-			expectedReasonType: types.CheckTypeHTTP,
+			expectedError:      errors.New("EOF"),
+			severity:           types.SeverityDown,
 		},
 		{
 			name:               "context cancellation during confirmAfter wait",
@@ -79,7 +111,28 @@ func TestHTTPProber_Probe(t *testing.T) {
 			retryStatusCode:    http.StatusOK,
 			confirmAfter:       100 * time.Millisecond,
 			cancelContext:      true,
-			expectError:        true,
+			expectedError:      context.Canceled,
+			severity:           types.SeverityDown,
+		},
+		{
+			name:               "failure with Degraded severity",
+			expectedStatusCode: http.StatusOK,
+			initialStatusCode:  http.StatusInternalServerError,
+			retryStatusCode:    http.StatusInternalServerError,
+			confirmAfter:       10 * time.Millisecond,
+			severity:           types.SeverityDegraded,
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    "test-component",
+				SubComponentSlug: "test-subcomponent",
+				Status:           types.StatusDegraded,
+				Reasons: []types.Reason{
+					{
+						Type:    types.CheckTypeHTTP,
+						Check:   "", // Will be set to server.URL in test
+						Results: "", // Will be set from actual result
+					},
+				},
+			},
 		},
 	}
 
@@ -124,6 +177,7 @@ func TestHTTPProber_Probe(t *testing.T) {
 				server.URL,
 				tt.expectedStatusCode,
 				tt.confirmAfter,
+				tt.severity,
 			)
 
 			results := make(chan types.ComponentMonitorReportComponentStatus, 1)
@@ -131,38 +185,83 @@ func TestHTTPProber_Probe(t *testing.T) {
 
 			prober.Probe(ctx, results, errChan)
 
-			select {
-			case result := <-results:
-				assert.Equal(t, "test-component", result.ComponentSlug)
-				assert.Equal(t, "test-subcomponent", result.SubComponentSlug)
-				//HTTP Prober should only return one reason
-				assert.Len(t, result.Reasons, 1)
-				assert.Equal(t, tt.expectedReasonType, result.Reasons[0].Type)
-				assert.Equal(t, server.URL, result.Reasons[0].Check)
+			var result types.ComponentMonitorReportComponentStatus
+			var err error
+			var gotResult, gotError bool
 
-				if tt.expectHealthy {
-					assert.Equal(t, types.StatusHealthy, result.Status)
-				} else {
-					assert.Equal(t, types.StatusDown, result.Status)
+			// Wait for either result or error with timeout
+			timeout := time.After(500 * time.Millisecond)
+			for !gotResult && !gotError {
+				select {
+				case result = <-results:
+					gotResult = true
+				case err = <-errChan:
+					gotError = true
+				case <-timeout:
+					t.Fatal("timeout waiting for result or error")
 				}
+			}
 
-				if tt.expectError {
-					select {
-					case err := <-errChan:
-						assert.NotNil(t, err)
-					case <-time.After(100 * time.Millisecond):
-						// Error may have been sent before result
+			// Check for additional error that may have been sent
+			if gotResult {
+				select {
+				case additionalErr := <-errChan:
+					err = additionalErr
+					gotError = true
+				case <-time.After(100 * time.Millisecond):
+					// No additional error
+				}
+			}
+
+			// Compare error
+			if tt.expectedError != nil {
+				if !gotError {
+					t.Error("expected error but got none")
+				} else {
+					// For errors that include the URL, construct expected error with actual server URL
+					expectedError := tt.expectedError
+					if expectedError.Error() == "EOF" {
+						expectedError = errors.New(`Get "` + server.URL + `": EOF`)
+					}
+					diff := cmp.Diff(expectedError, err, testhelper.EquateErrorMessage)
+					if diff != "" {
+						t.Errorf("HTTPProber.Probe() error mismatch (-want +got):\n%s", diff)
 					}
 				}
-
-			case err := <-errChan:
-				if tt.expectError {
-					assert.NotNil(t, err)
-				} else {
-					t.Fatalf("unexpected error: %v", err)
+			} else if gotError && err != nil {
+				// If no error expected but we got one, that's only a problem if we also expected a result
+				if tt.expectedResult != nil {
+					t.Errorf("unexpected error: %v", err)
 				}
-			case <-time.After(500 * time.Millisecond):
-				t.Fatal("timeout waiting for result or error")
+			}
+
+			// Compare result if we got one
+			if gotResult {
+				if tt.expectedResult == nil {
+					t.Fatal("got result but no expected result defined")
+				}
+
+				// Check that we have exactly one reason
+				if len(result.Reasons) != 1 {
+					t.Errorf("expected 1 reason, got %d", len(result.Reasons))
+				}
+
+				// Set dynamic fields in expected result
+				expected := *tt.expectedResult
+				expected.Reasons[0].Check = server.URL
+				expected.Reasons[0].Results = result.Reasons[0].Results // Copy actual results for comparison
+
+				diff := cmp.Diff(expected, result)
+				if diff != "" {
+					t.Errorf("HTTPProber.Probe() mismatch (-want +got):\n%s", diff)
+				}
+
+				// Verify results string contains expected information
+				if result.Reasons[0].Results == "" {
+					t.Error("expected Results to be non-empty")
+				}
+			} else if tt.expectedResult != nil && tt.expectedError == nil {
+				t.Error("expected result but got error")
 			}
 		})
 	}

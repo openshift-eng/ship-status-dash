@@ -148,6 +148,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			setUnhealthyMetrics(t, mockMonitoredComponentURL, unhealthyMetrics)
 			foundOutage := waitForOutageCreated(t, client, componentName, subComponentName, 60*time.Second)
 			verifyOutageReasons(t, foundOutage, expectedReasons)
+			assert.Equal(t, types.SeverityDegraded, foundOutage.Severity, "Outage should have Degraded severity as configured")
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})
@@ -187,6 +188,7 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 			setUnhealthyMetrics(t, mockMonitoredComponentURL, unhealthyMetrics)
 			foundOutage := waitForOutageCreated(t, client, componentName, subComponentName, 30*time.Second)
 			verifyOutageReasons(t, foundOutage, expectedReasons)
+			assert.Equal(t, types.SeverityDegraded, foundOutage.Severity, "Outage should have Degraded severity as configured")
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})

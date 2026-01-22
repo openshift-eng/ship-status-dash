@@ -2,7 +2,7 @@ import { Box, Button, Card, CardContent, styled, Typography } from '@mui/materia
 import { useNavigate } from 'react-router-dom'
 
 import type { Component, SubComponent } from '../../types'
-import { getStatusBackgroundColor } from '../../utils/helpers'
+import { formatStatusSeverityText, getStatusBackgroundColor } from '../../utils/helpers'
 import { slugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
@@ -24,7 +24,7 @@ const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
 
 const SubComponentsGrid = styled(Box)(({ theme }) => ({
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
   gap: theme.spacing(2),
   marginTop: theme.spacing(2),
 }))
@@ -93,7 +93,7 @@ const ComponentWellComponent = ({ component }: ComponentWellProps) => {
         <HeaderBox>
           <ComponentTitle>{component.name}</ComponentTitle>
           <StatusChip
-            label={component.status || 'Unknown'}
+            label={formatStatusSeverityText(component.status || 'Unknown')}
             status={component.status || 'Unknown'}
             variant="filled"
           />

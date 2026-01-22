@@ -88,7 +88,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 						PrometheusLocation: types.PrometheusLocation{
 							URL: "http://localhost:9090",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -105,7 +105,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -121,7 +121,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 						PrometheusLocation: types.PrometheusLocation{
 							URL: "http://localhost:9090",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -139,7 +139,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -157,7 +157,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -174,7 +174,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -191,7 +191,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Cluster: "in-cluster",
 							Route:   "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -208,7 +208,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Cluster:   "in-cluster",
 							Namespace: "openshift-monitoring",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -222,7 +222,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
 						PrometheusLocation: types.PrometheusLocation{},
-						Queries:            []types.PrometheusQuery{{Query: "up"}},
+						Queries:            []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -241,7 +241,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -280,7 +280,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Namespace: "openshift-monitoring",
 							Route:     "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -300,6 +300,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							{
 								Query:    "up",
 								Duration: "invalid-duration",
+								Severity: types.SeverityDown,
 							},
 						},
 					},
@@ -322,6 +323,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 								Query:    "up",
 								Duration: "1h",
 								Step:     "invalid-step",
+								Severity: types.SeverityDown,
 							},
 						},
 					},
@@ -341,8 +343,9 @@ func TestValidatePrometheusLocations(t *testing.T) {
 						},
 						Queries: []types.PrometheusQuery{
 							{
-								Query: "up",
-								Step:  "15s",
+								Query:    "up",
+								Step:     "15s",
+								Severity: types.SeverityDown,
 							},
 						},
 					},
@@ -361,7 +364,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							URL:     "http://localhost:9090",
 							Cluster: "app.ci",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -378,7 +381,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							URL:       "http://localhost:9090",
 							Namespace: "openshift-monitoring",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -395,7 +398,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Cluster: "app.ci",
 							Route:   "thanos-querier",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -413,7 +416,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 							Cluster:   "app.ci",
 							Namespace: "openshift-monitoring",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
@@ -430,11 +433,27 @@ func TestValidatePrometheusLocations(t *testing.T) {
 						PrometheusLocation: types.PrometheusLocation{
 							URL: "not-a-url",
 						},
-						Queries: []types.PrometheusQuery{{Query: "up"}},
+						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
 				},
 			},
 			expectedErr: errors.New("prometheusLocation url must be a valid URL for component test/test, got: not-a-url"),
+		},
+		{
+			name: "invalid - missing severity",
+			components: []types.MonitoringComponent{
+				{
+					ComponentSlug:    "test",
+					SubComponentSlug: "test",
+					PrometheusMonitor: &types.PrometheusMonitor{
+						PrometheusLocation: types.PrometheusLocation{
+							URL: "http://localhost:9090",
+						},
+						Queries: []types.PrometheusQuery{{Query: "up"}},
+					},
+				},
+			},
+			expectedErr: errors.New(`severity is required for component test/test, query "up"`),
 		},
 	}
 
@@ -589,6 +608,131 @@ func TestSetDefaultStepValues(t *testing.T) {
 			diff := cmp.Diff(tt.expected, tt.config)
 			if diff != "" {
 				t.Errorf("setDefaultStepValues() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestSetDefaultSeverityValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *types.ComponentMonitorConfig
+		expected *types.ComponentMonitorConfig
+	}{
+		{
+			name: "sets default severity when not specified",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query: "up",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Severity: types.SeverityDown,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "does not modify query with existing severity",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Severity: types.SeverityDegraded,
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Severity: types.SeverityDegraded,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "sets default severity for multiple queries",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query: "up",
+								},
+								{
+									Query:    "down",
+									Severity: types.SeverityDegraded,
+								},
+								{
+									Query: "other",
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						PrometheusMonitor: &types.PrometheusMonitor{
+							Queries: []types.PrometheusQuery{
+								{
+									Query:    "up",
+									Severity: types.SeverityDown,
+								},
+								{
+									Query:    "down",
+									Severity: types.SeverityDegraded,
+								},
+								{
+									Query:    "other",
+									Severity: types.SeverityDown,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setDefaultSeverityValues(tt.config)
+			diff := cmp.Diff(tt.expected, tt.config)
+			if diff != "" {
+				t.Errorf("setDefaultSeverityValues() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

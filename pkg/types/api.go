@@ -12,13 +12,8 @@ type UpsertOutageRequest struct {
 	EndTime        *sql.NullTime `json:"end_time,omitempty"`
 	Description    *string       `json:"description,omitempty"`
 	DiscoveredFrom *string       `json:"discovered_from,omitempty"`
-	// CreatedBy should not be passed by the frontend, this is only for use via the component-monitor
-	CreatedBy *string `json:"created_by,omitempty"`
-	// ResolvedBy should not be passed by the frontend, this is only for use via the component-monitor
-	// the value will be obtained from the active user header otherwise
-	ResolvedBy  *string `json:"resolved_by,omitempty"`
-	Confirmed   *bool   `json:"confirmed,omitempty"`
-	TriageNotes *string `json:"triage_notes,omitempty"`
+	Confirmed      *bool         `json:"confirmed,omitempty"`
+	TriageNotes    *string       `json:"triage_notes,omitempty"`
 }
 
 // ComponentMonitorReportRequest represents a report from a component monitor.

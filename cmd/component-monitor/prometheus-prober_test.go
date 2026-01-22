@@ -175,7 +175,7 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		{
 			name: "failure - single query returns empty vector",
 			queries: []types.PrometheusQuery{
-				{Query: "up{job=\"test\"}"},
+				{Query: "up{job=\"test\"}", Severity: types.SeverityDown},
 			},
 			queryResults: map[string]model.Value{
 				"up{job=\"test\"}": model.Vector{},
@@ -187,7 +187,7 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		{
 			name: "failure - single query returns nil",
 			queries: []types.PrometheusQuery{
-				{Query: "up{job=\"test\"}"},
+				{Query: "up{job=\"test\"}", Severity: types.SeverityDown},
 			},
 			queryResults:        map[string]model.Value{},
 			expectStatus:        types.StatusDown,
@@ -197,8 +197,8 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		{
 			name: "failure - all queries fail",
 			queries: []types.PrometheusQuery{
-				{Query: "up{job=\"test1\"}"},
-				{Query: "up{job=\"test2\"}"},
+				{Query: "up{job=\"test1\"}", Severity: types.SeverityDown},
+				{Query: "up{job=\"test2\"}", Severity: types.SeverityDown},
 			},
 			queryResults: map[string]model.Value{
 				"up{job=\"test1\"}": model.Vector{},
@@ -212,7 +212,7 @@ func TestPrometheusProber_Probe(t *testing.T) {
 			name: "degraded - some queries succeed, some fail",
 			queries: []types.PrometheusQuery{
 				{Query: "up{job=\"test1\"}"},
-				{Query: "up{job=\"test2\"}"},
+				{Query: "up{job=\"test2\"}", Severity: types.SeverityDegraded},
 				{Query: "up{job=\"test3\"}"},
 			},
 			queryResults: map[string]model.Value{
@@ -227,7 +227,7 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		{
 			name: "query error sent to error channel",
 			queries: []types.PrometheusQuery{
-				{Query: "up{job=\"test\"}"},
+				{Query: "up{job=\"test\"}", Severity: types.SeverityDown},
 			},
 			queryErrors: map[string]error{
 				"up{job=\"test\"}": errors.New("prometheus query error"),
@@ -259,12 +259,40 @@ func TestPrometheusProber_Probe(t *testing.T) {
 		{
 			name: "matrix query fails with empty matrix",
 			queries: []types.PrometheusQuery{
-				{Query: "rate(http_requests_total[5m])"},
+				{Query: "rate(http_requests_total[5m])", Severity: types.SeverityDown},
 			},
 			queryResults: map[string]model.Value{
 				"rate(http_requests_total[5m])": model.Matrix{},
 			},
 			expectStatus:        types.StatusDown,
+			expectedReasonCount: 1,
+			expectedReasonType:  types.CheckTypePrometheus,
+		},
+		{
+			name: "multiple queries fail with different severities - most critical wins",
+			queries: []types.PrometheusQuery{
+				{Query: "up{job=\"test1\"}", Severity: types.SeverityDegraded},
+				{Query: "up{job=\"test2\"}", Severity: types.SeverityDown},
+				{Query: "up{job=\"test3\"}", Severity: types.SeverityCapacityExhausted},
+			},
+			queryResults: map[string]model.Value{
+				"up{job=\"test1\"}": model.Vector{},
+				"up{job=\"test2\"}": model.Vector{},
+				"up{job=\"test3\"}": model.Vector{},
+			},
+			expectStatus:        types.StatusDown,
+			expectedReasonCount: 3,
+			expectedReasonType:  types.CheckTypePrometheus,
+		},
+		{
+			name: "capacity exhausted severity returns CapacityExhausted status",
+			queries: []types.PrometheusQuery{
+				{Query: "up{job=\"test\"}", Severity: types.SeverityCapacityExhausted},
+			},
+			queryResults: map[string]model.Value{
+				"up{job=\"test\"}": model.Vector{},
+			},
+			expectStatus:        types.StatusCapacityExhausted,
 			expectedReasonCount: 1,
 			expectedReasonType:  types.CheckTypePrometheus,
 		},

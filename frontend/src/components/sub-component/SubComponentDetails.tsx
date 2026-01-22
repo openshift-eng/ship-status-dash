@@ -24,7 +24,11 @@ import {
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
-import { getStatusBackgroundColor, relativeTime } from '../../utils/helpers'
+import {
+  formatStatusSeverityText,
+  getStatusBackgroundColor,
+  relativeTime,
+} from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
@@ -205,7 +209,7 @@ const SubComponentDetails = () => {
       width: 120,
       renderCell: (params) => (
         <SeverityChip
-          label={params.value}
+          label={formatStatusSeverityText(params.value)}
           severity={params.value}
           size="small"
           variant="outlined"

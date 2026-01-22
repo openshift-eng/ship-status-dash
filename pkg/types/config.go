@@ -106,9 +106,12 @@ type PrometheusLocation struct {
 type PrometheusQuery struct {
 	// Query is the Prometheus query to perform
 	Query string `json:"query" yaml:"query"`
+	// Severity is the severity of the outage that will be created if the query returns no results.
+	// If not provided, the severity will default to Down.
+	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 	// FailureQuery is the, optional, Prometheus (instant) query that runs when the Query returns no results
 	// It can be used to provide more information as to the reason for the resulting Outage
-	FailureQuery string `json:"failure_query" yaml:"failure_query"`
+	FailureQuery string `json:"failure_query,omitempty" yaml:"failure_query,omitempty"`
 	// Duration is the duration to use in a range query.
 	// If provided, the query will be a range query.
 	// If not provided, the query will be an instant query.
@@ -126,4 +129,7 @@ type HTTPMonitor struct {
 	Code int `json:"code" yaml:"code"`
 	// RetryAfter is the duration to wait before retrying the probe only when the status code is not as expected
 	RetryAfter string `json:"retry_after" yaml:"retry_after"`
+	// Severity is the severity of the outage that will be created if the HTTP request fails.
+	// If not provided, the severity will default to Down.
+	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 }
