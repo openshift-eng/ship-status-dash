@@ -16,13 +16,13 @@ func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {
 
 // Component represents a top-level system component with sub-components and ownership information.
 type Component struct {
-	Name          string         `json:"name" yaml:"name"`
-	Slug          string         `json:"slug"`
-	Description   string         `json:"description" yaml:"description"`
-	ShipTeam      string         `json:"ship_team" yaml:"ship_team"`
-	SlackChannel  string         `json:"slack_channel" yaml:"slack_channel"`
-	Subcomponents []SubComponent `json:"sub_components" yaml:"sub_components"`
-	Owners        []Owner        `json:"owners" yaml:"owners"`
+	Name           string                 `json:"name" yaml:"name"`
+	Slug           string                 `json:"slug"`
+	Description    string                 `json:"description" yaml:"description"`
+	ShipTeam       string                 `json:"ship_team" yaml:"ship_team"`
+	SlackReporting []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
+	Subcomponents  []SubComponent         `json:"sub_components" yaml:"sub_components"`
+	Owners         []Owner                `json:"owners" yaml:"owners"`
 }
 
 func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
@@ -36,11 +36,12 @@ func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
 
 // SubComponent represents a sub-component that can have outages tracked against it.
 type SubComponent struct {
-	Name                 string      `json:"name" yaml:"name"`
-	Slug                 string      `json:"slug"`
-	Description          string      `json:"description" yaml:"description"`
-	Monitoring           *Monitoring `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
-	RequiresConfirmation bool        `json:"requires_confirmation" yaml:"requires_confirmation"`
+	Name                 string                 `json:"name" yaml:"name"`
+	Slug                 string                 `json:"slug"`
+	Description          string                 `json:"description" yaml:"description"`
+	Monitoring           *Monitoring            `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
+	RequiresConfirmation bool                   `json:"requires_confirmation" yaml:"requires_confirmation"`
+	SlackReporting       []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
 }
 
 // Monitoring defines how this sub-component is automatically monitored.
@@ -132,4 +133,23 @@ type HTTPMonitor struct {
 	// Severity is the severity of the outage that will be created if the HTTP request fails.
 	// If not provided, the severity will default to Down.
 	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
+}
+
+// SlackReportingConfig defines Slack reporting configuration for a channel with optional severity threshold.
+type SlackReportingConfig struct {
+	Channel  string    `json:"channel" yaml:"channel"`
+	Severity *Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
+}
+
+// GetSlackReporting returns the Slack reporting configuration for a sub-component.
+// If the sub-component has its own SlackReporting config, it is returned.
+// Otherwise, the component's SlackReporting config is returned.
+func GetSlackReporting(component *Component, subComponent *SubComponent) []SlackReportingConfig {
+	if subComponent != nil && len(subComponent.SlackReporting) > 0 {
+		return subComponent.SlackReporting
+	}
+	if component != nil && len(component.SlackReporting) > 0 {
+		return component.SlackReporting
+	}
+	return nil
 }

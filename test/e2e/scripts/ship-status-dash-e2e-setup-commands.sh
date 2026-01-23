@@ -276,6 +276,8 @@ spec:
       - "--hmac-secret-file=/etc/hmac/secret"
       - "--absent-report-check-interval=15s"
       - "--config-update-poll-interval=10s"
+      - "--slack-base-url=http://localhost:3000"
+      - "--slack-workspace-url=https://rhsandbox.slack.com/"
     volumeMounts:
     - mountPath: /etc/config
       name: dashboard-config

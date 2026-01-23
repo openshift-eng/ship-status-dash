@@ -13,14 +13,17 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
@@ -36,6 +39,8 @@ type Options struct {
 	KubeconfigPath            string
 	AbsentReportCheckInterval time.Duration
 	ConfigUpdatePollInterval  time.Duration
+	SlackBaseURL              string
+	SlackWorkspaceURL         string
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -50,6 +55,8 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.KubeconfigPath, "kubeconfig", "", "Path to kubeconfig file (empty string uses in-cluster config)")
 	flag.DurationVar(&opts.AbsentReportCheckInterval, "absent-report-check-interval", 5*time.Minute, "Interval for checking absent monitored component reports")
 	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
+	flag.StringVar(&opts.SlackBaseURL, "slack-base-url", "", "Base URL for building outage links in Slack messages. Required if slack reporting is enabled.")
+	flag.StringVar(&opts.SlackWorkspaceURL, "slack-workspace-url", "https://rhsandbox.slack.com/", "Slack workspace URL for constructing thread links. Required if slack reporting is enabled.")
 	flag.Parse()
 
 	return opts
@@ -57,32 +64,40 @@ func NewOptions() *Options {
 
 // Validate checks that all required options are provided and valid.
 func (o *Options) Validate() error {
-	if o.ConfigPath == "" {
-		return errors.New("config path is required (use --config flag)")
-	}
+	var errs []error
 
-	if _, err := os.Stat(o.ConfigPath); os.IsNotExist(err) {
-		return errors.New("config file does not exist: " + o.ConfigPath)
+	if o.ConfigPath == "" {
+		errs = append(errs, errors.New("config path is required (use --config flag)"))
+	} else if _, err := os.Stat(o.ConfigPath); os.IsNotExist(err) {
+		errs = append(errs, errors.New("config file does not exist: "+o.ConfigPath))
 	}
 
 	if o.Port == "" {
-		return errors.New("port cannot be empty")
+		errs = append(errs, errors.New("port cannot be empty"))
 	}
 
 	if o.DatabaseDSN == "" {
-		return errors.New("database DSN is required (use --dsn flag)")
+		errs = append(errs, errors.New("database DSN is required (use --dsn flag)"))
 	}
 
 	if os.Getenv("SKIP_AUTH") != "1" {
 		if o.HMACSecretFile == "" {
-			return errors.New("hmac secret file is required (use --hmac-secret-file flag)")
-		}
-		if _, err := os.Stat(o.HMACSecretFile); os.IsNotExist(err) {
-			return errors.New("hmac secret file does not exist: " + o.HMACSecretFile)
+			errs = append(errs, errors.New("hmac secret file is required (use --hmac-secret-file flag)"))
+		} else if _, err := os.Stat(o.HMACSecretFile); os.IsNotExist(err) {
+			errs = append(errs, errors.New("hmac secret file does not exist: "+o.HMACSecretFile))
 		}
 	}
 
-	return nil
+	if os.Getenv("SLACK_BOT_TOKEN") != "" {
+		if o.SlackBaseURL == "" {
+			errs = append(errs, errors.New("slack-base-url is required when SLACK_BOT_TOKEN is set (use --slack-base-url flag)"))
+		}
+		if o.SlackWorkspaceURL == "" {
+			errs = append(errs, errors.New("slack-workspace-url is required when SLACK_BOT_TOKEN is set (use --slack-workspace-url flag)"))
+		}
+	}
+
+	return apimachineryerrors.NewAggregate(errs)
 }
 
 func setupLogger() *logrus.Logger {
@@ -218,9 +233,30 @@ func main() {
 
 	outageRepo := repositories.NewGORMOutageRepository(db)
 	pingRepo := repositories.NewGORMComponentPingRepository(db)
-	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageRepo, pingRepo)
+	slackThreadRepo := repositories.NewGORMSlackThreadRepository(db)
 
-	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageRepo, pingRepo, opts.AbsentReportCheckInterval, log)
+	var slackClient *slack.Client
+	slackToken := os.Getenv("SLACK_BOT_TOKEN")
+	if slackToken != "" {
+		slackClient = slack.New(slackToken)
+		log.Info("Slack integration enabled")
+	} else {
+		log.Info("Slack integration disabled (SLACK_BOT_TOKEN not set)")
+	}
+
+	outageManager := outage.NewOutageManager(
+		outageRepo,
+		slackThreadRepo,
+		slackClient,
+		configManager,
+		opts.SlackBaseURL,
+		opts.SlackWorkspaceURL,
+		log,
+	)
+
+	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageManager, pingRepo)
+
+	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)
 
 	addr := ":" + opts.Port

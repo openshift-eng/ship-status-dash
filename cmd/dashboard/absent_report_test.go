@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 
@@ -316,7 +317,9 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			tt.setupOutageRepo(outageRepo)
 
 			configManager := config.CreateTestConfigManager(tt.config)
-			checker := NewAbsentMonitoredComponentReportChecker(configManager, outageRepo, pingRepo, 5*time.Minute, logger)
+			slackThreadRepo := &repositories.MockSlackThreadRepository{}
+			outageManager := outage.NewOutageManager(outageRepo, slackThreadRepo, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
+			checker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, 5*time.Minute, logger)
 			checker.checkForAbsentReports()
 
 			tt.verifyCreatedOutages(t, outageRepo.CreatedOutages)

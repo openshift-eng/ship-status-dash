@@ -83,7 +83,9 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
-		assert.Equal(t, "#test-channel", components[0].SlackChannel)
+		assert.Len(t, components[0].SlackReporting, 1)
+		assert.Equal(t, "#test-channel", components[0].SlackReporting[0].Channel)
+		assert.Equal(t, types.SeverityDown, *components[0].SlackReporting[0].Severity)
 		assert.Len(t, components[0].Subcomponents, 4)
 		assert.Equal(t, "Tide", components[0].Subcomponents[0].Name)
 		assert.Equal(t, "Deck", components[0].Subcomponents[1].Name)
@@ -93,14 +95,18 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "Downstream CI", components[1].Name)
 		assert.Equal(t, "Downstream CI system", components[1].Description)
 		assert.Equal(t, "TestPlatform", components[1].ShipTeam)
-		assert.Equal(t, "#test-channel", components[1].SlackChannel)
+		assert.Len(t, components[1].SlackReporting, 1)
+		assert.Equal(t, "#test-channel", components[1].SlackReporting[0].Channel)
+		assert.Equal(t, types.SeverityDown, *components[1].SlackReporting[0].Severity)
 		assert.Len(t, components[1].Subcomponents, 1)
 		assert.Equal(t, "Retester", components[1].Subcomponents[0].Name)
 
 		assert.Equal(t, "Build Farm", components[2].Name)
 		assert.Equal(t, "Where the CI jobs are run", components[2].Description)
 		assert.Equal(t, "DPTP", components[2].ShipTeam)
-		assert.Equal(t, "#ops-testplatform", components[2].SlackChannel)
+		assert.Len(t, components[2].SlackReporting, 1)
+		assert.Equal(t, "#ops-testplatform", components[2].SlackReporting[0].Channel)
+		assert.Equal(t, types.SeverityDown, *components[2].SlackReporting[0].Severity)
 		assert.Len(t, components[2].Subcomponents, 2)
 		assert.Equal(t, "Build01", components[2].Subcomponents[0].Name)
 		assert.Equal(t, "Build02", components[2].Subcomponents[1].Name)
@@ -108,7 +114,9 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "Sippy", components[3].Name)
 		assert.Equal(t, "CI private investigator", components[3].Description)
 		assert.Equal(t, "TRT", components[3].ShipTeam)
-		assert.Equal(t, "#trt-alert", components[3].SlackChannel)
+		assert.Len(t, components[3].SlackReporting, 1)
+		assert.Equal(t, "#trt-alert", components[3].SlackReporting[0].Channel)
+		assert.Equal(t, types.SeverityDown, *components[3].SlackReporting[0].Severity)
 		assert.Len(t, components[3].Subcomponents, 4)
 		assert.Equal(t, "Sippy", components[3].Subcomponents[0].Name)
 		assert.Equal(t, "api", components[3].Subcomponents[1].Name)
@@ -124,7 +132,9 @@ func testComponentInfo(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "Prow", component.Name)
 			assert.Equal(t, "Backbone of the CI system", component.Description)
 			assert.Equal(t, "TestPlatform", component.ShipTeam)
-			assert.Equal(t, "#test-channel", component.SlackChannel)
+			assert.Len(t, component.SlackReporting, 1)
+			assert.Equal(t, "#test-channel", component.SlackReporting[0].Channel)
+			assert.Equal(t, types.SeverityDown, *component.SlackReporting[0].Severity)
 			assert.Len(t, component.Subcomponents, 4)
 			assert.Equal(t, "Tide", component.Subcomponents[0].Name)
 			assert.Equal(t, "Deck", component.Subcomponents[1].Name)
@@ -1879,7 +1889,9 @@ func testConfigHotReload(client *TestHTTPClient) func(*testing.T) {
 					Name:         "Test Component",
 					Description:  "A test component for hot-reload",
 					ShipTeam:     "TestTeam",
-					SlackChannel: "#test-channel",
+					SlackReporting: []types.SlackReportingConfig{
+						{Channel: "#test-channel", Severity: &[]types.Severity{types.SeverityDown}[0]},
+					},
 					Subcomponents: []types.SubComponent{
 						{
 							Name:        "TestSub",

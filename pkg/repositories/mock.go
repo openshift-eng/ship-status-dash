@@ -31,6 +31,7 @@ type MockOutageRepository struct {
 	OutagesForComponent       []types.Outage
 	OutagesForSubComponent    []types.Outage
 	OutageByID                *types.Outage
+	OutageByIDFn              func(string, string, uint) (*types.Outage, error)
 	OutageByIDError           error
 	ActiveOutagesForSubComp   []types.Outage
 	ActiveOutagesForComponent []types.Outage
@@ -114,6 +115,9 @@ func (m *MockOutageRepository) GetOutageByID(componentSlug, subComponentSlug str
 	if m.OutageByIDError != nil {
 		return nil, m.OutageByIDError
 	}
+	if m.OutageByIDFn != nil {
+		return m.OutageByIDFn(componentSlug, subComponentSlug, outageID)
+	}
 	if m.OutageByID == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -171,6 +175,55 @@ func (m *MockComponentPingRepository) GetMostRecentPingTimeForAnySubComponent(co
 		}
 	}
 	return mostRecent, nil
+}
+
+// MockSlackThreadRepository is a mock implementation of SlackThreadRepository for testing.
+type MockSlackThreadRepository struct {
+	CreateThreadError      error
+	GetThreadsError        error
+	GetThreadError         error
+	UpdateThreadError      error
+	CreateThreadFn         func(*types.SlackThread)
+	UpdateThreadFn         func(*types.SlackThread)
+	ThreadsForOutage       []types.SlackThread
+	ThreadForOutageChannel *types.SlackThread
+	CreatedThreads         []*types.SlackThread
+	UpdatedThreads         []*types.SlackThread
+}
+
+func (m *MockSlackThreadRepository) CreateThread(thread *types.SlackThread) error {
+	threadCopy := *thread
+	m.CreatedThreads = append(m.CreatedThreads, &threadCopy)
+	if m.CreateThreadFn != nil {
+		m.CreateThreadFn(thread)
+	}
+	return m.CreateThreadError
+}
+
+func (m *MockSlackThreadRepository) GetThreadsForOutage(outageID uint) ([]types.SlackThread, error) {
+	if m.GetThreadsError != nil {
+		return nil, m.GetThreadsError
+	}
+	return m.ThreadsForOutage, nil
+}
+
+func (m *MockSlackThreadRepository) GetThreadForOutageAndChannel(outageID uint, channel string) (*types.SlackThread, error) {
+	if m.GetThreadError != nil {
+		return nil, m.GetThreadError
+	}
+	if m.ThreadForOutageChannel == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return m.ThreadForOutageChannel, nil
+}
+
+func (m *MockSlackThreadRepository) UpdateThread(thread *types.SlackThread) error {
+	threadCopy := *thread
+	m.UpdatedThreads = append(m.UpdatedThreads, &threadCopy)
+	if m.UpdateThreadFn != nil {
+		m.UpdateThreadFn(thread)
+	}
+	return m.UpdateThreadError
 }
 
 // TestConfig creates a test DashboardConfig for testing.

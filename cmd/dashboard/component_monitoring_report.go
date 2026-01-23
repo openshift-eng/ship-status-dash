@@ -9,6 +9,7 @@ import (
 	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
@@ -19,16 +20,16 @@ const (
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
-	outageRepo    repositories.OutageRepository
+	outageManager *outage.OutageManager
 	pingRepo      repositories.ComponentPingRepository
 	configManager *config.Manager[types.DashboardConfig]
 	logger        *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
-		outageRepo:    outageRepo,
+		outageManager: outageManager,
 		pingRepo:      pingRepo,
 		configManager: configManager,
 		logger:        logger,
@@ -111,7 +112,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 		}
 
 		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
-		activeOutages, err := p.outageRepo.GetActiveOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
+		activeOutages, err := p.outageManager.GetActiveOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
 		if err != nil {
 			statusLogger.WithField("error", err).Error("Failed to query active outages")
 			return err
@@ -130,7 +131,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			for i := range activeOutages {
 				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
 				activeOutages[i].ResolvedBy = &req.ComponentMonitor
-				if err := p.outageRepo.SaveOutage(&activeOutages[i]); err != nil {
+				if err := p.outageManager.UpdateOutage(&activeOutages[i]); err != nil {
 					statusLogger.WithFields(logrus.Fields{
 						"outage_id": activeOutages[i].ID,
 						"error":     err,
@@ -156,7 +157,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
-			err = p.outageRepo.Transaction(func(repo repositories.OutageRepository) error {
+			err = p.outageManager.Transaction(func(mgr *outage.OutageManager) error {
 				description := "Component monitor detected outage"
 
 				outage := types.Outage{
@@ -179,7 +180,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					return fmt.Errorf("validation failed: %s", message)
 				}
 
-				if err := repo.CreateOutage(&outage); err != nil {
+				if err := mgr.CreateOutage(&outage); err != nil {
 					return err
 				}
 
@@ -190,7 +191,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 						Check:    reasonData.Check,
 						Results:  reasonData.Results,
 					}
-					if err := repo.CreateReason(&reason); err != nil {
+					if err := mgr.CreateReason(&reason); err != nil {
 						return err
 					}
 				}

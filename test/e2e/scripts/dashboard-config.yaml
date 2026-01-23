@@ -2,7 +2,9 @@ components:
   - name: Prow
     description: Backbone of the CI system
     ship_team: TestPlatform
-    slack_channel: "#test-channel"
+    slack_reporting:
+      - channel: "#test-channel"
+        severity: "Down"
     sub_components:
       - name: Tide
         description: Merges PRs
@@ -30,7 +32,9 @@ components:
   - name: Downstream CI
     description: Downstream CI system
     ship_team: TestPlatform
-    slack_channel: "#test-channel"
+    slack_reporting:
+      - channel: "#test-channel"
+        severity: "Down"
     sub_components:
       - name: Retester
         description: Retests failed jobs
@@ -45,7 +49,9 @@ components:
   - name: Build Farm
     description: Where the CI jobs are run
     ship_team: DPTP
-    slack_channel: "#ops-testplatform"
+    slack_reporting:
+      - channel: "#ops-testplatform"
+        severity: "Down"
     sub_components:
       - name: Build01
         description: AWS build farm cluster
@@ -57,7 +63,9 @@ components:
   - name: Sippy
     description: CI private investigator
     ship_team: TRT
-    slack_channel: "#trt-alert"
+    slack_reporting:
+      - channel: "#trt-alert"
+        severity: "Down"
     sub_components:
       - name: Sippy
         description: CI private investigator
