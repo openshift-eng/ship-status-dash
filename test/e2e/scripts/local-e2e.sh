@@ -180,7 +180,7 @@ export TEST_DASHBOARD_CONFIG_PATH="$DASHBOARD_CONFIG"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s --config-update-poll-interval 10s 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
@@ -305,7 +305,7 @@ COMPONENT_MONITOR_TOKEN=$(mktemp)
 echo "component-monitor-sa-token" > "$COMPONENT_MONITOR_TOKEN"
 
 # Start component-monitor in background
-go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "$TEST_MOCK_OAUTH_PROXY_URL" --name "e2e-component-monitor" --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" 2> "$COMPONENT_MONITOR_LOG" &
+go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "$TEST_MOCK_OAUTH_PROXY_URL" --name "e2e-component-monitor" --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" --config-update-poll-interval 10s 2> "$COMPONENT_MONITOR_LOG" &
 COMPONENT_MONITOR_PID=$!
 
 echo "Running e2e tests..."

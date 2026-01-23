@@ -9,6 +9,6 @@ func CreateTestConfigManager[T any](cfg *T) *Manager[T] {
 	}
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
-	manager, _ := NewManager("", loadFunc, logger, 0)
+	manager, _ := NewManager("", loadFunc, logger, DefaultPollInterval)
 	return manager
 }

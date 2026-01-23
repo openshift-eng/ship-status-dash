@@ -35,6 +35,7 @@ type Options struct {
 	CORSOrigin                string
 	KubeconfigPath            string
 	AbsentReportCheckInterval time.Duration
+	ConfigUpdatePollInterval  time.Duration
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -48,6 +49,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.CORSOrigin, "cors-origin", "*", "CORS allowed origin")
 	flag.StringVar(&opts.KubeconfigPath, "kubeconfig", "", "Path to kubeconfig file (empty string uses in-cluster config)")
 	flag.DurationVar(&opts.AbsentReportCheckInterval, "absent-report-check-interval", 5*time.Minute, "Interval for checking absent monitored component reports")
+	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
 	flag.Parse()
 
 	return opts
@@ -188,11 +190,10 @@ func main() {
 		return loadAndValidateConfig(log, path)
 	}
 
-	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, config.DefaultDebounceDelay)
+	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, opts.ConfigUpdatePollInterval)
 	if err != nil {
 		log.WithField("error", err).Fatal("Failed to create config manager")
 	}
-	defer configManager.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

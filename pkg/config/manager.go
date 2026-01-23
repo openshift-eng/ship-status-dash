@@ -5,19 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/sirupsen/logrus"
 )
 
 // ConfigReloadedMessage is the log message emitted when a config is successfully reloaded.
 const ConfigReloadedMessage = "Config reloaded successfully"
 
-// DefaultDebounceDelay is the default debounce delay used to prevent multiple reloads when a config is updated.
-const DefaultDebounceDelay = 2 * time.Second
+// DefaultPollInterval is the default interval at which the config file is checked for changes.
+const DefaultPollInterval = 5 * time.Minute
 
 // Manager provides thread-safe configuration management with hot-reload support.
 type Manager[T any] struct {
@@ -26,31 +24,22 @@ type Manager[T any] struct {
 	configPath      string
 	loadFunc        func(string) (*T, error)
 	logger          *logrus.Logger
-	watcher         *fsnotify.Watcher
 	updateCallbacks []func(*T)
-	debounceTimer   *time.Timer
-	debounceDelay   time.Duration
 	lastHash        string
+	pollInterval    time.Duration
 }
 
-// NewManager creates a new config manager with the specified load function.
-func NewManager[T any](configPath string, loadFunc func(string) (*T, error), logger *logrus.Logger, debounceDelay time.Duration) (*Manager[T], error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
+// NewManager creates a new config manager with the specified load function and poll interval.
+func NewManager[T any](configPath string, loadFunc func(string) (*T, error), logger *logrus.Logger, pollInterval time.Duration) (*Manager[T], error) {
 	manager := &Manager[T]{
 		configPath:      configPath,
 		loadFunc:        loadFunc,
 		logger:          logger,
-		watcher:         watcher,
 		updateCallbacks: make([]func(*T), 0),
-		debounceDelay:   debounceDelay,
+		pollInterval:    pollInterval,
 	}
 
 	if err := manager.load(); err != nil {
-		watcher.Close()
 		return nil, err
 	}
 
@@ -85,8 +74,8 @@ func (m *Manager[T]) load() error {
 	return nil
 }
 
-// reload attempts to reload the configuration and update callbacks if successful.
-func (m *Manager[T]) reload() {
+// reloadIfChanged attempts to reload the configuration if it has changed and update callbacks if successful.
+func (m *Manager[T]) reloadIfChanged() {
 	m.mu.Lock()
 	// Read the file content to compute hash
 	configBytes, err := os.ReadFile(m.configPath)
@@ -143,79 +132,21 @@ func (m *Manager[T]) OnUpdate(callback func(*T)) {
 	m.updateCallbacks = append(m.updateCallbacks, callback)
 }
 
-// Watch starts watching the configuration file for changes and reloads when changes are detected.
-// It watches the directory containing the config file to handle Kubernetes ConfigMap volume updates
-// which use symlink updates that can cause the watched inode to disappear.
+// Watch starts polling the configuration file for changes and reloads when content changes are detected.
 func (m *Manager[T]) Watch(ctx context.Context) error {
-	configDir := filepath.Dir(m.configPath)
-	if err := m.watcher.Add(configDir); err != nil {
-		return err
-	}
-
-	// Normalize the config path for comparison
-	normalizedConfigPath := filepath.Clean(m.configPath)
-
 	go func() {
+		ticker := time.NewTicker(m.pollInterval)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case event, ok := <-m.watcher.Events:
-				if !ok {
-					return
-				}
-
-				eventPath := filepath.Clean(event.Name)
-				shouldReload := false
-
-				// Kubernetes ConfigMap updates can emit Rename/Remove events on the directory
-				// or symlinks (like ..data), which may not match the file path exactly.
-				// These directory-level changes can affect the file, so we should reload.
-				if event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
-					// Directory-level changes may affect the file
-					shouldReload = true
-				} else if eventPath == normalizedConfigPath {
-					// File-level changes (Write, Create, etc.)
-					if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-						shouldReload = true
-					}
-				}
-
-				if shouldReload {
-					m.logger.WithFields(logrus.Fields{
-						"config_path": m.configPath,
-						"event":       event,
-						"event_path":  eventPath,
-					}).Info("Config file changed, scheduling reload")
-
-					m.mu.Lock()
-					if m.debounceTimer != nil {
-						m.debounceTimer.Stop()
-					}
-					m.debounceTimer = time.AfterFunc(m.debounceDelay, m.reload)
-					m.mu.Unlock()
-				}
-			case err, ok := <-m.watcher.Errors:
-				if !ok {
-					return
-				}
-				m.logger.WithFields(logrus.Fields{
-					"config_path": m.configPath,
-					"error":       err,
-				}).Error("Error watching config file")
+			case <-ticker.C:
+				m.reloadIfChanged()
 			}
 		}
 	}()
 
 	return nil
-}
-
-// Close closes the file watcher and cleans up resources.
-func (m *Manager[T]) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.debounceTimer != nil {
-		m.debounceTimer.Stop()
-	}
-	return m.watcher.Close()
 }

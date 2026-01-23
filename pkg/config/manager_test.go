@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -52,7 +51,7 @@ func createTestManager(t *testing.T, configPath string) *Manager[testConfig] {
 	}
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
-	// Use a shorter debounce delay for tests to make them run faster
+	// Use a shorter poll interval for tests to make them run faster
 	manager, err := NewManager(configPath, loadFunc, logger, 100*time.Millisecond)
 	require.NoError(t, err)
 	return manager
@@ -101,7 +100,7 @@ func TestNewManager(t *testing.T) {
 			logger := logrus.New()
 			logger.SetLevel(logrus.ErrorLevel)
 
-			manager, err := NewManager(configPath, tt.loadFunc, logger, 100*time.Millisecond)
+			manager, err := NewManager(configPath, tt.loadFunc, logger, DefaultPollInterval)
 
 			if tt.wantErr {
 				wantErr := os.ErrNotExist
@@ -179,85 +178,43 @@ func TestManager_OnUpdate(t *testing.T) {
 	}
 }
 
-func TestManager_Watch_FileEvents(t *testing.T) {
+func TestManager_Watch(t *testing.T) {
 	tests := []struct {
-		name            string
-		initialContent  string
-		setupFile       func(*testing.T, string)
-		waitAfterSetup  time.Duration
-		wantCallback    bool
-		wantConfig      *testConfig
-		wantConfigValue string
+		name           string
+		initialContent string
+		setupFile      func(*testing.T, string)
+		wantCallback   bool
+		wantConfig     *testConfig
 	}{
 		{
-			name:           "Write event triggers reload",
+			name:           "file update triggers reload on next poll",
 			initialContent: "value: initial",
 			setupFile: func(t *testing.T, path string) {
 				writeConfigFile(t, path, "value: updated")
 			},
-			waitAfterSetup: 200 * time.Millisecond,
-			wantCallback:   true,
-			wantConfig:     &testConfig{Value: "updated"},
+			wantCallback: true,
+			wantConfig:   &testConfig{Value: "updated"},
 		},
 		{
-			name:           "Create event triggers reload",
+			name:           "file recreation triggers reload on next poll",
 			initialContent: "value: initial",
 			setupFile: func(t *testing.T, path string) {
 				os.Remove(path)
 				time.Sleep(50 * time.Millisecond)
 				writeConfigFile(t, path, "value: recreated")
 			},
-			waitAfterSetup: 200 * time.Millisecond,
-			wantCallback:   true,
+			wantCallback: true,
+			wantConfig:   &testConfig{Value: "recreated"},
 		},
 		{
-			name:           "Rename event triggers reload",
-			initialContent: "value: initial",
-			setupFile: func(t *testing.T, path string) {
-				tmpPath := path + ".tmp"
-				writeConfigFile(t, tmpPath, "value: renamed")
-				err := os.Rename(tmpPath, path)
-				require.NoError(t, err)
-			},
-			waitAfterSetup: 200 * time.Millisecond,
-			wantCallback:   true,
-		},
-		{
-			name:           "Remove event triggers reload attempt",
+			name:           "file removal keeps existing config",
 			initialContent: "value: initial",
 			setupFile: func(t *testing.T, path string) {
 				err := os.Remove(path)
 				require.NoError(t, err)
 			},
-			waitAfterSetup:  600 * time.Millisecond,
-			wantCallback:    false,
-			wantConfigValue: "initial",
-		},
-		{
-			name:           "file path filtering works correctly",
-			initialContent: "value: initial",
-			setupFile: func(t *testing.T, configPath string) {
-				tmpDir := filepath.Dir(configPath)
-				otherPath := filepath.Join(tmpDir, "other.yaml")
-				writeConfigFile(t, otherPath, "value: other-updated")
-			},
-			waitAfterSetup:  600 * time.Millisecond,
-			wantCallback:    false,
-			wantConfigValue: "initial",
-		},
-		{
-			name:           "directory events trigger reload even when path doesn't match",
-			initialContent: "value: initial",
-			setupFile: func(t *testing.T, configPath string) {
-				tmpDir := filepath.Dir(configPath)
-				otherFile := filepath.Join(tmpDir, "other.yaml")
-				writeConfigFile(t, otherFile, "value: other")
-				err := os.Rename(otherFile, filepath.Join(tmpDir, "renamed.yaml"))
-				require.NoError(t, err)
-			},
-			waitAfterSetup:  600 * time.Millisecond,
-			wantCallback:    false,
-			wantConfigValue: "initial",
+			wantCallback: false,
+			wantConfig:   &testConfig{Value: "initial"},
 		},
 	}
 
@@ -280,28 +237,26 @@ func TestManager_Watch_FileEvents(t *testing.T) {
 			err := manager.Watch(ctx)
 			require.NoError(t, err)
 
-			time.Sleep(50 * time.Millisecond)
+			// Wait for initial poll to complete
+			time.Sleep(100 * time.Millisecond)
 
 			tt.setupFile(t, configPath)
 
-			time.Sleep(tt.waitAfterSetup)
+			// Wait for next poll interval (100ms for tests)
+			time.Sleep(150 * time.Millisecond)
 
 			if diff := cmp.Diff(tt.wantCallback, callbackCalled); diff != "" {
 				t.Errorf("Callback call expectation mismatch (-want +got):\n%s", diff)
 			}
 
 			if tt.wantConfig != nil {
-				if diff := cmp.Diff(tt.wantConfig, callbackConfig); diff != "" {
-					t.Errorf("Callback config mismatch (-want +got):\n%s", diff)
+				if tt.wantCallback {
+					if diff := cmp.Diff(tt.wantConfig, callbackConfig); diff != "" {
+						t.Errorf("Callback config mismatch (-want +got):\n%s", diff)
+					}
 				}
 				if diff := cmp.Diff(tt.wantConfig, manager.Get()); diff != "" {
 					t.Errorf("Manager config mismatch (-want +got):\n%s", diff)
-				}
-			}
-
-			if tt.wantConfigValue != "" {
-				if diff := cmp.Diff(tt.wantConfigValue, manager.Get().Value); diff != "" {
-					t.Errorf("Config value mismatch (-want +got):\n%s", diff)
 				}
 			}
 		})
@@ -348,11 +303,17 @@ func TestManager_HashValidation(t *testing.T) {
 			err := manager.Watch(ctx)
 			require.NoError(t, err)
 
-			time.Sleep(50 * time.Millisecond)
+			// Wait for first poll to complete
+			time.Sleep(150 * time.Millisecond)
+
+			// Cancel context to stop polling before file changes
+			cancel()
+			time.Sleep(50 * time.Millisecond) // Give goroutine time to stop
 
 			writeConfigFile(t, configPath, tt.updateContent)
 
-			time.Sleep(200 * time.Millisecond)
+			// Manually trigger reload to test hash comparison
+			manager.reloadIfChanged()
 
 			if diff := cmp.Diff(tt.wantCallback, callbackCalled); diff != "" {
 				t.Errorf("Callback expectation mismatch (-want +got):\n%s", diff)
@@ -362,76 +323,6 @@ func TestManager_HashValidation(t *testing.T) {
 				if diff := cmp.Diff(tt.wantConfig, manager.Get()); diff != "" {
 					t.Errorf("Config mismatch (-want +got):\n%s", diff)
 				}
-			}
-		})
-	}
-}
-
-func TestManager_Debouncing(t *testing.T) {
-	tests := []struct {
-		name            string
-		initialContent  string
-		setupFile       func(*testing.T, string)
-		waitAfterSetup  time.Duration
-		wantReloadCount int
-	}{
-		{
-			name:           "multiple rapid events only trigger one reload",
-			initialContent: "value: initial",
-			setupFile: func(t *testing.T, path string) {
-				for i := 0; i < 5; i++ {
-					writeConfigFile(t, path, "value: updated")
-					time.Sleep(10 * time.Millisecond)
-				}
-			},
-			waitAfterSetup:  600 * time.Millisecond,
-			wantReloadCount: 1,
-		},
-		{
-			name:           "debounce timer is reset on new events",
-			initialContent: "value: initial",
-			setupFile: func(t *testing.T, path string) {
-				writeConfigFile(t, path, "value: update1")
-				time.Sleep(50 * time.Millisecond)
-				writeConfigFile(t, path, "value: update2")
-			},
-			waitAfterSetup:  200 * time.Millisecond,
-			wantReloadCount: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			configPath := createTestConfigFile(t, tmpDir, tt.initialContent)
-			manager := createTestManager(t, configPath)
-
-			reloadCount := 0
-			var mu sync.Mutex
-			manager.OnUpdate(func(cfg *testConfig) {
-				mu.Lock()
-				reloadCount++
-				mu.Unlock()
-			})
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			err := manager.Watch(ctx)
-			require.NoError(t, err)
-
-			time.Sleep(50 * time.Millisecond)
-
-			tt.setupFile(t, configPath)
-
-			time.Sleep(tt.waitAfterSetup)
-
-			mu.Lock()
-			count := reloadCount
-			mu.Unlock()
-
-			if diff := cmp.Diff(tt.wantReloadCount, count); diff != "" {
-				t.Errorf("Reload count mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -451,7 +342,7 @@ func TestManager_ErrorHandling(t *testing.T) {
 				manager.loadFunc = func(path string) (*testConfig, error) {
 					return nil, os.ErrNotExist
 				}
-				manager.reload()
+				manager.reloadIfChanged()
 			},
 			wantConfig: &testConfig{Value: "initial"},
 		},
@@ -461,7 +352,7 @@ func TestManager_ErrorHandling(t *testing.T) {
 			setupManager: func(t *testing.T, manager *Manager[testConfig], configPath string) {
 				err := os.Remove(configPath)
 				require.NoError(t, err)
-				manager.reload()
+				manager.reloadIfChanged()
 			},
 			wantConfig: &testConfig{Value: "initial"},
 		},
@@ -473,7 +364,7 @@ func TestManager_ErrorHandling(t *testing.T) {
 				manager.loadFunc = func(path string) (*testConfig, error) {
 					return nil, os.ErrInvalid
 				}
-				manager.reload()
+				manager.reloadIfChanged()
 			},
 			wantConfig: &testConfig{Value: "initial"},
 		},
@@ -490,7 +381,7 @@ func TestManager_ErrorHandling(t *testing.T) {
 			logger := logrus.New()
 			logger.SetLevel(logrus.ErrorLevel)
 
-			manager, err := NewManager(configPath, loadFunc, logger, 100*time.Millisecond)
+			manager, err := NewManager(configPath, loadFunc, logger, DefaultPollInterval)
 			require.NoError(t, err)
 
 			tt.setupManager(t, manager, configPath)
