@@ -27,9 +27,10 @@ type Options struct {
 	// KubeconfigDir is the path to a directory containing kubeconfig files for different clusters.
 	// Each file should be named after the cluster with a ".config" suffix (e.g., "app.ci.config" for the app.ci cluster).
 	// When this is set, prometheusLocation in the config must be a cluster name, not a URL.
-	KubeconfigDir       string
-	ReportAuthTokenFile string
-	DryRun              bool
+	KubeconfigDir            string
+	ReportAuthTokenFile      string
+	DryRun                   bool
+	ConfigUpdatePollInterval time.Duration
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -42,6 +43,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.KubeconfigDir, "kubeconfig-dir", "", "Path to directory containing kubeconfig files for different clusters (each file named after the cluster)")
 	flag.StringVar(&opts.ReportAuthTokenFile, "report-auth-token-file", "", "Path to file containing bearer token for authenticating report requests")
 	flag.BoolVar(&opts.DryRun, "dry-run", false, "Run probes once and output JSON report instead of sending to dashboard")
+	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
 	flag.Parse()
 
 	return opts
@@ -183,11 +185,10 @@ func main() {
 		return loadAndValidateConfig(log, path, opts.KubeconfigDir)
 	}
 
-	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, config.DefaultDebounceDelay)
+	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, opts.ConfigUpdatePollInterval)
 	if err != nil {
 		log.WithField("error", err).Fatal("Failed to create config manager")
 	}
-	defer configManager.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

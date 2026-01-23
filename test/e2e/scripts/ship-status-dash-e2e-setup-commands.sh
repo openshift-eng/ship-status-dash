@@ -275,6 +275,7 @@ spec:
       - "--dsn=${DSN}"
       - "--hmac-secret-file=/etc/hmac/secret"
       - "--absent-report-check-interval=15s"
+      - "--config-update-poll-interval=10s"
     volumeMounts:
     - mountPath: /etc/config
       name: dashboard-config
@@ -547,6 +548,7 @@ spec:
       - "--config-path=/etc/config/config.yaml"
       - "--dashboard-url=http://mock-oauth-proxy.${NAMESPACE}.svc.cluster.local:8443"
       - "--name=e2e-component-monitor"
+      - "--config-update-poll-interval=10s"
       - "--report-auth-token-file=/etc/token/token"
     volumeMounts:
     - mountPath: /etc/config
