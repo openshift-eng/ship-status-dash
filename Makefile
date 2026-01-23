@@ -22,8 +22,8 @@ build-dashboard:
 
 build-frontend: npm
 	@cd frontend && \
-	REACT_APP_PUBLIC_DOMAIN=https://ship-status.ci.openshift.org \
-	REACT_APP_PROTECTED_DOMAIN=https://protected.ship-status.ci.openshift.org \
+	VITE_PUBLIC_DOMAIN=https://ship-status.ci.openshift.org \
+	VITE_PROTECTED_DOMAIN=https://protected.ship-status.ci.openshift.org \
 	npm run build
 
 build-component-monitor:

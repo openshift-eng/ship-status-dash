@@ -1,17 +1,17 @@
 import { slugify } from './slugify'
 
 export const getPublicDomain = () => {
-  const envDomain = process.env.REACT_APP_PUBLIC_DOMAIN
+  const envDomain = import.meta.env.VITE_PUBLIC_DOMAIN
   if (!envDomain) {
-    throw new Error('REACT_APP_PUBLIC_DOMAIN environment variable is required')
+    throw new Error('VITE_PUBLIC_DOMAIN environment variable is required')
   }
   return envDomain
 }
 
 export const getProtectedDomain = () => {
-  const envDomain = process.env.REACT_APP_PROTECTED_DOMAIN
+  const envDomain = import.meta.env.VITE_PROTECTED_DOMAIN
   if (!envDomain) {
-    throw new Error('REACT_APP_PROTECTED_DOMAIN environment variable is required')
+    throw new Error('VITE_PROTECTED_DOMAIN environment variable is required')
   }
   return envDomain
 }
