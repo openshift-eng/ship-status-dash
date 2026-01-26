@@ -1,70 +1,52 @@
 import type { Theme } from '@mui/material/styles'
 
-// Hardcoded colors for capacityExhausted status
-const CAPACITY_EXHAUSTED_COLORS = {
-  light: { main: '#f57c00', light: '#ffb74d', dark: '#d68910' },
-  dark: { main: '#d68910', light: '#ffb74d', dark: '#b8620b' },
+const getStatusKey = (status: string): keyof Theme['palette']['status'] | null => {
+  switch (status) {
+    case 'Healthy':
+      return 'healthy'
+    case 'Degraded':
+      return 'degraded'
+    case 'Down':
+      return 'down'
+    case 'CapacityExhausted':
+      return 'capacityExhausted'
+    case 'Suspected':
+      return 'suspected'
+    case 'Partial':
+      return 'partial'
+    case 'Unknown':
+      return 'unknown'
+    default:
+      return null
+  }
 }
 
 export const getStatusBackgroundColor = (theme: Theme, status: string) => {
-  const isDark = theme.palette.mode === 'dark'
-
-  switch (status) {
-    case 'Healthy':
-      return theme.palette.success.light
-    case 'Degraded':
-      return theme.palette.warning.light
-    case 'Down':
-      return theme.palette.error.light
-    case 'CapacityExhausted':
-      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.light : CAPACITY_EXHAUSTED_COLORS.light.light
-    case 'Suspected':
-      return theme.palette.info.light
-    case 'Partial':
-      return isDark ? theme.palette.warning.dark : theme.palette.warning.light
-    case 'Unknown':
-      return isDark ? theme.palette.grey[700] : theme.palette.grey[300]
-    default:
-      return isDark ? theme.palette.grey[800] : theme.palette.grey[100]
+  const statusKey = getStatusKey(status)
+  if (statusKey) {
+    const statusColors = theme.palette.status[statusKey]
+    if ('background' in statusColors) {
+      return statusColors.background
+    }
+    return statusColors.light
   }
+  return theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]
 }
 
 export const getStatusChipColor = (theme: Theme, status: string) => {
-  const isDark = theme.palette.mode === 'dark'
-
-  switch (status) {
-    case 'Healthy':
-      return theme.palette.success.main
-    case 'Degraded':
-      return theme.palette.warning.main
-    case 'Down':
-      return theme.palette.error.main
-    case 'CapacityExhausted':
-      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.main : CAPACITY_EXHAUSTED_COLORS.light.main
-    case 'Suspected':
-      return theme.palette.info.main
-    case 'Partial':
-      return theme.palette.warning.main
-    case 'Unknown':
-      return isDark ? theme.palette.grey[400] : theme.palette.grey[600]
-    default:
-      return isDark ? theme.palette.grey[300] : theme.palette.grey[500]
+  const statusKey = getStatusKey(status)
+  if (statusKey) {
+    return theme.palette.status[statusKey].main
   }
+  return theme.palette.mode === 'dark' ? theme.palette.grey[300] : theme.palette.grey[500]
 }
 
 export const getSeverityColor = (theme: Theme, severity: string) => {
-  const isDark = theme.palette.mode === 'dark'
-
-  switch (severity) {
-    case 'Down':
-      return theme.palette.error.main
-    case 'Degraded':
-      return theme.palette.warning.main
-    case 'CapacityExhausted':
-      return isDark ? CAPACITY_EXHAUSTED_COLORS.dark.main : CAPACITY_EXHAUSTED_COLORS.light.main
-    default:
-      return theme.palette.info.main
+  const statusKey = getStatusKey(severity)
+  if (statusKey) {
+    return theme.palette.status[statusKey].main
   }
+  return theme.palette.info.main
 }
 
 // Helper function to format status or severity for display
