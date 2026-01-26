@@ -16,11 +16,15 @@ type TestHTTPClient struct {
 }
 
 func NewTestHTTPClient(publicURL string, protectedURL string) (*TestHTTPClient, error) {
+	return NewTestHTTPClientWithUsername(publicURL, protectedURL, "developer")
+}
+
+func NewTestHTTPClientWithUsername(publicURL string, protectedURL string, username string) (*TestHTTPClient, error) {
 	return &TestHTTPClient{
 		publicURL:    publicURL,
 		protectedURL: protectedURL,
 		client:       &http.Client{},
-		username:     "developer",
+		username:     username,
 		password:     "developer",
 	}, nil
 }

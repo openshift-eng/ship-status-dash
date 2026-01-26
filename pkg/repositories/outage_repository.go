@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -38,8 +39,26 @@ func NewGORMOutageRepository(db *gorm.DB) OutageRepository {
 	return &gormOutageRepository{db: db}
 }
 
+// roundOutageTimes rounds all time fields in an outage to the nearest second
+func roundOutageTimes(outage *types.Outage) {
+	outage.StartTime = outage.StartTime.Round(time.Second)
+	if outage.EndTime.Valid {
+		outage.EndTime = sql.NullTime{
+			Time:  outage.EndTime.Time.Round(time.Second),
+			Valid: true,
+		}
+	}
+	if outage.ConfirmedAt.Valid {
+		outage.ConfirmedAt = sql.NullTime{
+			Time:  outage.ConfirmedAt.Time.Round(time.Second),
+			Valid: true,
+		}
+	}
+}
+
 // CreateOutage creates a new outage record in the database.
 func (r *gormOutageRepository) CreateOutage(outage *types.Outage) error {
+	roundOutageTimes(outage)
 	return r.db.Create(outage).Error
 }
 
@@ -51,6 +70,7 @@ func (r *gormOutageRepository) CreateReason(reason *types.Reason) error {
 // SaveOutage updates an existing outage record in the database.
 // If the outage does not exist, it will be created.
 func (r *gormOutageRepository) SaveOutage(outage *types.Outage) error {
+	roundOutageTimes(outage)
 	return r.db.Save(outage).Error
 }
 

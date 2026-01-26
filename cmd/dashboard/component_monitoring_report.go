@@ -163,7 +163,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					ComponentName:    status.ComponentSlug,
 					SubComponentName: status.SubComponentSlug,
 					Severity:         severity,
-					StartTime:        time.Now(),
+					StartTime:        now,
 					EndTime:          sql.NullTime{Valid: false},
 					Description:      description,
 					DiscoveredFrom:   ComponentMonitor,
@@ -172,7 +172,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 
 				if !subComponent.RequiresConfirmation {
 					outage.ConfirmedBy = &req.ComponentMonitor
-					outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
+					outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
 				}
 
 				if message, valid := outage.Validate(); !valid {

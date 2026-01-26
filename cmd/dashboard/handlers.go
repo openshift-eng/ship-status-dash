@@ -331,8 +331,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		outage.StartTime = *updateReq.StartTime
 	}
 	if updateReq.EndTime != nil {
-		endTimeChanged := updateReq.EndTime.Valid != outage.EndTime.Valid ||
-			(updateReq.EndTime.Valid && outage.EndTime.Valid && !updateReq.EndTime.Time.Equal(outage.EndTime.Time))
+		endTimeChanged := updateReq.EndTime.Valid != outage.EndTime.Valid || !updateReq.EndTime.Time.Equal(outage.EndTime.Time)
 		if endTimeChanged {
 			outage.EndTime = *updateReq.EndTime
 			if updateReq.EndTime.Valid {
