@@ -35,9 +35,7 @@ const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boo
       boxShadow: theme.shadows[4],
       transform: 'translateY(-1px)',
       '& .MuiChip-root': {
-        backgroundColor: 'white',
-        color: color,
-        borderColor: color,
+        opacity: 0.9,
       },
     },
   }

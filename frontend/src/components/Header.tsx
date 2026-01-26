@@ -1,4 +1,4 @@
-import { Brightness4, Brightness7 } from '@mui/icons-material'
+import { Accessibility, Brightness4, Brightness7 } from '@mui/icons-material'
 import { AppBar, Box, IconButton, styled, Toolbar, Tooltip } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 
@@ -7,6 +7,8 @@ import Auth from './Auth'
 interface HeaderProps {
   onToggleTheme: () => void
   isDarkMode: boolean
+  onToggleAccessibility: () => void
+  isAccessibilityMode: boolean
 }
 
 const DarkModeToggle = styled(IconButton)(({ theme }) => ({
@@ -17,7 +19,20 @@ const DarkModeToggle = styled(IconButton)(({ theme }) => ({
   },
 }))
 
-const Header = ({ onToggleTheme, isDarkMode }: HeaderProps) => {
+const AccessibilityToggle = styled(IconButton)(({ theme }) => ({
+  color: theme.palette.text.primary,
+  backgroundColor: theme.palette.action.hover,
+  '&:hover': {
+    backgroundColor: theme.palette.action.selected,
+  },
+}))
+
+const Header = ({
+  onToggleTheme,
+  isDarkMode,
+  onToggleAccessibility,
+  isAccessibilityMode,
+}: HeaderProps) => {
   const navigate = useNavigate()
 
   const handleLogoClick = () => {
@@ -51,6 +66,16 @@ const Header = ({ onToggleTheme, isDarkMode }: HeaderProps) => {
         />
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip
+            title={isAccessibilityMode ? 'Disable accessibility mode' : 'Enable accessibility mode'}
+          >
+            <AccessibilityToggle
+              onClick={onToggleAccessibility}
+              aria-label="Toggle accessibility mode"
+            >
+              <Accessibility color={isAccessibilityMode ? 'primary' : 'inherit'} />
+            </AccessibilityToggle>
+          </Tooltip>
           <Tooltip title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
             <DarkModeToggle onClick={onToggleTheme}>
               {isDarkMode ? <Brightness7 /> : <Brightness4 />}

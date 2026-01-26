@@ -24,11 +24,7 @@ const getStatusKey = (status: string): keyof Theme['palette']['status'] | null =
 export const getStatusBackgroundColor = (theme: Theme, status: string) => {
   const statusKey = getStatusKey(status)
   if (statusKey) {
-    const statusColors = theme.palette.status[statusKey]
-    if ('background' in statusColors) {
-      return statusColors.background
-    }
-    return statusColors.light
+    return theme.palette.status[statusKey].background
   }
   return theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100]
 }
