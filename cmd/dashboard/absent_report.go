@@ -101,7 +101,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			now := time.Now()
+			now := time.Now().Truncate(time.Second) // Truncate to the nearest second to avoid sub-second precision issues
 			var componentInOutage bool
 			var reason string
 

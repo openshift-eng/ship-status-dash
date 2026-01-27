@@ -323,6 +323,9 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		createdOutage := createOutage(t, client, "Prow", "Tide")
 		defer deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
 
+		// Verify that StartTime is rounded to the nearest second (no sub-second precision)
+		assert.Equal(t, 0, createdOutage.StartTime.Nanosecond(), "StartTime should be rounded to the nearest second")
+
 		// Now update the outage
 		updatePayload := map[string]interface{}{
 			"severity":     string(types.SeverityDegraded),
@@ -413,6 +416,8 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.NotNil(t, confirmedOutage.ConfirmedBy, "confirmed_by should be set when confirmed is true")
 		assert.Equal(t, "developer", *confirmedOutage.ConfirmedBy, "confirmed_by should be set to the user from X-Forwarded-User header")
 		assert.True(t, confirmedOutage.ConfirmedAt.Valid, "confirmed_at should be set when confirmed is true")
+		// Verify that ConfirmedAt is rounded to the nearest second (no sub-second precision)
+		assert.Equal(t, 0, confirmedOutage.ConfirmedAt.Time.Nanosecond(), "ConfirmedAt should be rounded to the nearest second")
 
 		t.Run("PATCH to unauthorized component returns 403", func(t *testing.T) {
 			updatePayload := map[string]interface{}{
@@ -423,6 +428,101 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 
 			expect403(t, client, "PATCH", fmt.Sprintf("/api/components/%s/%s/outages/1", utils.Slugify("Build Farm"), utils.Slugify("Build01")), updateBytes)
+		})
+
+		t.Run("resolved_by should not change when end_time is unchanged, but should change when end_time is modified", func(t *testing.T) {
+			serverURL := os.Getenv("TEST_SERVER_URL")
+			require.NotEmpty(t, serverURL, "TEST_SERVER_URL must be set")
+			mockOauthProxyURL := os.Getenv("TEST_MOCK_OAUTH_PROXY_URL")
+			require.NotEmpty(t, mockOauthProxyURL, "TEST_MOCK_OAUTH_PROXY_URL must be set")
+
+			// Create an outage with user1 (developer)
+			createdOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
+
+			// Resolve the outage with user1 (developer) by setting end_time
+			resolveTime := time.Now().UTC()
+			resolvePayload := map[string]interface{}{
+				"end_time": map[string]interface{}{
+					"Time":  resolveTime.Format(time.RFC3339),
+					"Valid": true,
+				},
+			}
+			resolveBytes, err := json.Marshal(resolvePayload)
+			require.NoError(t, err)
+
+			resolveResp, err := client.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), resolveBytes)
+			require.NoError(t, err)
+			defer resolveResp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resolveResp.StatusCode)
+
+			var resolvedOutage types.Outage
+			err = json.NewDecoder(resolveResp.Body).Decode(&resolvedOutage)
+			require.NoError(t, err)
+
+			// Verify that resolved_by is set to developer
+			require.NotNil(t, resolvedOutage.ResolvedBy, "resolved_by should be set when end_time is provided")
+			originalResolver := *resolvedOutage.ResolvedBy
+			assert.Equal(t, "developer", originalResolver, "resolved_by should be set to developer who resolved it")
+			assert.True(t, resolvedOutage.EndTime.Valid, "end_time should be valid after resolution")
+			// Verify that EndTime is rounded to the nearest second (no sub-second precision)
+			assert.Equal(t, 0, resolvedOutage.EndTime.Time.Nanosecond(), "EndTime should be rounded to the nearest second")
+			originalEndTime := resolvedOutage.EndTime.Time
+
+			// Now update the outage with user2 (editor) without changing end_time
+			editorClient, err := NewTestHTTPClientWithUsername(serverURL, mockOauthProxyURL, "editor")
+			require.NoError(t, err)
+
+			updatePayload := map[string]interface{}{
+				"description":  "Updated description by editor",
+				"triage_notes": "Updated triage notes by editor",
+			}
+			updateBytes, err := json.Marshal(updatePayload)
+			require.NoError(t, err)
+
+			updateResp, err := editorClient.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), updateBytes)
+			require.NoError(t, err)
+			defer updateResp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, updateResp.StatusCode)
+
+			var updatedOutage types.Outage
+			err = json.NewDecoder(updateResp.Body).Decode(&updatedOutage)
+			require.NoError(t, err)
+
+			// Verify that resolved_by is still set to the original resolver (developer), not editor
+			require.NotNil(t, updatedOutage.ResolvedBy, "resolved_by should still be set after update")
+			assert.Equal(t, originalResolver, *updatedOutage.ResolvedBy, "resolved_by should remain unchanged when end_time is not modified")
+			assert.True(t, updatedOutage.EndTime.Valid, "end_time should still be valid")
+			assert.WithinDuration(t, originalEndTime, updatedOutage.EndTime.Time, time.Second, "end_time should not have changed")
+
+			// Now update the outage with user2 (editor) by changing end_time
+			newResolveTime := time.Now().UTC().Add(1 * time.Hour)
+			changeEndTimePayload := map[string]interface{}{
+				"end_time": map[string]interface{}{
+					"Time":  newResolveTime.Format(time.RFC3339),
+					"Valid": true,
+				},
+			}
+			changeEndTimeBytes, err := json.Marshal(changeEndTimePayload)
+			require.NoError(t, err)
+
+			changeEndTimeResp, err := editorClient.Patch(fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID), changeEndTimeBytes)
+			require.NoError(t, err)
+			defer changeEndTimeResp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, changeEndTimeResp.StatusCode)
+
+			var changedEndTimeOutage types.Outage
+			err = json.NewDecoder(changeEndTimeResp.Body).Decode(&changedEndTimeOutage)
+			require.NoError(t, err)
+
+			// Verify that resolved_by is now set to editor since end_time was changed
+			require.NotNil(t, changedEndTimeOutage.ResolvedBy, "resolved_by should be set when end_time is changed")
+			assert.Equal(t, "editor", *changedEndTimeOutage.ResolvedBy, "resolved_by should be updated to editor when end_time is modified")
+			assert.True(t, changedEndTimeOutage.EndTime.Valid, "end_time should still be valid")
+			assert.WithinDuration(t, newResolveTime, changedEndTimeOutage.EndTime.Time, time.Second, "end_time should have been updated")
 		})
 	}
 }

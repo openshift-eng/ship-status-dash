@@ -26,6 +26,7 @@ components:
           auto_resolve: false
     owners:
       - user: developer
+      - user: editor
       - service_account: system:serviceaccount:ship-status:component-monitor
   - name: Downstream CI
     description: Downstream CI system
