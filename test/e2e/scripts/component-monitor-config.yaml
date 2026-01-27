@@ -33,3 +33,14 @@ components:
         - query: "data_load_failure{component=\"cache\"} < 1"
           failure_query: "data_load_failure{component=\"cache\"}"
           severity: "Degraded"
+  - component_slug: "sippy"
+    sub_component_slug: "error-handling-test"
+    prometheus_monitor:
+      prometheus_location:
+        url: "${TEST_PROMETHEUS_URL}"
+      queries:
+        - query: "success_rate >= 0.9"
+          failure_query: "success_rate"
+          severity: "Degraded"
+        - query: "invalid_query_syntax{missing_closing_brace"
+          severity: "Down"

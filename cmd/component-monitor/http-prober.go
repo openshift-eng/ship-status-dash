@@ -32,6 +32,10 @@ func NewHTTPProber(componentSlug string, subComponentSlug string, url string, ex
 	}
 }
 
+func (p *HTTPProber) formatError(err error) error {
+	return fmt.Errorf("error running HTTP probe, for component: %s sub-component %s. url: %s. error: %w", p.componentSlug, p.subComponentSlug, p.url, err)
+}
+
 func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComponentStatus {
 	var status types.Status
 	if statusCode == p.expectedStatusCode {
@@ -55,7 +59,7 @@ func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComp
 func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		errChan <- err
+		errChan <- p.formatError(err)
 		return
 	}
 
@@ -64,7 +68,7 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		errChan <- err
+		errChan <- p.formatError(err)
 		return
 	}
 	defer resp.Body.Close()
@@ -77,20 +81,20 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 	// Wait for the confirmAfter duration to see if the status code changes
 	select {
 	case <-ctx.Done():
-		errChan <- ctx.Err()
+		errChan <- p.formatError(ctx.Err())
 		return
 	case <-time.After(p.confirmAfter):
 	}
 
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		errChan <- err
+		errChan <- p.formatError(err)
 		return
 	}
 
 	resp, err = client.Do(req)
 	if err != nil {
-		errChan <- err
+		errChan <- p.formatError(err)
 		return
 	}
 	defer resp.Body.Close()

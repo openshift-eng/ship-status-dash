@@ -35,7 +35,9 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- types.Compo
 	for _, prometheusQuery := range p.prometheusQueries {
 		result, err := p.runQuery(ctx, prometheusQuery.Query, prometheusQuery.Duration, prometheusQuery.Step)
 		if err != nil {
-			errChan <- err
+			errChan <- fmt.Errorf("error running Prometheus query, for component: %s sub-component %s. query: %s. error: %w", p.componentSlug, p.subComponentSlug, prometheusQuery.Query, err)
+			// If any queries error, do not create a result for this probe, the absence of a status will be detected by the absent-report-checker and converted into an outage when necessary.
+			return
 		}
 
 		if succeeded(result) {
