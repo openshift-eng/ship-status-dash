@@ -1,5 +1,5 @@
 import CssBaseline from '@mui/material/CssBaseline'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { ThemeProvider } from '@mui/material/styles'
 import { StylesProvider } from '@mui/styles'
 import { useEffect, useMemo, useState } from 'react'
 import { Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom'
@@ -10,20 +10,8 @@ import Header from './components/Header'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 import { AuthProvider } from './contexts/AuthContext'
+import { darkAccessibilityTheme, darkTheme, lightAccessibilityTheme, lightTheme } from './themes'
 import { getProtectedDomain, getPublicDomain } from './utils/endpoints'
-
-// Create light and dark themes
-const lightTheme = createTheme({
-  palette: {
-    mode: 'light',
-  },
-})
-
-const darkTheme = createTheme({
-  palette: {
-    mode: 'dark',
-  },
-})
 
 // This component is used to redirect the user to the public domain if they are on the protected domain
 // This is necessary because the oauth proxy will redirect the user to the protected domain after authentication
@@ -57,15 +45,29 @@ function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches
   })
 
+  const [isAccessibilityMode, setIsAccessibilityMode] = useState(() => {
+    const saved = localStorage.getItem('accessibilityMode')
+    return saved === 'true'
+  })
+
   const theme = useMemo(() => {
+    if (isAccessibilityMode) {
+      return isDarkMode ? darkAccessibilityTheme : lightAccessibilityTheme
+    }
     return isDarkMode ? darkTheme : lightTheme
-  }, [isDarkMode])
+  }, [isDarkMode, isAccessibilityMode])
 
   const toggleTheme = () => {
     const newMode = !isDarkMode
     setIsDarkMode(newMode)
     localStorage.setItem('theme', newMode ? 'dark' : 'light')
-    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('themeChanged'))
+  }
+
+  const toggleAccessibilityMode = () => {
+    const newMode = !isAccessibilityMode
+    setIsAccessibilityMode(newMode)
+    localStorage.setItem('accessibilityMode', newMode.toString())
     window.dispatchEvent(new CustomEvent('themeChanged'))
   }
 
@@ -76,7 +78,12 @@ function App() {
         <AuthProvider>
           <Router>
             <RedirectIfProtected />
-            <Header onToggleTheme={toggleTheme} isDarkMode={isDarkMode} />
+            <Header
+              onToggleTheme={toggleTheme}
+              isDarkMode={isDarkMode}
+              onToggleAccessibility={toggleAccessibilityMode}
+              isAccessibilityMode={isAccessibilityMode}
+            />
             <Routes>
               <Route path="/" element={<ComponentStatusList />} />
               <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
