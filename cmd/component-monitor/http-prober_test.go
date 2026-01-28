@@ -215,37 +215,28 @@ func TestHTTPProber_Probe(t *testing.T) {
 				tt.severity,
 			)
 
-			results := make(chan types.ComponentMonitorReportComponentStatus, 1)
-			errChan := make(chan error, 1)
+			results := make(chan ProbeResult, 1)
 
-			prober.Probe(ctx, results, errChan)
+			prober.Probe(ctx, results)
+
+			var probeResult ProbeResult
+
+			// Wait for result with timeout
+			timeout := time.After(500 * time.Millisecond)
+			select {
+			case probeResult = <-results:
+			case <-timeout:
+				t.Fatal("timeout waiting for result")
+			}
 
 			var result types.ComponentMonitorReportComponentStatus
 			var err error
-			var gotResult, gotError bool
-
-			// Wait for either result or error with timeout
-			timeout := time.After(500 * time.Millisecond)
-			for !gotResult && !gotError {
-				select {
-				case result = <-results:
-					gotResult = true
-				case err = <-errChan:
-					gotError = true
-				case <-timeout:
-					t.Fatal("timeout waiting for result or error")
-				}
-			}
-
-			// Check for additional error that may have been sent
-			if gotResult {
-				select {
-				case additionalErr := <-errChan:
-					err = additionalErr
-					gotError = true
-				case <-time.After(100 * time.Millisecond):
-					// No additional error
-				}
+			gotResult := false
+			if probeResult.Error != nil {
+				err = probeResult.Error
+			} else {
+				result = probeResult.ComponentMonitorReportComponentStatus
+				gotResult = true
 			}
 
 			// Compare error

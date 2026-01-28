@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,49 +12,41 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
+	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 )
 
 func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 	tests := []struct {
-		name              string
-		numProbers        int
-		probeResults      []types.ComponentMonitorReportComponentStatus
-		probeErrors       []error
-		cancelContext     bool
-		timeout           bool
-		expectedResultLen int
+		name          string
+		probeResults  []ProbeResult
+		cancelContext bool
+		timeout       bool
 	}{
 		{
-			name:       "collect all results successfully",
-			numProbers: 2,
-			probeResults: []types.ComponentMonitorReportComponentStatus{
-				{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy},
-				{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown},
+			name: "collect all results successfully",
+			probeResults: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown}},
 			},
-			expectedResultLen: 2,
 		},
 		{
-			name:       "collect results with errors",
-			numProbers: 2,
-			probeResults: []types.ComponentMonitorReportComponentStatus{
-				{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy},
-				{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown},
+			name: "collect results with errors",
+			probeResults: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown}},
+				{Error: errors.New("probe error"), ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1"}},
 			},
-			probeErrors:       []error{assert.AnError},
-			expectedResultLen: 2,
 		},
 		{
-			name:              "context cancellation during collection",
-			numProbers:        3,
-			cancelContext:     true,
-			expectedResultLen: 0,
+			name:          "context cancellation during collection",
+			cancelContext: true,
+			probeResults:  []ProbeResult{},
 		},
 		{
-			name:              "timeout waiting for results",
-			numProbers:        2,
-			timeout:           true,
-			expectedResultLen: 0,
+			name:         "timeout waiting for results",
+			timeout:      true,
+			probeResults: []ProbeResult{},
 		},
 	}
 
@@ -62,8 +55,8 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 			log := logrus.New()
 			log.SetLevel(logrus.ErrorLevel)
 
-			probers := make([]Prober, tt.numProbers)
-			for i := 0; i < tt.numProbers; i++ {
+			probers := make([]Prober, len(tt.probeResults))
+			for i := 0; i < len(tt.probeResults); i++ {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}))
@@ -107,42 +100,43 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				for _, result := range tt.probeResults {
 					orchestrator.results <- result
 				}
-				for _, err := range tt.probeErrors {
-					orchestrator.errChan <- err
-				}
 			}()
 
 			results := orchestrator.collectProbeResults(ctx)
-
-			assert.Equal(t, tt.expectedResultLen, len(results))
+			if diff := cmp.Diff(tt.probeResults, results, testhelper.EquateErrorMessage); diff != "" {
+				t.Errorf("collectProbeResults() mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
 
 func TestProbeOrchestrator_drainChannels(t *testing.T) {
 	tests := []struct {
-		name        string
-		results     []types.ComponentMonitorReportComponentStatus
-		errors      []error
-		expectDrain bool
+		name         string
+		probeResults []ProbeResult
+		expectDrain  bool
 	}{
 		{
 			name: "drain old results",
-			results: []types.ComponentMonitorReportComponentStatus{
-				{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy},
-				{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown},
+			probeResults: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown}},
 			},
 			expectDrain: true,
 		},
 		{
-			name:        "drain old errors",
-			errors:      []error{assert.AnError},
+			name: "drain old errors",
+			probeResults: []ProbeResult{
+				{Error: assert.AnError},
+			},
 			expectDrain: true,
 		},
 		{
-			name:        "drain mixed results and errors",
-			results:     []types.ComponentMonitorReportComponentStatus{{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
-			errors:      []error{assert.AnError},
+			name: "drain mixed results and errors",
+			probeResults: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
+				{Error: assert.AnError},
+			},
 			expectDrain: true,
 		},
 		{
@@ -166,11 +160,8 @@ func TestProbeOrchestrator_drainChannels(t *testing.T) {
 			)
 
 			go func() {
-				for _, result := range tt.results {
+				for _, result := range tt.probeResults {
 					orchestrator.results <- result
-				}
-				for _, err := range tt.errors {
-					orchestrator.errChan <- err
 				}
 			}()
 
@@ -180,8 +171,6 @@ func TestProbeOrchestrator_drainChannels(t *testing.T) {
 			select {
 			case <-orchestrator.results:
 				t.Error("results channel should be empty after draining")
-			case <-orchestrator.errChan:
-				t.Error("error channel should be empty after draining")
 			default:
 			}
 		})
@@ -250,23 +239,25 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 func TestMergeStatusesByComponent(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []types.ComponentMonitorReportComponentStatus
+		input    []ProbeResult
 		expected []types.ComponentMonitorReportComponentStatus
 	}{
 		{
 			name:     "empty input returns empty",
-			input:    []types.ComponentMonitorReportComponentStatus{},
+			input:    []ProbeResult{},
 			expected: []types.ComponentMonitorReportComponentStatus{},
 		},
 		{
 			name: "single status returns unchanged",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200"},
+						},
 					},
 				},
 			},
@@ -275,26 +266,28 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					ComponentSlug:    "comp1",
 					SubComponentSlug: "sub1",
 					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200"},
-					},
+					Reasons:          nil,
 				},
 			},
 		},
 		{
 			name: "multiple components remain separate",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://comp1.com"}},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://comp1.com"}},
+					},
 				},
 				{
-					ComponentSlug:    "comp2",
-					SubComponentSlug: "sub2",
-					Status:           types.StatusDown,
-					Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up"}},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp2",
+						SubComponentSlug: "sub2",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up"}},
+					},
 				},
 			},
 			expected: []types.ComponentMonitorReportComponentStatus{
@@ -302,7 +295,7 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					ComponentSlug:    "comp1",
 					SubComponentSlug: "sub1",
 					Status:           types.StatusHealthy,
-					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://comp1.com"}},
+					Reasons:          nil,
 				},
 				{
 					ComponentSlug:    "comp2",
@@ -314,21 +307,25 @@ func TestMergeStatusesByComponent(t *testing.T) {
 		},
 		{
 			name: "HTTP and Prometheus probes merge - all healthy",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+						},
 					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned successfully"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned successfully"},
+						},
 					},
 				},
 			},
@@ -337,30 +334,31 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					ComponentSlug:    "comp1",
 					SubComponentSlug: "sub1",
 					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
-						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned successfully"},
-					},
+					Reasons:          nil,
 				},
 			},
 		},
 		{
 			name: "HTTP and Prometheus probes merge - mixed statuses",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
+						},
 					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusDown,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned unsuccessful"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned unsuccessful"},
+						},
 					},
 				},
 			},
@@ -370,7 +368,6 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					SubComponentSlug: "sub1",
 					Status:           types.StatusDown,
 					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 200 (expected 200)"},
 						{Type: types.CheckTypePrometheus, Check: "up", Results: "query returned unsuccessful"},
 					},
 				},
@@ -378,37 +375,45 @@ func TestMergeStatusesByComponent(t *testing.T) {
 		},
 		{
 			name: "status priority - most critical status wins",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusSuspected,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypePrometheus, Check: "query1", Results: "failed"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusSuspected,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "query1", Results: "failed"},
+						},
 					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusCapacityExhausted,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypePrometheus, Check: "query2", Results: "failed"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusCapacityExhausted,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "query2", Results: "failed"},
+						},
 					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusDegraded,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 503 (expected 200)"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusDegraded,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypeHTTP, Check: "http://example.com", Results: "Status code 503 (expected 200)"},
+						},
 					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusDown,
-					Reasons: []types.Reason{
-						{Type: types.CheckTypeHTTP, Check: "http://example2.com", Results: "Status code 500 (expected 200)"},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypeHTTP, Check: "http://example2.com", Results: "Status code 500 (expected 200)"},
+						},
 					},
 				},
 			},
@@ -428,18 +433,22 @@ func TestMergeStatusesByComponent(t *testing.T) {
 		},
 		{
 			name: "different sub-components remain separate",
-			input: []types.ComponentMonitorReportComponentStatus{
+			input: []ProbeResult{
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub1",
-					Status:           types.StatusHealthy,
-					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub1.com"}},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub1.com"}},
+					},
 				},
 				{
-					ComponentSlug:    "comp1",
-					SubComponentSlug: "sub2",
-					Status:           types.StatusDown,
-					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub2.com"}},
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub2",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub2.com"}},
+					},
 				},
 			},
 			expected: []types.ComponentMonitorReportComponentStatus{
@@ -447,7 +456,7 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					ComponentSlug:    "comp1",
 					SubComponentSlug: "sub1",
 					Status:           types.StatusHealthy,
-					Reasons:          []types.Reason{{Type: types.CheckTypeHTTP, Check: "http://sub1.com"}},
+					Reasons:          nil,
 				},
 				{
 					ComponentSlug:    "comp1",
@@ -461,7 +470,7 @@ func TestMergeStatusesByComponent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := mergeStatusesByComponent(tt.input)
+			result := mergeStatuses(tt.input)
 			diff := cmp.Diff(tt.expected, result)
 			if diff != "" {
 				t.Errorf("mergeStatusesByComponent() mismatch (-want +got):\n%s", diff)

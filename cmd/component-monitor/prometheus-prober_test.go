@@ -318,23 +318,17 @@ func TestPrometheusProber_Probe(t *testing.T) {
 			)
 
 			ctx := context.Background()
-			results := make(chan types.ComponentMonitorReportComponentStatus, 1)
-			errChan := make(chan error, 10)
+			results := make(chan ProbeResult, 1)
 
-			prober.Probe(ctx, results, errChan)
+			prober.Probe(ctx, results)
 
-			if tt.expectError {
-				select {
-				case err := <-errChan:
-					assert.NotNil(t, err)
-				case result := <-results:
-					t.Fatalf("unexpected result received: %+v", result)
-				case <-time.After(500 * time.Millisecond):
-					t.Fatal("timeout waiting for error")
-				}
-			} else {
-				select {
-				case result := <-results:
+			select {
+			case probeResult := <-results:
+				if tt.expectError {
+					assert.NotNil(t, probeResult.Error)
+				} else {
+					assert.Nil(t, probeResult.Error)
+					result := probeResult.ComponentMonitorReportComponentStatus
 					assert.Equal(t, testComponentSlug, result.ComponentSlug)
 					assert.Equal(t, testSubComponentSlug, result.SubComponentSlug)
 					assert.Equal(t, tt.expectStatus, result.Status)
@@ -345,12 +339,9 @@ func TestPrometheusProber_Probe(t *testing.T) {
 						assert.NotEmpty(t, reason.Check)
 						assert.NotEmpty(t, reason.Results)
 					}
-
-				case err := <-errChan:
-					t.Fatalf("unexpected error: %v", err)
-				case <-time.After(500 * time.Millisecond):
-					t.Fatal("timeout waiting for result or error")
 				}
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("timeout waiting for result")
 			}
 		})
 	}

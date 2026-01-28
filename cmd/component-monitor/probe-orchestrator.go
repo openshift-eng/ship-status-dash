@@ -12,14 +12,18 @@ import (
 
 // Prober is an interface for component probes.
 type Prober interface {
-	Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error)
+	Probe(ctx context.Context, results chan<- ProbeResult)
+}
+
+type ProbeResult struct {
+	types.ComponentMonitorReportComponentStatus
+	Error error
 }
 
 // ProbeOrchestrator manages the execution of component probes.
 type ProbeOrchestrator struct {
 	probers      []Prober
-	results      chan types.ComponentMonitorReportComponentStatus
-	errChan      chan error
+	results      chan ProbeResult
 	frequency    time.Duration
 	reportClient *ReportClient
 	log          *logrus.Logger
@@ -29,8 +33,7 @@ type ProbeOrchestrator struct {
 func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardURL string, componentMonitorName string, authToken string, log *logrus.Logger) *ProbeOrchestrator {
 	return &ProbeOrchestrator{
 		probers:      probers,
-		results:      make(chan types.ComponentMonitorReportComponentStatus),
-		errChan:      make(chan error),
+		results:      make(chan ProbeResult),
 		frequency:    frequency,
 		reportClient: NewReportClient(dashboardURL, componentMonitorName, authToken),
 		log:          log,
@@ -50,7 +53,7 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 		startTime := time.Now()
 		o.startProbes(ctx)
 		results := o.collectProbeResults(ctx)
-		mergedResults := mergeStatusesByComponent(results)
+		mergedResults := mergeStatuses(results)
 		if err := o.reportClient.SendReport(mergedResults); err != nil {
 			o.log.Errorf("Error sending report: %v", err)
 		} else {
@@ -68,7 +71,7 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
 	o.startProbes(ctx)
 	results := o.collectProbeResults(ctx)
-	mergedResults := mergeStatusesByComponent(results)
+	mergedResults := mergeStatuses(results)
 	if err := o.reportClient.PrintReport(mergedResults); err != nil {
 		o.log.Errorf("Error outputting report: %v", err)
 	}
@@ -77,29 +80,29 @@ func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
 func (o *ProbeOrchestrator) startProbes(ctx context.Context) {
 	o.log.Infof("Probing %d components...", len(o.probers))
 	for _, prober := range o.probers {
-		go prober.Probe(ctx, o.results, o.errChan)
+		go prober.Probe(ctx, o.results)
 	}
 }
 
-func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []types.ComponentMonitorReportComponentStatus {
+func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []ProbeResult {
 	probesCompleted := 0
-	results := []types.ComponentMonitorReportComponentStatus{}
+	results := []ProbeResult{}
 	timeout := time.After(o.frequency)
 
 	for probesCompleted < len(o.probers) {
 		select {
-		case result := <-o.results:
-			o.log.WithFields(logrus.Fields{
-				"component":     result.ComponentSlug,
-				"sub_component": result.SubComponentSlug,
-				"status":        result.Status,
-			}).Info("Component monitor probe result received")
-			results = append(results, result)
-			probesCompleted++
-		case err := <-o.errChan:
-			o.log.Errorf("Error: %v", err)
-			// In case of an error, a failure result will NOT be added to the results channel, so we need to increment probesCompleted even if we have an error
-			// Errors will be converted into outages by the absent-report-checker when the status for the sub-component has been missing for the configured threshold.
+		case probeResult := <-o.results:
+			resultLog := o.log.WithFields(logrus.Fields{
+				"component":     probeResult.ComponentSlug,
+				"sub_component": probeResult.SubComponentSlug,
+				"status":        probeResult.Status,
+			})
+			if probeResult.Error != nil {
+				resultLog.Errorf("Error: %v", probeResult.Error)
+			} else {
+				resultLog.Info("Component monitor probe result received")
+			}
+			results = append(results, probeResult)
 			probesCompleted++
 		case <-ctx.Done():
 			o.log.Warn("Context canceled during probe collection, exiting")
@@ -117,10 +120,12 @@ func (o *ProbeOrchestrator) drainChannels() {
 	o.log.Infof("Draining channels before next cycle...")
 	for {
 		select {
-		case result := <-o.results:
-			o.log.Warnf("Discarding old result for component %s sub-component %s", result.ComponentSlug, result.SubComponentSlug)
-		case err := <-o.errChan:
-			o.log.Warnf("Discarding old error: %v", err)
+		case probeResult := <-o.results:
+			if probeResult.Error != nil {
+				o.log.Warnf("Discarding old error for component %s sub-component %s: %v", probeResult.ComponentSlug, probeResult.SubComponentSlug, probeResult.Error)
+			} else {
+				o.log.Warnf("Discarding old result for component %s sub-component %s", probeResult.ComponentSlug, probeResult.SubComponentSlug)
+			}
 		default:
 			o.log.Infof("Channels drained")
 			return
@@ -142,12 +147,14 @@ func (o *ProbeOrchestrator) waitForNextCycle(ctx context.Context, elapsed time.D
 	return true
 }
 
-// mergeStatusesByComponent merges multiple status reports for the same component/sub-component
+// mergeStatuses merges multiple status reports for the same component/sub-component
 // into a single unified status. It groups by (ComponentSlug, SubComponentSlug), combines all
-// reasons, and determines the most critical status when multiple probes report different statuses.
-func mergeStatusesByComponent(statuses []types.ComponentMonitorReportComponentStatus) []types.ComponentMonitorReportComponentStatus {
-	if len(statuses) == 0 {
-		return statuses
+// reasons from unhealthy probes, and determines the most critical status when multiple probes report different statuses.
+// If there are any errored statuses and all non-errored statuses are Healthy, the component/sub-component
+// is omitted from the report.
+func mergeStatuses(probeResults []ProbeResult) []types.ComponentMonitorReportComponentStatus {
+	if len(probeResults) == 0 {
+		return []types.ComponentMonitorReportComponentStatus{}
 	}
 
 	type componentKey struct {
@@ -155,44 +162,20 @@ func mergeStatusesByComponent(statuses []types.ComponentMonitorReportComponentSt
 		subComponent string
 	}
 
-	grouped := make(map[componentKey][]types.ComponentMonitorReportComponentStatus)
-	for _, status := range statuses {
+	grouped := make(map[componentKey][]ProbeResult)
+	for _, probeResult := range probeResults {
 		key := componentKey{
-			component:    status.ComponentSlug,
-			subComponent: status.SubComponentSlug,
+			component:    probeResult.ComponentSlug,
+			subComponent: probeResult.SubComponentSlug,
 		}
-		grouped[key] = append(grouped[key], status)
+		grouped[key] = append(grouped[key], probeResult)
 	}
 
 	merged := make([]types.ComponentMonitorReportComponentStatus, 0, len(grouped))
 	for key, group := range grouped {
-		if len(group) == 1 {
-			merged = append(merged, group[0])
-			continue
+		if result := mergeStatusesForSubComponent(key.component, key.subComponent, group); result != nil {
+			merged = append(merged, *result)
 		}
-
-		var allReasons []types.Reason
-		var mostCriticalStatus types.Status
-
-		for i, status := range group {
-			allReasons = append(allReasons, status.Reasons...)
-			if i == 0 {
-				mostCriticalStatus = status.Status
-			} else {
-				currentLevel := types.GetSeverityLevel(status.Status.ToSeverity())
-				mostCriticalLevel := types.GetSeverityLevel(mostCriticalStatus.ToSeverity())
-				if currentLevel > mostCriticalLevel {
-					mostCriticalStatus = status.Status
-				}
-			}
-		}
-
-		merged = append(merged, types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    key.component,
-			SubComponentSlug: key.subComponent,
-			Status:           mostCriticalStatus,
-			Reasons:          allReasons,
-		})
 	}
 
 	// Sort results for deterministic output
@@ -204,4 +187,63 @@ func mergeStatusesByComponent(statuses []types.ComponentMonitorReportComponentSt
 	})
 
 	return merged
+}
+
+// mergeStatusesForSubComponent merges probe results for a single component/sub-component.
+// Returns nil if the component/sub-component should be omitted from the report.
+func mergeStatusesForSubComponent(componentSlug, subComponentSlug string, group []ProbeResult) *types.ComponentMonitorReportComponentStatus {
+	hasError := false
+	var nonErroredStatuses []types.ComponentMonitorReportComponentStatus
+
+	for _, probeResult := range group {
+		if probeResult.Error != nil {
+			hasError = true
+		} else {
+			nonErroredStatuses = append(nonErroredStatuses, probeResult.ComponentMonitorReportComponentStatus)
+		}
+	}
+
+	if hasError {
+		allHealthy := true
+		for _, status := range nonErroredStatuses {
+			if status.Status != types.StatusHealthy {
+				allHealthy = false
+				break
+			}
+		}
+		// If we have an error in a probe, and the sub-component would otherwise be healthy, we omit the status from the report so that the absent-report-checker can create an outage if it continues to error.
+		// This allows an admin to look into the error with the probe.
+		if allHealthy {
+			return nil
+		}
+	}
+
+	if len(nonErroredStatuses) == 0 {
+		return nil
+	}
+
+	var allFailedReasons []types.Reason
+	mostCriticalStatus := types.StatusHealthy
+
+	for _, status := range nonErroredStatuses {
+		if status.Status != types.StatusHealthy {
+			allFailedReasons = append(allFailedReasons, status.Reasons...)
+		}
+		currentLevel := types.GetSeverityLevel(status.Status.ToSeverity())
+		mostCriticalLevel := types.GetSeverityLevel(mostCriticalStatus.ToSeverity())
+		if currentLevel > mostCriticalLevel {
+			mostCriticalStatus = status.Status
+		}
+	}
+
+	result := &types.ComponentMonitorReportComponentStatus{
+		ComponentSlug:    componentSlug,
+		SubComponentSlug: subComponentSlug,
+		Status:           mostCriticalStatus,
+		Reasons:          allFailedReasons,
+	}
+	if mostCriticalStatus == types.StatusHealthy {
+		result.Reasons = nil
+	}
+	return result
 }

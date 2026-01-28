@@ -32,11 +32,17 @@ func NewHTTPProber(componentSlug string, subComponentSlug string, url string, ex
 	}
 }
 
-func (p *HTTPProber) formatError(err error) error {
-	return fmt.Errorf("error running HTTP probe, for component: %s sub-component %s. url: %s. error: %w", p.componentSlug, p.subComponentSlug, p.url, err)
+func (p *HTTPProber) formatErrorResult(err error) ProbeResult {
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+		},
+		Error: fmt.Errorf("error running HTTP probe, for component: %s sub-component %s. url: %s. error: %w", p.componentSlug, p.subComponentSlug, p.url, err),
+	}
 }
 
-func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComponentStatus {
+func (p *HTTPProber) makeStatus(statusCode int) ProbeResult {
 	var status types.Status
 	if statusCode == p.expectedStatusCode {
 		status = types.StatusHealthy
@@ -44,22 +50,24 @@ func (p *HTTPProber) makeStatus(statusCode int) types.ComponentMonitorReportComp
 		status = p.severity.ToStatus()
 	}
 
-	return types.ComponentMonitorReportComponentStatus{
-		ComponentSlug:    p.componentSlug,
-		SubComponentSlug: p.subComponentSlug,
-		Status:           status,
-		Reasons: []types.Reason{{
-			Type:    types.CheckTypeHTTP,
-			Check:   p.url,
-			Results: fmt.Sprintf("Status code %d (expected %d)", statusCode, p.expectedStatusCode),
-		}},
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+			Status:           status,
+			Reasons: []types.Reason{{
+				Type:    types.CheckTypeHTTP,
+				Check:   p.url,
+				Results: fmt.Sprintf("Status code %d (expected %d)", statusCode, p.expectedStatusCode),
+			}},
+		},
 	}
 }
 
-func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error) {
+func (p *HTTPProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		errChan <- p.formatError(err)
+		results <- p.formatErrorResult(err)
 		return
 	}
 
@@ -68,7 +76,7 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		errChan <- p.formatError(err)
+		results <- p.formatErrorResult(err)
 		return
 	}
 	defer resp.Body.Close()
@@ -81,20 +89,20 @@ func (p *HTTPProber) Probe(ctx context.Context, results chan<- types.ComponentMo
 	// Wait for the confirmAfter duration to see if the status code changes
 	select {
 	case <-ctx.Done():
-		errChan <- p.formatError(ctx.Err())
+		results <- p.formatErrorResult(ctx.Err())
 		return
 	case <-time.After(p.confirmAfter):
 	}
 
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		errChan <- p.formatError(err)
+		results <- p.formatErrorResult(err)
 		return
 	}
 
 	resp, err = client.Do(req)
 	if err != nil {
-		errChan <- p.formatError(err)
+		results <- p.formatErrorResult(err)
 		return
 	}
 	defer resp.Body.Close()
