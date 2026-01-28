@@ -39,6 +39,7 @@ components:
       url: "https://prow.ci.openshift.org/"
       code: 200
       retry_after: 4m
+      severity: "Down"  # Optional: severity when probe fails (defaults to "Down")
     prometheus_monitor:
       prometheus_location:
         cluster: "app.ci"
@@ -49,6 +50,7 @@ components:
           failure_query: "up{job=\"deck\"}"
           duration: "5m"
           step: "30s"
+          severity: "Down"  # Optional: severity when query fails (defaults to "Down")
 ```
 
 **Prometheus Query Configuration:**
@@ -56,6 +58,13 @@ components:
 - `failure_query`: Optional query to run when the main query fails, providing additional context
 - `duration`: Optional duration string (e.g., `"5m"`, `"30s"`). If provided, the query will be executed as a range query
 - `step`: Optional resolution for range queries (e.g., `"30s"`, `"15s"`). If not provided, a default step is calculated based on the duration
+- `severity`: Optional severity level when the query fails. Valid values: `"Down"`, `"Degraded"`, `"CapacityExhausted"`, `"Suspected"`. Defaults to `"Down"` if not specified
+
+**HTTP Monitor Configuration:**
+- `url`: The URL to probe
+- `code`: The expected HTTP status code
+- `retry_after`: Duration to wait before retrying the probe when the status code is not as expected
+- `severity`: Optional severity level when the probe fails. Valid values: `"Down"`, `"Degraded"`, `"CapacityExhausted"`, `"Suspected"`. Defaults to `"Down"` if not specified
 
 ## Prometheus Location Configuration
 
@@ -169,15 +178,47 @@ components:
 
 ## Status Reporting
 
-The component-monitor reports one of three statuses for each component:
+The component-monitor reports status for each sub-component based on probe results. The status levels are configurable per query or monitor via the `severity` field.
 
-- **Healthy**: All queries/probes are successful
-- **Degraded**: Some queries/probes are failing while others are passing
-- **Down**: All queries/probes are failing
+### Available Severity Levels
 
-The status is determined by the probe results:
-- **HTTP monitors**: Status code matches expected → Healthy, otherwise → Down
-- **Prometheus monitors**: Query returns results → Healthy, no results → Down
+When a probe fails, it reports a status based on the configured severity level:
+
+- **Down**: Most critical severity level. Indicates the component is completely unavailable
+- **Degraded**: Indicates the component is functioning but with reduced performance or capabilities
+- **CapacityExhausted**: Indicates the component is unavailable due to resource exhaustion (e.g., no available cloud accounts)
+
+If `severity` is not specified for a query or monitor, it defaults to `"Down"`.
+
+### Status Determination
+
+When multiple queries fail for the same sub-component, the most critical severity (highest level) is used:
+- `Down` (level 4) > `Degraded` (level 3) > `CapacityExhausted` (level 2) > `Suspected` (level 1) is only used when the sub-component is configured to require `confirmation`
+
+### Examples
+
+**Example 1: HTTP monitor with Degraded severity**
+```yaml
+http_monitor:
+  url: "https://example.com/api"
+  code: 200
+  retry_after: 4m
+  severity: "Degraded"  # Reports Degraded status if probe fails
+```
+
+**Example 2: Prometheus queries with different severities**
+```yaml
+prometheus_monitor:
+  queries:
+    - query: "up{job=\"critical\"} == 1"
+      severity: "Down"  # Critical failure
+    - query: "response_time_seconds > 1"
+      severity: "Degraded"  # Performance issue
+    - query: "available_resources == 0"
+      severity: "CapacityExhausted"  # Resource exhaustion
+```
+
+If the first query fails, the status will be `Down` (most critical). If only the second query fails, the status will be `Degraded`.
 
 ## Range Queries
 
