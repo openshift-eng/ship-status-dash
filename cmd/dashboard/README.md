@@ -66,3 +66,14 @@ Both oauth-proxy and dashboard share the same HMAC secret. The signature include
 Each of these headers are included when the OpenShift Oauth Proxy creates it's signature, and we must provide complete parity.
 See [SignatureHeaders](https://github.com/openshift/oauth-proxy/blob/master/oauthproxy.go).
 
+## Slack Integration
+
+The dashboard supports Slack integration for outage reporting. When enabled, the dashboard will:
+
+- Post outage notifications to configured Slack channels when outages are created or resolved
+- Create threaded conversations for outage updates
+- Include links back to the dashboard for viewing outage details
+
+### Configuration
+
+Slack integration is enabled by setting the `SLACK_BOT_TOKEN` environment variable with a valid Slack bot token. The dashboard also requires the `--slack-base-url` flag to be set, which is used to construct links in Slack messages.

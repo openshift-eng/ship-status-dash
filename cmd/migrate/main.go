@@ -59,6 +59,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate ComponentReportPing table")
 	}
 
+	if err = db.AutoMigrate(&types.SlackThread{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate SlackThread table")
+	}
+
 	log.Info("Migration completed successfully")
 
 	var tableCount int64

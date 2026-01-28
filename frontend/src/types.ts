@@ -16,6 +16,11 @@ export interface Reason {
   results: string
 }
 
+export interface SlackThread {
+  channel: string
+  thread_url: string
+}
+
 export interface Outage {
   ID: number
   CreatedAt: string
@@ -40,6 +45,7 @@ export interface Outage {
   }
   triage_notes?: string
   reasons?: Reason[]
+  slack_threads?: SlackThread[]
 }
 
 export interface Monitoring {

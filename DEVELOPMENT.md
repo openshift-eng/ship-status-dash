@@ -35,6 +35,12 @@ This script:
 - Sets up a user with credentials: `developer:password`
 - Generates a temporary HMAC secret for request signing
 
+**Slack Integration**: To enable Slack integration for outage reporting, set the `SLACK_BOT_TOKEN` environment variable before running the script:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-token ./hack/local/dashboard/local-dev.sh "postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
+```
+
 ### Component Monitor
 
 Start the component-monitor using the local development script:

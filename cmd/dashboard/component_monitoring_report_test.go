@@ -4,7 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
@@ -68,8 +71,17 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			setupRepo: func(repo *repositories.MockOutageRepository) {
 				repo.ActiveOutages = []types.Outage{
-					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
-					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
+					{Model: gorm.Model{ID: 1}, ComponentName: "test-component", SubComponentName: "test-subcomponent"},
+					{Model: gorm.Model{ID: 2}, ComponentName: "test-component", SubComponentName: "test-subcomponent"},
+				}
+				repo.OutageByIDFn = func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+					for i := range repo.ActiveOutages {
+						if repo.ActiveOutages[i].ID == outageID {
+							outage := repo.ActiveOutages[i]
+							return &outage, nil
+						}
+					}
+					return nil, gorm.ErrRecordNotFound
 				}
 			},
 			verifyOutageExpectations: func(t *testing.T, repo *repositories.MockOutageRepository) {
@@ -427,8 +439,10 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			pingRepo := &repositories.MockComponentPingRepository{}
 
 			configManager := config.CreateTestConfigManager(tt.config)
+			slackThreadRepo := &repositories.MockSlackThreadRepository{}
+			outageManager := outage.NewOutageManager(repo, slackThreadRepo, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
 			processor := &ComponentMonitorReportProcessor{
-				outageRepo:    repo,
+				outageManager: outageManager,
 				pingRepo:      pingRepo,
 				configManager: configManager,
 				logger:        logger,
@@ -598,8 +612,10 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			configManager := config.CreateTestConfigManager(tt.config)
+			slackThreadRepo := &repositories.MockSlackThreadRepository{}
+			outageManager := outage.NewOutageManager(&repositories.MockOutageRepository{}, slackThreadRepo, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
 			processor := &ComponentMonitorReportProcessor{
-				outageRepo:    &repositories.MockOutageRepository{},
+				outageManager: outageManager,
 				pingRepo:      &repositories.MockComponentPingRepository{},
 				configManager: configManager,
 				logger:        logger,

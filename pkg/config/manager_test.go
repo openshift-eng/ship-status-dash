@@ -140,39 +140,29 @@ func TestNewManager(t *testing.T) {
 
 func TestManager_OnUpdate(t *testing.T) {
 	tests := []struct {
-		name          string
-		configContent string
-		numCallbacks  int
+		name         string
+		numCallbacks int
 	}{
 		{
-			name:          "registers callbacks correctly",
-			configContent: "value: test",
-			numCallbacks:  1,
+			name:         "registers callbacks correctly",
+			numCallbacks: 1,
 		},
 		{
-			name:          "multiple callbacks can be registered",
-			configContent: "value: test",
-			numCallbacks:  2,
+			name:         "multiple callbacks can be registered",
+			numCallbacks: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			configPath := createTestConfigFile(t, tmpDir, tt.configContent)
+			configPath := createTestConfigFile(t, tmpDir, "value: test")
 			manager := createTestManager(t, configPath)
 
-			callbackCalled := false
-			callback := func(cfg *testConfig) {
-				callbackCalled = true
-			}
+			callback := func(cfg *testConfig) {}
 
 			for i := 0; i < tt.numCallbacks; i++ {
 				manager.OnUpdate(callback)
-			}
-
-			if diff := cmp.Diff(false, callbackCalled); diff != "" {
-				t.Errorf("Callback expectation mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

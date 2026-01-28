@@ -3,6 +3,7 @@ import {
   ArrowBack,
   Assignment,
   BugReport,
+  Forum,
   Info,
   Person,
   Settings,
@@ -479,6 +480,29 @@ const OutageDetailsPage = () => {
             <Field label="Triage Notes" value={outage.triage_notes} valueVariant="pre-wrap" />
           )}
         </Section>
+
+        {outage.slack_threads && outage.slack_threads.length > 0 && (
+          <Section icon={<Forum />} title="Automated Slack Reporting">
+            {outage.slack_threads.map((thread) => (
+              <FieldBox key={thread.channel}>
+                <FieldLabel variant="caption" color="text.secondary">
+                  {thread.channel}
+                </FieldLabel>
+                <Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    href={thread.thread_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View Thread
+                  </Button>
+                </Box>
+              </FieldBox>
+            ))}
+          </Section>
+        )}
 
         <FullWidthGridItem>
           <Section icon={<Settings />} title="System Information">

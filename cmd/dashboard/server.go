@@ -13,6 +13,7 @@ import (
 
 	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
@@ -29,11 +30,11 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance
-func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository) *Server {
+func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository) *Server {
 	return &Server{
 		logger:        logger,
 		configManager: configManager,
-		handlers:      NewHandlers(logger, configManager, outageRepo, pingRepo, groupCache),
+		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, groupCache),
 		corsOrigin:    corsOrigin,
 		hmacSecret:    hmacSecret,
 		groupCache:    groupCache,

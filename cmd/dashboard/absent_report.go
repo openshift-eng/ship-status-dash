@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/config"
+	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
 )
@@ -20,17 +21,17 @@ const (
 // AbsentMonitoredComponentReportChecker handles outages for components where pings have not been received within the expected time.
 type AbsentMonitoredComponentReportChecker struct {
 	configManager *config.Manager[types.DashboardConfig]
-	outageRepo    repositories.OutageRepository
+	outageManager *outage.OutageManager
 	pingRepo      repositories.ComponentPingRepository
 	checkInterval time.Duration
 	logger        *logrus.Logger
 }
 
 // NewAbsentMonitoredComponentReportChecker creates a new AbsentMonitoredComponentReportChecker instance.
-func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageRepo repositories.OutageRepository, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
+func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
 	return &AbsentMonitoredComponentReportChecker{
 		configManager: configManager,
-		outageRepo:    outageRepo,
+		outageManager: outageManager,
 		pingRepo:      pingRepo,
 		checkInterval: checkInterval,
 		logger:        logger,
@@ -117,7 +118,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				}
 			}
 
-			activeOutages, err := a.outageRepo.GetActiveOutagesDiscoveredFrom(component.Slug, subComponent.Slug, AbsentReportSource)
+			activeOutages, err := a.outageManager.GetActiveOutagesDiscoveredFrom(component.Slug, subComponent.Slug, AbsentReportSource)
 			if err != nil {
 				componentLogger.WithField("error", err).Error("Failed to check for existing outages")
 				continue
@@ -130,7 +131,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 						activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
 						resolver := subComponent.Monitoring.ComponentMonitor
 						activeOutages[i].ResolvedBy = &resolver
-						if err := a.outageRepo.SaveOutage(&activeOutages[i]); err != nil {
+						if err := a.outageManager.UpdateOutage(&activeOutages[i]); err != nil {
 							componentLogger.WithFields(logrus.Fields{
 								"outage_id": activeOutages[i].ID,
 								"error":     err,
@@ -172,7 +173,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			if err := a.outageRepo.CreateOutage(&outage); err != nil {
+			if err := a.outageManager.CreateOutage(&outage); err != nil {
 				componentLogger.WithField("error", err).Error("Failed to create absent-report outage")
 				continue
 			}

@@ -87,6 +87,8 @@ type Outage struct {
 	// Reasons are the Reason records that describe the reason for the outage
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
+	// SlackThreads are the Slack threads associated with the outage
+	SlackThreads []SlackThread `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
 	//TODO: Add optional link to jira card, and incident slack thread link for outage
 }
 
@@ -140,4 +142,14 @@ type ComponentReportPing struct {
 	ComponentName    string    `json:"component_name" gorm:"column:component_name;not null;index;uniqueIndex:idx_component_subcomponent"`
 	SubComponentName string    `json:"sub_component_name" gorm:"column:sub_component_name;not null;index;uniqueIndex:idx_component_subcomponent"`
 	Time             time.Time `json:"time" gorm:"column:time;not null;index"`
+}
+
+// SlackThread represents a Slack thread associated with an outage in a specific channel.
+type SlackThread struct {
+	gorm.Model
+	OutageID        uint   `json:"outage_id" gorm:"column:outage_id;not null;index:idx_outage_channel,unique"`
+	Channel         string `json:"channel" gorm:"column:channel;not null;index:idx_outage_channel,unique"`
+	ChannelID       string `json:"channel_id" gorm:"column:channel_id;not null"`
+	ThreadTimestamp string `json:"thread_timestamp" gorm:"column:thread_timestamp;not null"`
+	ThreadURL       string `json:"thread_url" gorm:"column:thread_url;not null"`
 }

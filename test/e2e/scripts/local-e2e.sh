@@ -180,7 +180,7 @@ export TEST_DASHBOARD_CONFIG_PATH="$DASHBOARD_CONFIG"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s --config-update-poll-interval 10s 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s --config-update-poll-interval 10s --slack-base-url "http://localhost:3000" --slack-workspace-url "https://rhsandbox.slack.com/" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
@@ -310,7 +310,7 @@ COMPONENT_MONITOR_PID=$!
 
 echo "Running e2e tests..."
 set +e
-gotestsum --format testname --hide-summary=skipped ./test/e2e/... -count 1 -p 1
+gotestsum --format testname ./test/e2e/... -count 1 -p 1
 TEST_EXIT_CODE=$?
 set -e
 
