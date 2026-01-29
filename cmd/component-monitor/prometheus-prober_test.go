@@ -232,10 +232,7 @@ func TestPrometheusProber_Probe(t *testing.T) {
 			queryErrors: map[string]error{
 				"up{job=\"test\"}": errors.New("prometheus query error"),
 			},
-			expectStatus:        types.StatusDown,
-			expectedReasonCount: 1,
-			expectedReasonType:  types.CheckTypePrometheus,
-			expectError:         true,
+			expectError: true,
 		},
 		{
 			name: "matrix query succeeds",
@@ -321,40 +318,30 @@ func TestPrometheusProber_Probe(t *testing.T) {
 			)
 
 			ctx := context.Background()
-			results := make(chan types.ComponentMonitorReportComponentStatus, 1)
-			errChan := make(chan error, 10)
+			results := make(chan ProbeResult, 1)
 
-			prober.Probe(ctx, results, errChan)
+			prober.Probe(ctx, results)
 
 			select {
-			case result := <-results:
-				assert.Equal(t, testComponentSlug, result.ComponentSlug)
-				assert.Equal(t, testSubComponentSlug, result.SubComponentSlug)
-				assert.Equal(t, tt.expectStatus, result.Status)
-				assert.Len(t, result.Reasons, tt.expectedReasonCount)
-
-				for _, reason := range result.Reasons {
-					assert.Equal(t, tt.expectedReasonType, reason.Type)
-					assert.NotEmpty(t, reason.Check)
-					assert.NotEmpty(t, reason.Results)
-				}
-
+			case probeResult := <-results:
 				if tt.expectError {
-					select {
-					case err := <-errChan:
-						assert.NotNil(t, err)
-					case <-time.After(100 * time.Millisecond):
+					assert.NotNil(t, probeResult.Error)
+				} else {
+					assert.Nil(t, probeResult.Error)
+					result := probeResult.ComponentMonitorReportComponentStatus
+					assert.Equal(t, testComponentSlug, result.ComponentSlug)
+					assert.Equal(t, testSubComponentSlug, result.SubComponentSlug)
+					assert.Equal(t, tt.expectStatus, result.Status)
+					assert.Len(t, result.Reasons, tt.expectedReasonCount)
+
+					for _, reason := range result.Reasons {
+						assert.Equal(t, tt.expectedReasonType, reason.Type)
+						assert.NotEmpty(t, reason.Check)
+						assert.NotEmpty(t, reason.Results)
 					}
 				}
-
-			case err := <-errChan:
-				if tt.expectError {
-					assert.NotNil(t, err)
-				} else {
-					t.Fatalf("unexpected error: %v", err)
-				}
 			case <-time.After(500 * time.Millisecond):
-				t.Fatal("timeout waiting for result or error")
+				t.Fatal("timeout waiting for result")
 			}
 		})
 	}

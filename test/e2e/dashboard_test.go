@@ -117,7 +117,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Len(t, components[3].SlackReporting, 1)
 		assert.Equal(t, "#trt-alert", components[3].SlackReporting[0].Channel)
 		assert.Equal(t, types.SeverityDown, *components[3].SlackReporting[0].Severity)
-		assert.Len(t, components[3].Subcomponents, 4)
+		assert.Len(t, components[3].Subcomponents, 5)
 		assert.Equal(t, "Sippy", components[3].Subcomponents[0].Name)
 		assert.Equal(t, "api", components[3].Subcomponents[1].Name)
 		assert.Equal(t, "data-load", components[3].Subcomponents[2].Name)

@@ -92,6 +92,12 @@ components:
           auto_resolve: true
           component_monitor: e2e-component-monitor
           frequency: 10s
+      - name: error-handling-test
+        description: Test sub-component for error handling
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
     owners:
       - user: developer
       - service_account: system:serviceaccount:ship-status:component-monitor
