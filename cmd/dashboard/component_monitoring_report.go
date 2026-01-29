@@ -157,48 +157,29 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
-			err = p.outageManager.Transaction(func(mgr *outage.OutageManager) error {
-				description := "Component monitor detected outage"
+			description := "Component monitor detected outage"
 
-				outage := types.Outage{
-					ComponentName:    status.ComponentSlug,
-					SubComponentName: status.SubComponentSlug,
-					Severity:         severity,
-					StartTime:        now,
-					EndTime:          sql.NullTime{Valid: false},
-					Description:      description,
-					DiscoveredFrom:   ComponentMonitor,
-					CreatedBy:        req.ComponentMonitor,
-				}
+			outage := types.Outage{
+				ComponentName:    status.ComponentSlug,
+				SubComponentName: status.SubComponentSlug,
+				Severity:         severity,
+				StartTime:        now,
+				EndTime:          sql.NullTime{Valid: false},
+				Description:      description,
+				DiscoveredFrom:   ComponentMonitor,
+				CreatedBy:        req.ComponentMonitor,
+			}
 
-				if !subComponent.RequiresConfirmation {
-					outage.ConfirmedBy = &req.ComponentMonitor
-					outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
-				}
+			if !subComponent.RequiresConfirmation {
+				outage.ConfirmedBy = &req.ComponentMonitor
+				outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
+			}
 
-				if message, valid := outage.Validate(); !valid {
-					return fmt.Errorf("validation failed: %s", message)
-				}
+			if message, valid := outage.Validate(); !valid {
+				return fmt.Errorf("validation failed: %s", message)
+			}
 
-				if err := mgr.CreateOutage(&outage); err != nil {
-					return err
-				}
-
-				for _, reasonData := range status.Reasons {
-					reason := types.Reason{
-						OutageID: outage.ID,
-						Type:     reasonData.Type,
-						Check:    reasonData.Check,
-						Results:  reasonData.Results,
-					}
-					if err := mgr.CreateReason(&reason); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
-
-			if err != nil {
+			if err := p.outageManager.CreateOutage(&outage, status.Reasons); err != nil {
 				statusLogger.WithField("error", err).Error("Failed to create outage and reasons")
 				continue
 			}

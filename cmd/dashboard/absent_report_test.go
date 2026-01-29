@@ -7,6 +7,7 @@ import (
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
+	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 
 	"github.com/sirupsen/logrus"
@@ -198,11 +199,14 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 						ComponentName:    "test-component",
 						SubComponentName: "test-subcomponent",
 						DiscoveredFrom:   AbsentReportSource,
+						CreatedBy:        AbsentReportCreator,
+						Severity:         types.SeverityDown,
+						StartTime:        time.Now().Add(-10 * time.Minute),
 					},
 				}
 			},
 			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				assert.Len(t, outages, 0, "Expected no outages to be created")
+				assert.Len(t, outages, 1, "Should only have the initial outage, no new one should be created")
 			},
 		},
 		{
@@ -312,17 +316,32 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pingRepo := &repositories.MockComponentPingRepository{}
-			outageRepo := &repositories.MockOutageRepository{}
 			tt.setupPingRepo(pingRepo)
-			tt.setupOutageRepo(outageRepo)
 
 			configManager := config.CreateTestConfigManager(tt.config)
-			slackThreadRepo := &repositories.MockSlackThreadRepository{}
-			outageManager := outage.NewOutageManager(outageRepo, slackThreadRepo, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
+			db := testhelper.SetupTestDB(t)
+
+			if tt.setupOutageRepo != nil {
+				// Setup initial outage data if needed
+				mockRepo := &repositories.MockOutageRepository{}
+				tt.setupOutageRepo(mockRepo)
+				// Copy mock data to DB if needed
+				for _, outage := range mockRepo.ActiveOutages {
+					db.Create(&outage)
+				}
+			}
+
+			outageManager := outage.NewOutageManager(db, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
 			checker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, 5*time.Minute, logger)
 			checker.checkForAbsentReports()
 
-			tt.verifyCreatedOutages(t, outageRepo.CreatedOutages)
+			var createdOutages []types.Outage
+			db.Find(&createdOutages)
+			var createdOutagesPtrs []*types.Outage
+			for i := range createdOutages {
+				createdOutagesPtrs = append(createdOutagesPtrs, &createdOutages[i])
+			}
+			tt.verifyCreatedOutages(t, createdOutagesPtrs)
 		})
 	}
 }

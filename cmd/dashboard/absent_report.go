@@ -102,7 +102,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			now := time.Now().Truncate(time.Second) // Truncate to the nearest second to avoid sub-second precision issues
+			now := time.Now()
 			var componentInOutage bool
 			var reason string
 
@@ -173,7 +173,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			if err := a.outageManager.CreateOutage(&outage); err != nil {
+			if err := a.outageManager.CreateOutage(&outage, nil); err != nil {
 				componentLogger.WithField("error", err).Error("Failed to create absent-report outage")
 				continue
 			}

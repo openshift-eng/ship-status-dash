@@ -25,8 +25,6 @@ type OutageRepository interface {
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
 
 	DeleteOutage(outage *types.Outage) error
-
-	Transaction(fn func(OutageRepository) error) error
 }
 
 // gormOutageRepository is a GORM implementation of OutageRepository.
@@ -153,14 +151,4 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 // DeleteOutage deletes an outage from the database.
 func (r *gormOutageRepository) DeleteOutage(outage *types.Outage) error {
 	return r.db.Delete(outage).Error
-}
-
-// Transaction executes the provided function within a database transaction.
-// If the function returns an error, the transaction is rolled back.
-// Otherwise, the transaction is committed.
-func (r *gormOutageRepository) Transaction(fn func(OutageRepository) error) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		txRepo := &gormOutageRepository{db: tx}
-		return fn(txRepo)
-	})
 }

@@ -231,10 +231,6 @@ func main() {
 		}
 	})
 
-	outageRepo := repositories.NewGORMOutageRepository(db)
-	pingRepo := repositories.NewGORMComponentPingRepository(db)
-	slackThreadRepo := repositories.NewGORMSlackThreadRepository(db)
-
 	var slackClient *slack.Client
 	slackToken := os.Getenv("SLACK_BOT_TOKEN")
 	if slackToken != "" {
@@ -245,8 +241,7 @@ func main() {
 	}
 
 	outageManager := outage.NewOutageManager(
-		outageRepo,
-		slackThreadRepo,
+		db,
 		slackClient,
 		configManager,
 		opts.SlackBaseURL,
@@ -254,6 +249,7 @@ func main() {
 		log,
 	)
 
+	pingRepo := repositories.NewGORMComponentPingRepository(db)
 	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageManager, pingRepo)
 
 	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)

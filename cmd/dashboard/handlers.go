@@ -248,7 +248,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.CreateOutage(&outage); err != nil {
+	if err := h.outageManager.CreateOutage(&outage, nil); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return

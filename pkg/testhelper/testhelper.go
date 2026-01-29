@@ -2,9 +2,35 @@ package testhelper
 
 import (
 	"reflect"
+	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
+	"ship-status-dash/pkg/types"
 
 	"github.com/google/go-cmp/cmp"
 )
+
+// SetupTestDB creates an in-memory SQLite database for testing and migrates the standard outage-related models.
+// The database is automatically closed when the test completes.
+func SetupTestDB(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{})
+	if err != nil {
+		t.Fatalf("Failed to migrate test database: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			sqlDB.Close()
+		}
+	})
+	return db
+}
 
 // EquateErrorMessage reports errors to be equal if both are nil or both have the same message.
 var EquateErrorMessage = cmp.FilterValues(func(x, y interface{}) bool {
