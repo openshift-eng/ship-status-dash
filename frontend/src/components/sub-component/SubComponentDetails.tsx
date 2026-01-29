@@ -1,4 +1,4 @@
-import { CheckCircle, Error, ReportProblem, Warning } from '@mui/icons-material'
+import { CheckCircle, Error, OpenInNew, ReportProblem, Warning } from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -34,6 +34,8 @@ import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
+
+import TagChip from './TagChip'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   display: 'flex',
@@ -77,6 +79,34 @@ const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   '& .MuiDataGrid-row:hover': {
     backgroundColor: theme.palette.action.hover,
   },
+}))
+
+const SubComponentDescription = styled(Typography)<{
+  hasLongDescription?: boolean
+  hasTags?: boolean
+}>(({ theme, hasLongDescription, hasTags }) => ({
+  marginBottom: hasLongDescription || hasTags ? theme.spacing(2) : 0,
+}))
+
+const SubComponentLongDescription = styled(Typography)<{
+  hasDocumentation?: boolean
+  hasTags?: boolean
+}>(({ theme, hasDocumentation, hasTags }) => ({
+  color: theme.palette.text.secondary,
+  whiteSpace: 'pre-wrap',
+  lineHeight: 1.6,
+  marginBottom: hasDocumentation || hasTags ? theme.spacing(2) : 0,
+}))
+
+const DocumentationButtonContainer = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+}))
+
+const TagsContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.spacing(1),
+  marginBottom: theme.spacing(2),
 }))
 
 const SubComponentDetails = () => {
@@ -396,6 +426,53 @@ const SubComponentDetails = () => {
           </Box>
         </HeaderBox>
       </StyledPaper>
+
+      {(subComponent?.description ||
+        subComponent?.long_description ||
+        subComponent?.documentation_url ||
+        (subComponent?.tags && subComponent.tags.length > 0)) && (
+        <StyledPaper>
+          {subComponent?.description && (
+            <SubComponentDescription
+              variant="body1"
+              hasLongDescription={!!subComponent?.long_description}
+              hasTags={!!(subComponent?.tags && subComponent.tags.length > 0)}
+            >
+              {subComponent.description}
+            </SubComponentDescription>
+          )}
+          {subComponent?.tags && subComponent.tags.length > 0 && (
+            <TagsContainer>
+              {subComponent.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} size="small" />
+              ))}
+            </TagsContainer>
+          )}
+          {subComponent?.long_description && (
+            <SubComponentLongDescription
+              variant="body2"
+              hasDocumentation={!!subComponent?.documentation_url}
+              hasTags={!!(subComponent?.tags && subComponent.tags.length > 0)}
+            >
+              {subComponent.long_description}
+            </SubComponentLongDescription>
+          )}
+          {subComponent?.documentation_url && (
+            <DocumentationButtonContainer>
+              <Button
+                variant="outlined"
+                component="a"
+                startIcon={<OpenInNew />}
+                href={subComponent.documentation_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View Documentation
+              </Button>
+            </DocumentationButtonContainer>
+          )}
+        </StyledPaper>
+      )}
 
       <StyledPaper>
         {loading && (

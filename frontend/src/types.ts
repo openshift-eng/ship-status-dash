@@ -63,6 +63,9 @@ export interface SubComponent {
   name: string
   slug: string
   description: string
+  long_description?: string
+  documentation_url?: string
+  tags?: string[]
   managed: boolean
   requires_confirmation: boolean
   monitoring?: Monitoring

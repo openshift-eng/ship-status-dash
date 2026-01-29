@@ -8,13 +8,31 @@ import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
 const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
-  const color = getStatusBackgroundColor(theme, status)
+  const statusColor = getStatusBackgroundColor(theme, status)
 
   return {
-    backgroundColor: color,
-    border: `2px solid ${color}`,
+    backgroundColor: theme.palette.background.paper,
+    border: `1px solid ${statusColor}`,
     borderRadius: theme.spacing(2),
     transition: 'all 0.2s ease-in-out',
+    position: 'relative',
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: statusColor,
+      opacity: 0.05,
+      borderRadius: theme.spacing(2),
+      pointerEvents: 'none',
+      zIndex: 0,
+    },
+    '& > *': {
+      position: 'relative',
+      zIndex: 1,
+    },
     '&:hover': {
       boxShadow: theme.shadows[6],
       transform: 'translateY(-2px)',

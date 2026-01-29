@@ -8,9 +8,13 @@ components:
     sub_components:
       - name: "Tide"
         description: "Automated merging of PRs"
+        long_description: "Tide is a tool that automates the merging of PRs based on the properly added labels and job statuses."
+        documentation_url: "https://docs.prow.k8s.io/docs/components/core/tide/"
+        tags: ["pr-merging", "github"]
         requires_confirmation: true
       - name: "Deck"
         description: "Dashboard for Prow"
+        tags: ["frontend"]
         requires_confirmation: false
     owners:
       - user: "developer"
@@ -24,15 +28,20 @@ components:
     sub_components:
       - name: "Build01"
         description: "AWS build farm cluster"
+        long_description: "This is the original AWS build farm cluster where many of the CI jobs are run, especially those that utilize AWS."
+        tags: ["jobs", "aws"]
         requires_confirmation: true
       - name: "Build02"
         description: "GCP build farm cluster"
+        tags: ["jobs", "gcp"]
         requires_confirmation: true
       - name: "Build03"
         description: "AWS build farm cluster"
+        tags: ["jobs", "aws"]
         requires_confirmation: true
       - name: "Build04"
         description: "GCP build farm cluster"
+        tags: ["jobs", "gcp"]
         requires_confirmation: true
     owners:
       - user: "developer"
