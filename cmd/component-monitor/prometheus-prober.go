@@ -30,12 +30,14 @@ func NewPrometheusProber(componentSlug string, subComponentSlug string, client p
 	}
 }
 
-func (p *PrometheusProber) Probe(ctx context.Context, results chan<- types.ComponentMonitorReportComponentStatus, errChan chan<- error) {
+func (p *PrometheusProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 	var successful, failed []types.PrometheusQuery
 	for _, prometheusQuery := range p.prometheusQueries {
 		result, err := p.runQuery(ctx, prometheusQuery.Query, prometheusQuery.Duration, prometheusQuery.Step)
 		if err != nil {
-			errChan <- err
+			results <- p.createErrorResult(prometheusQuery.Query, err)
+			// If any queries error, we want an error result to be returned so that the absent-report-checker can create an outage if it continues to error.
+			return
 		}
 
 		if succeeded(result) {
@@ -109,7 +111,17 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 	return result, nil
 }
 
-func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, successfulQueries []types.PrometheusQuery, failedQueries []types.PrometheusQuery) types.ComponentMonitorReportComponentStatus {
+func (p *PrometheusProber) createErrorResult(query string, err error) ProbeResult {
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+		},
+		Error: fmt.Errorf("error running Prometheus query, for component: %s sub-component %s. query: %s. error: %w", p.componentSlug, p.subComponentSlug, query, err),
+	}
+}
+
+func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, successfulQueries []types.PrometheusQuery, failedQueries []types.PrometheusQuery) ProbeResult {
 	status := types.ComponentMonitorReportComponentStatus{
 		ComponentSlug:    p.componentSlug,
 		SubComponentSlug: p.subComponentSlug,
@@ -154,7 +166,7 @@ func (p *PrometheusProber) createStatusFromQueryResults(ctx context.Context, suc
 		status.Reasons = reasons
 	}
 
-	return status
+	return ProbeResult{ComponentMonitorReportComponentStatus: status}
 }
 
 func extractValue(result model.Value) string {

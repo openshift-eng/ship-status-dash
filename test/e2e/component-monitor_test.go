@@ -192,6 +192,43 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 
 			restoreHealthyMetricsAndVerifyRecovery(t, mockMonitoredComponentURL, client, componentName, subComponentName, foundOutage.ID)
 		})
+
+		// Test sub-component with multiple queries where one always fails with an error
+		t.Run("QueryErrorPreventsStatusReport", func(t *testing.T) {
+			subComponentName := "error-handling-test"
+			componentName := "Sippy"
+
+			// Clean up any existing outages
+			cleanupActiveOutages(t, client, componentName, subComponentName)
+
+			// Set up healthy metrics for the valid query
+			updateMetrics(t, mockMonitoredComponentURL, allHealthyMetrics)
+
+			// Wait for component-monitor to attempt probing (which will fail due to query error)
+			// Then wait for absent report checker to detect missing report and create outage
+			// The absent report checker runs every 15s in e2e tests, and threshold is 3x frequency (30s)
+			// So we need to wait at least 45s for the absent report checker to create an outage
+			var absentReportOutage *types.Outage
+			ctx := context.Background()
+			err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 60*time.Second, true, func(ctx context.Context) (bool, error) {
+				outages := getOutages(t, client, componentName, subComponentName)
+				for i := range outages {
+					if outages[i].DiscoveredFrom == "absent-monitored-component-report" && !outages[i].EndTime.Valid {
+						absentReportOutage = &outages[i]
+						return true, nil
+					}
+				}
+				return false, nil
+			})
+
+			require.NoError(t, err, "Absent report outage should be created when no status is sent due to query error")
+			require.NotNil(t, absentReportOutage, "Absent report outage should exist")
+
+			assert.Equal(t, string(types.SeverityDown), string(absentReportOutage.Severity))
+			assert.Equal(t, "absent-monitored-component-report", absentReportOutage.DiscoveredFrom)
+			assert.Equal(t, "dashboard", absentReportOutage.CreatedBy)
+			assert.Contains(t, absentReportOutage.Description, "Component-monitor has not reported status within expected time")
+		})
 	}
 }
 
