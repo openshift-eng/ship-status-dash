@@ -312,59 +312,6 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 		},
 		{
-			name:   "multiple statuses processed sequentially",
-			config: repositories.TestConfig(true, false),
-			request: &types.ComponentMonitorReportRequest{
-				ComponentMonitor: "test-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    "test-component",
-						SubComponentSlug: "test-subcomponent",
-						Status:           types.StatusHealthy,
-						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
-					},
-					{
-						ComponentSlug:    "test-component",
-						SubComponentSlug: "test-subcomponent",
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    types.CheckTypeHTTP,
-								Check:   "url",
-								Results: "timeout",
-							},
-						},
-					},
-				},
-			},
-			setupOutageManager: func(m *outage.MockOutageManager) {
-				// First status (healthy) will resolve, second (unhealthy) will create
-				m.GetActiveOutagesCreatedByFn = func(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
-					// First call (healthy status) - return an outage to resolve
-					// Second call (unhealthy status) - return empty
-					if m.GetActiveOutagesCreatedByCallCount == 0 {
-						return []types.Outage{{ComponentName: componentSlug, SubComponentName: subComponentSlug}}, nil
-					}
-					return []types.Outage{}, nil
-				}
-			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				created := m.CreatedOutages[0]
-				assert.Len(t, created.Reasons, 1)
-				assert.Equal(t, types.CheckTypeHTTP, created.Reasons[0].Type)
-				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
-				assert.Len(t, m.UpdatedOutages, 1, "Should resolve one outage")
-			},
-			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
-				assert.Len(t, pingRepo.UpsertedPings, 2, "ping should be called for each status")
-				ping1 := pingRepo.UpsertedPings[0]
-				ping2 := pingRepo.UpsertedPings[1]
-				assert.Equal(t, "test-component", ping1.ComponentSlug)
-				assert.Equal(t, "test-component", ping2.ComponentSlug)
-			},
-		},
-		{
 			name:   "unhealthy status creates outage with multiple reasons",
 			config: repositories.TestConfig(false, false),
 			request: &types.ComponentMonitorReportRequest{

@@ -17,9 +17,6 @@ type MockOutageManager struct {
 	}
 	UpdatedOutages []*types.Outage
 
-	// Call tracking
-	GetActiveOutagesCreatedByCallCount int
-
 	// Mock functions
 	CreateOutageFn                   func(*types.Outage, []types.Reason) error
 	UpdateOutageFn                   func(*types.Outage) error
@@ -29,15 +26,8 @@ type MockOutageManager struct {
 
 // GetActiveOutagesCreatedBy returns mock active outages.
 func (m *MockOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
-	currentCallCount := m.GetActiveOutagesCreatedByCallCount
-	m.GetActiveOutagesCreatedByCallCount++
 	if m.GetActiveOutagesCreatedByFn != nil {
-		// Temporarily restore the count so the function sees the pre-increment value
-		originalCount := m.GetActiveOutagesCreatedByCallCount
-		m.GetActiveOutagesCreatedByCallCount = currentCallCount
-		result, err := m.GetActiveOutagesCreatedByFn(componentSlug, subComponentSlug, createdBy)
-		m.GetActiveOutagesCreatedByCallCount = originalCount
-		return result, err
+		return m.GetActiveOutagesCreatedByFn(componentSlug, subComponentSlug, createdBy)
 	}
 	if m.ActiveOutagesCreatedByError != nil {
 		return nil, m.ActiveOutagesCreatedByError
