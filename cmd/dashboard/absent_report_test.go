@@ -7,7 +7,6 @@ import (
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
-	"ship-status-dash/pkg/testhelper"
 	"ship-status-dash/pkg/types"
 
 	"github.com/sirupsen/logrus"
@@ -23,8 +22,8 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 		name                 string
 		config               *types.DashboardConfig
 		setupPingRepo        func(*repositories.MockComponentPingRepository)
-		setupOutageRepo      func(*repositories.MockOutageRepository)
-		verifyCreatedOutages func(*testing.T, []*types.Outage) // Required - must verify all expected outages
+		setupOutageManager   func(*outage.MockOutageManager)
+		verifyCreatedOutages func(*testing.T, *outage.MockOutageManager) // Required - must verify all expected outages
 	}{
 		{
 			name: "skips sub-component without monitoring frequency",
@@ -43,10 +42,10 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					},
 				},
 			},
-			setupPingRepo:   func(*repositories.MockComponentPingRepository) {},
-			setupOutageRepo: func(*repositories.MockOutageRepository) {},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				assert.Len(t, outages, 0, "Expected no outages to be created")
+			setupPingRepo:      func(*repositories.MockComponentPingRepository) {},
+			setupOutageManager: func(*outage.MockOutageManager) {},
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 0, "Expected no outages to be created")
 			},
 		},
 		{
@@ -66,10 +65,10 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					},
 				},
 			},
-			setupPingRepo:   func(*repositories.MockComponentPingRepository) {},
-			setupOutageRepo: func(*repositories.MockOutageRepository) {},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				assert.Len(t, outages, 0, "Expected no outages to be created")
+			setupPingRepo:      func(*repositories.MockComponentPingRepository) {},
+			setupOutageManager: func(*outage.MockOutageManager) {},
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 0, "Expected no outages to be created")
 			},
 		},
 		{
@@ -93,12 +92,15 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
 				repo.LastPingTimes = nil
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{}, nil
+				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				require.Len(t, outages, 1, "Expected 1 outage to be created")
-				outage := outages[0]
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				require.Len(t, m.CreatedOutages, 1, "Expected 1 outage to be created")
+				created := m.CreatedOutages[0]
+				outage := created.Outage
 				assert.Equal(t, "test-component", outage.ComponentName)
 				assert.Equal(t, "test-subcomponent", outage.SubComponentName)
 				assert.Equal(t, types.SeverityDown, outage.Severity)
@@ -134,12 +136,14 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					"test-component/test-subcomponent": &pastTime,
 				}
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{}, nil
+				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				require.Len(t, outages, 1, "Expected 1 outage to be created")
-				assert.Contains(t, outages[0].Description, "exceeding threshold")
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				require.Len(t, m.CreatedOutages, 1, "Expected 1 outage to be created")
+				assert.Contains(t, m.CreatedOutages[0].Outage.Description, "exceeding threshold")
 			},
 		},
 		{
@@ -166,11 +170,13 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					"test-component/test-subcomponent": &pastTime,
 				}
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{}, nil
+				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				assert.Len(t, outages, 0, "Expected no outages to be created")
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 0, "Expected no outages to be created")
 			},
 		},
 		{
@@ -193,20 +199,25 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
 				repo.LastPingTimes = nil
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{
-					{
-						ComponentName:    "test-component",
-						SubComponentName: "test-subcomponent",
-						DiscoveredFrom:   AbsentReportSource,
-						CreatedBy:        AbsentReportCreator,
-						Severity:         types.SeverityDown,
-						StartTime:        time.Now().Add(-10 * time.Minute),
-					},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					if componentSlug == "test-component" && subComponentSlug == "test-subcomponent" && discoveredFrom == AbsentReportSource {
+						return []types.Outage{
+							{
+								ComponentName:    "test-component",
+								SubComponentName: "test-subcomponent",
+								DiscoveredFrom:   AbsentReportSource,
+								CreatedBy:        AbsentReportCreator,
+								Severity:         types.SeverityDown,
+								StartTime:        time.Now().Add(-10 * time.Minute),
+							},
+						}, nil
+					}
+					return []types.Outage{}, nil
 				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				assert.Len(t, outages, 1, "Should only have the initial outage, no new one should be created")
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 0, "Should not create a new outage when one already exists")
 			},
 		},
 		{
@@ -230,13 +241,16 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
 				repo.LastPingTimes = nil
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{}, nil
+				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
-				require.Len(t, outages, 1, "Expected 1 outage to be created")
-				assert.False(t, outages[0].ConfirmedAt.Valid)
-				assert.Nil(t, outages[0].ConfirmedBy)
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				require.Len(t, m.CreatedOutages, 1, "Expected 1 outage to be created")
+				outage := m.CreatedOutages[0].Outage
+				assert.False(t, outage.ConfirmedAt.Valid)
+				assert.Nil(t, outage.ConfirmedBy)
 			},
 		},
 		{
@@ -281,18 +295,21 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					// component-1/sub-2 and component-2/sub-1 have no pings, so outages should be created
 				}
 			},
-			setupOutageRepo: func(repo *repositories.MockOutageRepository) {
-				repo.ActiveOutages = []types.Outage{}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{}, nil
+				}
 			},
-			verifyCreatedOutages: func(t *testing.T, outages []*types.Outage) {
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
 				// Verify outages were created for component-1/sub-2 and component-2/sub-1
 				// but NOT for component-1/sub-1 (which has a recent ping)
-				require.Len(t, outages, 2, "Expected 2 outages to be created")
+				require.Len(t, m.CreatedOutages, 2, "Expected 2 outages to be created")
 				expectedOutages := map[string]bool{
 					"component-1/sub-2": false,
 					"component-2/sub-1": false,
 				}
-				for _, outage := range outages {
+				for _, created := range m.CreatedOutages {
+					outage := created.Outage
 					key := outage.ComponentName + "/" + outage.SubComponentName
 					if _, expected := expectedOutages[key]; expected {
 						expectedOutages[key] = true
@@ -304,7 +321,8 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 					assert.True(t, found, "Expected outage to be created for %s", key)
 				}
 				// Verify no outage was created for component-1/sub-1
-				for _, outage := range outages {
+				for _, created := range m.CreatedOutages {
+					outage := created.Outage
 					if outage.ComponentName == "component-1" && outage.SubComponentName == "sub-1" {
 						t.Error("Unexpected outage created for component-1/sub-1, which has a recent ping")
 					}
@@ -319,29 +337,16 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			tt.setupPingRepo(pingRepo)
 
 			configManager := config.CreateTestConfigManager(tt.config)
-			db := testhelper.SetupTestDB(t)
+			mockOutageManager := &outage.MockOutageManager{}
 
-			if tt.setupOutageRepo != nil {
-				// Setup initial outage data if needed
-				mockRepo := &repositories.MockOutageRepository{}
-				tt.setupOutageRepo(mockRepo)
-				// Copy mock data to DB if needed
-				for _, outage := range mockRepo.ActiveOutages {
-					db.Create(&outage)
-				}
+			if tt.setupOutageManager != nil {
+				tt.setupOutageManager(mockOutageManager)
 			}
 
-			outageManager := outage.NewOutageManager(db, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
-			checker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, 5*time.Minute, logger)
+			checker := NewAbsentMonitoredComponentReportChecker(configManager, mockOutageManager, pingRepo, 5*time.Minute, logger)
 			checker.checkForAbsentReports()
 
-			var createdOutages []types.Outage
-			db.Find(&createdOutages)
-			var createdOutagesPtrs []*types.Outage
-			for i := range createdOutages {
-				createdOutagesPtrs = append(createdOutagesPtrs, &createdOutages[i])
-			}
-			tt.verifyCreatedOutages(t, createdOutagesPtrs)
+			tt.verifyCreatedOutages(t, mockOutageManager)
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"ship-status-dash/pkg/config"
@@ -16,14 +17,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// setupTestDB creates an in-memory SQLite database for testing and migrates the standard outage-related models.
+// The database is automatically closed when the test completes.
+func setupTestDB(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{})
+	if err != nil {
+		t.Fatalf("Failed to migrate test database: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			sqlDB.Close()
+		}
+	})
+	return db
+}
+
 type testManager struct {
-	manager    *OutageManager
+	manager    OutageManager
 	db         *gorm.DB
 	mockServer *MockSlackServer
 }
 
 func setupTestManager(t *testing.T, cfg *types.DashboardConfig) *testManager {
-	db := testhelper.SetupTestDB(t)
+	db := setupTestDB(t)
 
 	cfgManager, err := config.NewManager("", func(string) (*types.DashboardConfig, error) {
 		return cfg, nil
@@ -36,7 +57,7 @@ func setupTestManager(t *testing.T, cfg *types.DashboardConfig) *testManager {
 	mockServer := NewMockSlackServer(t)
 	slackClient := mockServer.Client()
 
-	manager := NewOutageManager(db, slackClient, cfgManager, "https://test.example.com/", "https://rhsandbox.slack.com/", logrus.New())
+	manager := NewDBOutageManager(db, slackClient, cfgManager, "https://test.example.com/", "https://rhsandbox.slack.com/", logrus.New())
 
 	return &testManager{
 		manager:    manager,

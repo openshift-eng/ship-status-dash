@@ -240,7 +240,7 @@ func main() {
 		log.Info("Slack integration disabled (SLACK_BOT_TOKEN not set)")
 	}
 
-	outageManager := outage.NewOutageManager(
+	outageManager := outage.NewDBOutageManager(
 		db,
 		slackClient,
 		configManager,

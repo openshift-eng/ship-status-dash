@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/gorm"
-
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/repositories"
@@ -22,15 +20,13 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	db := testhelper.SetupTestDB(t)
-
 	tests := []struct {
 		name                     string
 		config                   *types.DashboardConfig
 		request                  *types.ComponentMonitorReportRequest
-		setupRepo                func(*gorm.DB)
+		setupOutageManager       func(*outage.MockOutageManager)
 		wantErr                  error
-		verifyOutageExpectations func(*testing.T, *gorm.DB)
+		verifyOutageExpectations func(*testing.T, *outage.MockOutageManager)
 		verifyPingExpectations   func(*testing.T, *repositories.MockComponentPingRepository)
 	}{
 		{
@@ -47,7 +43,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
+			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
@@ -72,26 +68,16 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
-				outages := []types.Outage{
-					{Model: gorm.Model{ID: 1}, ComponentName: "test-component", SubComponentName: "test-subcomponent", CreatedBy: "test-monitor"},
-					{Model: gorm.Model{ID: 2}, ComponentName: "test-component", SubComponentName: "test-subcomponent", CreatedBy: "test-monitor"},
-				}
-				for i := range outages {
-					db.Create(&outages[i])
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{
+					{ComponentName: "test-component", SubComponentName: "test-subcomponent", CreatedBy: "test-monitor"},
+					{ComponentName: "test-component", SubComponentName: "test-subcomponent", CreatedBy: "test-monitor"},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var savedOutages []types.Outage
-				db.Where("component_name = ? AND sub_component_name = ?", "test-component", "test-subcomponent").Find(&savedOutages)
-				assert.Len(t, savedOutages, 2)
-				var createdOutages []types.Outage
-				db.Where("component_name = ? AND sub_component_name = ? AND id NOT IN (1, 2)", "test-component", "test-subcomponent").Find(&createdOutages)
-				assert.Empty(t, createdOutages)
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Empty(t, createdReasons)
-				for _, outage := range savedOutages {
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.UpdatedOutages, 2, "Should update 2 outages")
+				assert.Empty(t, m.CreatedOutages, "Should not create new outages")
+				for _, outage := range m.UpdatedOutages {
 					assert.True(t, outage.EndTime.Valid)
 					assert.Equal(t, "test-monitor", *outage.ResolvedBy)
 				}
@@ -117,27 +103,14 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
-				outage := types.Outage{ComponentName: "test-component", SubComponentName: "test-subcomponent"}
-				db.Create(&outage)
-			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var savedOutages []types.Outage
-				db.Where("component_name = ? AND sub_component_name = ?", "test-component", "test-subcomponent").Find(&savedOutages)
-				// Filter out the initial outage
-				var updatedCount int
-				for _, o := range savedOutages {
-					if o.EndTime.Valid {
-						updatedCount++
-					}
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{
+					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
 				}
-				assert.Equal(t, 0, updatedCount, "No outages should be updated")
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				assert.LessOrEqual(t, len(createdOutages), 1, "No new outages should be created")
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Empty(t, createdReasons)
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.UpdatedOutages, "No outages should be updated")
+				assert.Empty(t, m.CreatedOutages, "No new outages should be created")
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -163,23 +136,18 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
+			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Len(t, createdReasons, 1)
-				reason := createdReasons[0]
-				assert.Equal(t, types.CheckTypePrometheus, reason.Type)
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				assert.Len(t, createdOutages, 1)
-				outage := createdOutages[0]
-				assert.Equal(t, "test-component", outage.ComponentName)
-				assert.Equal(t, types.SeverityDown, outage.Severity)
-				assert.Equal(t, "test-monitor", *outage.ConfirmedBy)
-				assert.True(t, outage.ConfirmedAt.Valid)
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				created := m.CreatedOutages[0]
+				assert.Len(t, created.Reasons, 1)
+				assert.Equal(t, types.CheckTypePrometheus, created.Reasons[0].Type)
+				assert.Equal(t, "test-component", created.Outage.ComponentName)
+				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
+				assert.Equal(t, "test-monitor", *created.Outage.ConfirmedBy)
+				assert.True(t, created.Outage.ConfirmedAt.Valid)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -208,19 +176,15 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
+			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Len(t, createdReasons, 1)
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				assert.Len(t, createdOutages, 1)
-				outage := createdOutages[0]
-				assert.Nil(t, outage.ConfirmedBy)
-				assert.False(t, outage.ConfirmedAt.Valid)
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				created := m.CreatedOutages[0]
+				assert.Len(t, created.Reasons, 1)
+				assert.Nil(t, created.Outage.ConfirmedBy)
+				assert.False(t, created.Outage.ConfirmedAt.Valid)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -240,25 +204,20 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
-				outage := types.Outage{
-					ComponentName:    "test-component",
-					SubComponentName: "test-subcomponent",
-					CreatedBy:        "test-monitor",
-					Severity:         types.SeverityDown,
-					StartTime:        time.Now().Add(-10 * time.Minute),
-					DiscoveredFrom:   ComponentMonitor,
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDown,
+						StartTime:        time.Now().Add(-10 * time.Minute),
+						DiscoveredFrom:   ComponentMonitor,
+					},
 				}
-				db.Create(&outage)
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				// Should only have the initial outage
-				assert.LessOrEqual(t, len(createdOutages), 1)
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Empty(t, createdReasons)
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages, "Should not create new outage")
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -278,8 +237,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(*gorm.DB) {},
-			wantErr:   errors.New("component not found: nonexistent"),
+			setupOutageManager: func(*outage.MockOutageManager) {},
+			wantErr:            errors.New("component not found: nonexistent"),
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Empty(t, pingRepo.UpsertedPings, "ping should not be called when component not found")
 			},
@@ -298,14 +257,36 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(*gorm.DB) {},
-			wantErr:   errors.New("sub-component not found: test-component/nonexistent"),
+			setupOutageManager: func(*outage.MockOutageManager) {},
+			wantErr:            errors.New("sub-component not found: test-component/nonexistent"),
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Empty(t, pingRepo.UpsertedPings, "ping should not be called when sub-component not found")
 			},
 		},
 		{
-			name:   "save outage error continues processing",
+			name:   "get active outages error returns error",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedByError = errors.New("database error")
+			},
+			wantErr: errors.New("database error"),
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1, "ping should be called before checking active outages")
+			},
+		},
+		{
+			name:   "update outage error continues processing",
 			config: repositories.TestConfig(true, false),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
@@ -318,9 +299,13 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
-				outage := types.Outage{ComponentName: "test-component", SubComponentName: "test-subcomponent"}
-				db.Create(&outage)
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{
+					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
+				}
+				m.UpdateOutageFn = func(*types.Outage) error {
+					return errors.New("update error")
+				}
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -328,7 +313,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 		},
 		{
 			name:   "multiple statuses processed sequentially",
-			config: repositories.TestConfig(false, false),
+			config: repositories.TestConfig(true, false),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -352,20 +337,24 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
-				// No initial data needed
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				// First status (healthy) will resolve, second (unhealthy) will create
+				m.GetActiveOutagesCreatedByFn = func(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
+					// First call (healthy status) - return an outage to resolve
+					// Second call (unhealthy status) - return empty
+					if m.GetActiveOutagesCreatedByCallCount == 0 {
+						return []types.Outage{{ComponentName: componentSlug, SubComponentName: subComponentSlug}}, nil
+					}
+					return []types.Outage{}, nil
+				}
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Len(t, createdReasons, 1)
-				reason := createdReasons[0]
-				assert.Equal(t, types.CheckTypeHTTP, reason.Type)
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				assert.Len(t, createdOutages, 1)
-				outage := createdOutages[0]
-				assert.Equal(t, types.SeverityDown, outage.Severity)
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				created := m.CreatedOutages[0]
+				assert.Len(t, created.Reasons, 1)
+				assert.Equal(t, types.CheckTypeHTTP, created.Reasons[0].Type)
+				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
+				assert.Len(t, m.UpdatedOutages, 1, "Should resolve one outage")
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 2, "ping should be called for each status")
@@ -405,20 +394,15 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			setupRepo: func(db *gorm.DB) {
+			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, db *gorm.DB) {
-				var createdOutages []types.Outage
-				db.Find(&createdOutages)
-				assert.Len(t, createdOutages, 1)
-				outage := createdOutages[0]
-				assert.Equal(t, "test-component", outage.ComponentName)
-				assert.Equal(t, types.SeverityDown, outage.Severity)
-
-				var createdReasons []types.Reason
-				db.Find(&createdReasons)
-				assert.Len(t, createdReasons, 3, "Should create all three reasons")
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				created := m.CreatedOutages[0]
+				assert.Equal(t, "test-component", created.Outage.ComponentName)
+				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
+				assert.Len(t, created.Reasons, 3, "Should create all three reasons")
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -428,22 +412,17 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear data from previous test cases
-			db.Exec("DELETE FROM reasons")
-			db.Exec("DELETE FROM slack_threads")
-			db.Exec("DELETE FROM outages")
-
 			pingRepo := &repositories.MockComponentPingRepository{}
+			mockOutageManager := &outage.MockOutageManager{}
 
 			configManager := config.CreateTestConfigManager(tt.config)
 
-			if tt.setupRepo != nil {
-				tt.setupRepo(db)
+			if tt.setupOutageManager != nil {
+				tt.setupOutageManager(mockOutageManager)
 			}
 
-			outageManager := outage.NewOutageManager(db, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
 			processor := &ComponentMonitorReportProcessor{
-				outageManager: outageManager,
+				outageManager: mockOutageManager,
 				pingRepo:      pingRepo,
 				configManager: configManager,
 				logger:        logger,
@@ -456,7 +435,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			}
 
 			if tt.verifyOutageExpectations != nil {
-				tt.verifyOutageExpectations(t, db)
+				tt.verifyOutageExpectations(t, mockOutageManager)
 			}
 
 			if tt.verifyPingExpectations != nil {
@@ -469,8 +448,6 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
-
-	db := testhelper.SetupTestDB(t)
 
 	tests := []struct {
 		name           string
@@ -615,9 +592,10 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			configManager := config.CreateTestConfigManager(tt.config)
-			outageManager := outage.NewOutageManager(db, nil, configManager, "", "https://rhsandbox.slack.com/", logger)
+			// ValidateRequest doesn't use OutageManager, so we can use a nil mock
+			mockOutageManager := &outage.MockOutageManager{}
 			processor := &ComponentMonitorReportProcessor{
-				outageManager: outageManager,
+				outageManager: mockOutageManager,
 				pingRepo:      &repositories.MockComponentPingRepository{},
 				configManager: configManager,
 				logger:        logger,

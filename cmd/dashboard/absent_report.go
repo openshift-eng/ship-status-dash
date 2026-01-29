@@ -21,14 +21,14 @@ const (
 // AbsentMonitoredComponentReportChecker handles outages for components where pings have not been received within the expected time.
 type AbsentMonitoredComponentReportChecker struct {
 	configManager *config.Manager[types.DashboardConfig]
-	outageManager *outage.OutageManager
+	outageManager outage.OutageManager
 	pingRepo      repositories.ComponentPingRepository
 	checkInterval time.Duration
 	logger        *logrus.Logger
 }
 
 // NewAbsentMonitoredComponentReportChecker creates a new AbsentMonitoredComponentReportChecker instance.
-func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
+func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
 	return &AbsentMonitoredComponentReportChecker{
 		configManager: configManager,
 		outageManager: outageManager,

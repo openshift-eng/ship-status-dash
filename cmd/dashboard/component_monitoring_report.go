@@ -20,14 +20,14 @@ const (
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
 type ComponentMonitorReportProcessor struct {
-	outageManager *outage.OutageManager
+	outageManager outage.OutageManager
 	pingRepo      repositories.ComponentPingRepository
 	configManager *config.Manager[types.DashboardConfig]
 	logger        *logrus.Logger
 }
 
 // NewComponentMonitorReportProcessor creates a new processor instance.
-func NewComponentMonitorReportProcessor(outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger) *ComponentMonitorReportProcessor {
+func NewComponentMonitorReportProcessor(outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger) *ComponentMonitorReportProcessor {
 	return &ComponentMonitorReportProcessor{
 		outageManager: outageManager,
 		pingRepo:      pingRepo,
