@@ -37,18 +37,18 @@ func NewGORMOutageRepository(db *gorm.DB) OutageRepository {
 	return &gormOutageRepository{db: db}
 }
 
-// roundOutageTimes rounds all time fields in an outage to the nearest second
+// roundOutageTimes truncates all time fields in an outage down to the nearest second.
 func roundOutageTimes(outage *types.Outage) {
-	outage.StartTime = outage.StartTime.Round(time.Second)
+	outage.StartTime = outage.StartTime.Truncate(time.Second)
 	if outage.EndTime.Valid {
 		outage.EndTime = sql.NullTime{
-			Time:  outage.EndTime.Time.Round(time.Second),
+			Time:  outage.EndTime.Time.Truncate(time.Second),
 			Valid: true,
 		}
 	}
 	if outage.ConfirmedAt.Valid {
 		outage.ConfirmedAt = sql.NullTime{
-			Time:  outage.ConfirmedAt.Time.Round(time.Second),
+			Time:  outage.ConfirmedAt.Time.Truncate(time.Second),
 			Valid: true,
 		}
 	}
@@ -105,20 +105,22 @@ func (r *gormOutageRepository) GetOutagesForComponent(componentSlug string, subC
 }
 
 // GetActiveOutagesForSubComponent retrieves active outages for a specific sub-component.
-// An outage is considered active if end_time IS NULL OR end_time > now.
+// An outage is considered active if end_time IS NULL OR end_time > now (UTC for consistent DB comparison).
 func (r *gormOutageRepository) GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
 	var outages []types.Outage
-	err := r.db.Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, subComponentSlug, time.Now()).
+	now := time.Now().UTC()
+	err := r.db.Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, subComponentSlug, now).
 		Order("start_time DESC").
 		Find(&outages).Error
 	return outages, err
 }
 
 // GetActiveOutagesForComponent retrieves active outages for a component across all sub-components.
-// An outage is considered active if end_time IS NULL OR end_time > now.
+// An outage is considered active if end_time IS NULL OR end_time > now (UTC for consistent DB comparison).
 func (r *gormOutageRepository) GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error) {
 	var outages []types.Outage
-	err := r.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, time.Now()).
+	now := time.Now().UTC()
+	err := r.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, now).
 		Order("start_time DESC").
 		Find(&outages).Error
 	return outages, err
