@@ -54,6 +54,11 @@ export interface Monitoring {
   auto_resolve: boolean
 }
 
+export interface SlackReportingConfig {
+  channel: string
+  severity?: string
+}
+
 export interface SubComponent {
   name: string
   slug: string
@@ -61,6 +66,7 @@ export interface SubComponent {
   managed: boolean
   requires_confirmation: boolean
   monitoring?: Monitoring
+  slack_reporting?: SlackReportingConfig[]
   status?: Status
   active_outages?: Outage[]
 }
@@ -70,7 +76,7 @@ export interface Component {
   slug: string
   description: string
   ship_team: string
-  slack_channel: string
+  slack_reporting?: SlackReportingConfig[]
   sub_components: SubComponent[]
   owners: Array<{
     rover_group?: string
