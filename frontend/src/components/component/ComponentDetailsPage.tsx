@@ -27,6 +27,10 @@ import { deslugify } from '../../utils/slugify'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
+const SERVICE_ACCOUNT_PREFIX = 'system:serviceaccount:'
+const trimServiceAccountPrefix = (value: string): string =>
+  value.startsWith(SERVICE_ACCOUNT_PREFIX) ? value.slice(SERVICE_ACCOUNT_PREFIX.length) : value
+
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
   marginBottom: theme.spacing(4),
@@ -115,6 +119,38 @@ const LoadingBox = styled(Box)(() => ({
   minHeight: '200px',
 }))
 
+const HeaderDivider = styled(Divider)(({ theme }) => ({
+  marginBottom: theme.spacing(3),
+}))
+
+const InfoCardsGrid = styled(Box)(({ theme }) => ({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+  gap: theme.spacing(3),
+}))
+
+const SlackChannelsList = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(0.5),
+}))
+
+const SlackChannelItem = styled(Box)(({ theme }) => ({
+  fontSize: theme.typography.pxToRem(14),
+}))
+
+const OwnersChipsWrap = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1),
+}))
+
+const OwnerChipsRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.spacing(0.5),
+}))
+
 const ComponentDetailsPage = () => {
   const { componentSlug } = useParams<{ componentSlug: string }>()
   const navigate = useNavigate()
@@ -197,33 +233,35 @@ const ComponentDetailsPage = () => {
               />
             </HeaderContent>
 
-            <Divider sx={{ marginBottom: 3 }} />
+            <HeaderDivider />
 
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                gap: 3,
-              }}
-            >
+            <InfoCardsGrid>
               <InfoCard>
                 <CardContent>
                   <InfoTitle>SHIP Team</InfoTitle>
                   <InfoValue>{component.ship_team}</InfoValue>
                 </CardContent>
               </InfoCard>
-              <InfoCard>
-                <CardContent>
-                  <InfoTitle>Alerting Slack Channel</InfoTitle>
-                  <InfoValue>{component.slack_channel}</InfoValue>
-                </CardContent>
-              </InfoCard>
+              {component.slack_reporting && component.slack_reporting.length > 0 && (
+                <InfoCard>
+                  <CardContent>
+                    <InfoTitle>Alerting Slack Channels</InfoTitle>
+                    <InfoValue>
+                      <SlackChannelsList>
+                        {component.slack_reporting.map((config, index) => (
+                          <SlackChannelItem key={index}>{config.channel}</SlackChannelItem>
+                        ))}
+                      </SlackChannelsList>
+                    </InfoValue>
+                  </CardContent>
+                </InfoCard>
+              )}
               <InfoCard>
                 <CardContent>
                   <InfoTitle>Owners</InfoTitle>
                   <InfoValue>
                     {component.owners.length > 0 ? (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <OwnersChipsWrap>
                         {component.owners.map((owner, index) => {
                           const ownerItems: Array<{ label: string; value: string }> = []
                           if (owner.rover_group) {
@@ -235,12 +273,12 @@ const ComponentDetailsPage = () => {
                           if (owner.service_account) {
                             ownerItems.push({
                               label: 'Service Account',
-                              value: owner.service_account,
+                              value: trimServiceAccountPrefix(owner.service_account),
                             })
                           }
 
                           return (
-                            <Box key={index} sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            <OwnerChipsRow key={index}>
                               {ownerItems.map((item, itemIndex) => (
                                 <Chip
                                   key={itemIndex}
@@ -250,10 +288,10 @@ const ComponentDetailsPage = () => {
                                   sx={{ fontSize: '0.75rem' }}
                                 />
                               ))}
-                            </Box>
+                            </OwnerChipsRow>
                           )
                         })}
-                      </Box>
+                      </OwnersChipsWrap>
                     ) : (
                       'No owners specified'
                     )}
@@ -270,7 +308,7 @@ const ComponentDetailsPage = () => {
                   </CardContent>
                 </InfoCard>
               )}
-            </Box>
+            </InfoCardsGrid>
           </ComponentHeader>
 
           <SubComponentsSection>
