@@ -23,14 +23,14 @@ import (
 type Handlers struct {
 	logger                 *logrus.Logger
 	configManager          *config.Manager[types.DashboardConfig]
-	outageManager          *outage.OutageManager
+	outageManager          outage.OutageManager
 	pingRepo               repositories.ComponentPingRepository
 	groupCache             *auth.GroupMembershipCache
 	monitorReportProcessor *ComponentMonitorReportProcessor
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		configManager:          configManager,
@@ -248,7 +248,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.CreateOutage(&outage); err != nil {
+	if err := h.outageManager.CreateOutage(&outage, nil); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return

@@ -21,14 +21,14 @@ const (
 // AbsentMonitoredComponentReportChecker handles outages for components where pings have not been received within the expected time.
 type AbsentMonitoredComponentReportChecker struct {
 	configManager *config.Manager[types.DashboardConfig]
-	outageManager *outage.OutageManager
+	outageManager outage.OutageManager
 	pingRepo      repositories.ComponentPingRepository
 	checkInterval time.Duration
 	logger        *logrus.Logger
 }
 
 // NewAbsentMonitoredComponentReportChecker creates a new AbsentMonitoredComponentReportChecker instance.
-func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageManager *outage.OutageManager, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
+func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, checkInterval time.Duration, logger *logrus.Logger) *AbsentMonitoredComponentReportChecker {
 	return &AbsentMonitoredComponentReportChecker{
 		configManager: configManager,
 		outageManager: outageManager,
@@ -102,7 +102,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			now := time.Now().Truncate(time.Second) // Truncate to the nearest second to avoid sub-second precision issues
+			now := time.Now()
 			var componentInOutage bool
 			var reason string
 
@@ -173,7 +173,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			if err := a.outageManager.CreateOutage(&outage); err != nil {
+			if err := a.outageManager.CreateOutage(&outage, nil); err != nil {
 				componentLogger.WithField("error", err).Error("Failed to create absent-report outage")
 				continue
 			}
