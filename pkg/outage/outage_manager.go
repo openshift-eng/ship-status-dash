@@ -7,43 +7,75 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
+	"gorm.io/gorm"
 )
 
-// OutageManager handles outage creation and updates with Slack reporting.
-type OutageManager struct {
-	repo          repositories.OutageRepository
-	slackReporter *SlackReporter
-	logger        *logrus.Logger
+// OutageManager defines the interface for outage management operations.
+type OutageManager interface {
+	CreateOutage(outage *types.Outage, reasons []types.Reason) error
+	UpdateOutage(outage *types.Outage) error
+	GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error)
+	GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
+	GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error)
+	GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
+	GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error)
+	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
+	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
+	DeleteOutage(outage *types.Outage) error
 }
 
-// NewOutageManager creates a new OutageManager instance.
-func NewOutageManager(
-	repo repositories.OutageRepository,
-	slackThreadRepo repositories.SlackThreadRepository,
+// DBOutageManager handles outage creation and updates with Slack reporting using a database.
+type DBOutageManager struct {
+	slackThreadRepo repositories.SlackThreadRepository
+	db              *gorm.DB
+	slackReporter   *SlackReporter
+	logger          *logrus.Logger
+}
+
+// NewDBOutageManager creates a new DBOutageManager instance.
+func NewDBOutageManager(
+	db *gorm.DB,
 	slackClient *slack.Client,
 	configManager *config.Manager[types.DashboardConfig],
 	baseURL string,
 	slackWorkspaceURL string,
 	logger *logrus.Logger,
-) *OutageManager {
+) OutageManager {
+	slackThreadRepo := repositories.NewGORMSlackThreadRepository(db)
 	var slackReporter *SlackReporter
 	if slackClient != nil {
 		slackReporter = NewSlackReporter(slackClient, slackThreadRepo, configManager, baseURL, slackWorkspaceURL, logger)
 	}
 
-	return &OutageManager{
-		repo:          repo,
-		slackReporter: slackReporter,
-		logger:        logger,
+	return &DBOutageManager{
+		slackThreadRepo: slackThreadRepo,
+		db:              db,
+		slackReporter:   slackReporter,
+		logger:          logger,
 	}
 }
 
 // CreateOutage creates a new outage and posts to Slack channels if configured.
-func (m *OutageManager) CreateOutage(outage *types.Outage) error {
-	if err := m.repo.CreateOutage(outage); err != nil {
+func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason) error {
+	if err := m.db.Transaction(func(tx *gorm.DB) error {
+		outageRepo := repositories.NewGORMOutageRepository(tx)
+		if err := outageRepo.CreateOutage(outage); err != nil {
+			return err
+		}
+
+		for _, reason := range reasons {
+			reason.OutageID = outage.ID
+			if err := outageRepo.CreateReason(&reason); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
 		return err
 	}
 
+	// Slack reporting is done outside the transaction as we don't want to fail to create the outage due to slack reporting issues
 	if m.slackReporter != nil {
 		if err := m.slackReporter.ReportOutage(outage); err != nil {
 			m.logger.WithFields(logrus.Fields{
@@ -57,13 +89,14 @@ func (m *OutageManager) CreateOutage(outage *types.Outage) error {
 }
 
 // UpdateOutage updates an existing outage and posts thread replies to Slack.
-func (m *OutageManager) UpdateOutage(outage *types.Outage) error {
-	oldOutage, err := m.repo.GetOutageByID(outage.ComponentName, outage.SubComponentName, outage.ID)
+func (m *DBOutageManager) UpdateOutage(outage *types.Outage) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	oldOutage, err := outageRepo.GetOutageByID(outage.ComponentName, outage.SubComponentName, outage.ID)
 	if err != nil {
 		return err
 	}
 
-	if err := m.repo.SaveOutage(outage); err != nil {
+	if err := outageRepo.SaveOutage(outage); err != nil {
 		return err
 	}
 
@@ -79,52 +112,43 @@ func (m *OutageManager) UpdateOutage(outage *types.Outage) error {
 	return nil
 }
 
-// CreateReason delegates to the repository.
-func (m *OutageManager) CreateReason(reason *types.Reason) error {
-	return m.repo.CreateReason(reason)
-}
-
-// Transaction wraps the repository transaction.
-func (m *OutageManager) Transaction(fn func(*OutageManager) error) error {
-	return m.repo.Transaction(func(repo repositories.OutageRepository) error {
-		txManager := &OutageManager{
-			repo:          repo,
-			slackReporter: m.slackReporter,
-			logger:        m.logger,
-		}
-		return fn(txManager)
-	})
-}
-
 // Delegate read operations to repository
-func (m *OutageManager) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
-	return m.repo.GetOutageByID(componentSlug, subComponentSlug, outageID)
+func (m *DBOutageManager) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetOutageByID(componentSlug, subComponentSlug, outageID)
 }
 
-func (m *OutageManager) GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
-	return m.repo.GetOutagesForSubComponent(componentSlug, subComponentSlug)
+func (m *DBOutageManager) GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetOutagesForSubComponent(componentSlug, subComponentSlug)
 }
 
-func (m *OutageManager) GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error) {
-	return m.repo.GetOutagesForComponent(componentSlug, subComponentSlugs)
+func (m *DBOutageManager) GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetOutagesForComponent(componentSlug, subComponentSlugs)
 }
 
-func (m *OutageManager) GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
-	return m.repo.GetActiveOutagesForSubComponent(componentSlug, subComponentSlug)
+func (m *DBOutageManager) GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveOutagesForSubComponent(componentSlug, subComponentSlug)
 }
 
-func (m *OutageManager) GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error) {
-	return m.repo.GetActiveOutagesForComponent(componentSlug)
+func (m *DBOutageManager) GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveOutagesForComponent(componentSlug)
 }
 
-func (m *OutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
-	return m.repo.GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy)
+func (m *DBOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy)
 }
 
-func (m *OutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
-	return m.repo.GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom)
+func (m *DBOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom)
 }
 
-func (m *OutageManager) DeleteOutage(outage *types.Outage) error {
-	return m.repo.DeleteOutage(outage)
+func (m *DBOutageManager) DeleteOutage(outage *types.Outage) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.DeleteOutage(outage)
 }
