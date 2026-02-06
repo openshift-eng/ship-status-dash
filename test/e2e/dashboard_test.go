@@ -51,6 +51,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("SubComponentStatus", testSubComponentStatus(client))
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
+	t.Run("ListSubComponents", testListSubComponents(client))
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 	t.Run("AbsentReport", testAbsentReport(client))
@@ -1162,6 +1163,76 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 	}
 }
 
+func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("no filters returns all sub-components", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "", "")
+			// E2E config: Prow 4 + Downstream CI 1 + Build Farm 2 + Sippy 4 = 11
+			assert.Len(t, subs, 11)
+		})
+		t.Run("componentName filter returns only that component's sub-components", func(t *testing.T) {
+			subs := getSubComponents(t, client, "prow", "", "")
+			assert.Len(t, subs, 4)
+			names := make([]string, len(subs))
+			for i := range subs {
+				names[i] = subs[i].Name
+			}
+			assert.ElementsMatch(t, []string{"Tide", "Deck", "Hook", "Plank"}, names)
+		})
+		t.Run("non-matching componentName returns empty", func(t *testing.T) {
+			subs := getSubComponents(t, client, "non-existent", "", "")
+			assert.Empty(t, subs)
+		})
+
+		t.Run("team filter returns sub-components from components with that team", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "", "TestPlatform")
+			// Prow + Downstream CI both have ship_team TestPlatform
+			assert.Len(t, subs, 5)
+		})
+		t.Run("non-matching team returns empty", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "", "NonExistentTeam")
+			assert.Empty(t, subs)
+		})
+
+		t.Run("tag filter returns sub-components from different components for same tag", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "jobs", "")
+			// tag "jobs": Prow (Plank), Downstream CI (Retester), Build Farm (Build01, Build02)
+			assert.Len(t, subs, 4)
+			names := make([]string, len(subs))
+			for i := range subs {
+				names[i] = subs[i].Name
+			}
+			assert.ElementsMatch(t, []string{"Plank", "Retester", "Build01", "Build02"}, names)
+		})
+		t.Run("non-matching tag returns empty", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "nonexistent-tag", "")
+			assert.Empty(t, subs)
+		})
+
+		t.Run("tag and componentName together filter correctly", func(t *testing.T) {
+			subs := getSubComponents(t, client, "prow", "ci", "")
+			// Prow sub-components with tag "ci": Tide, Hook, Plank
+			assert.Len(t, subs, 3)
+			names := make([]string, len(subs))
+			for i := range subs {
+				names[i] = subs[i].Name
+			}
+			assert.ElementsMatch(t, []string{"Tide", "Hook", "Plank"}, names)
+		})
+		t.Run("tag and team together filter correctly", func(t *testing.T) {
+			subs := getSubComponents(t, client, "", "ci", "TestPlatform")
+			// TestPlatform components with tag "ci": Prow (Tide, Hook, Plank), Downstream CI (Retester)
+			assert.Len(t, subs, 4)
+			names := make([]string, len(subs))
+			for i := range subs {
+				names[i] = subs[i].Name
+			}
+			assert.ElementsMatch(t, []string{"Tide", "Hook", "Plank", "Retester"}, names)
+		})
+
+	}
+}
+
 func testUser(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET /api/user returns authenticated user", func(t *testing.T) {
@@ -1961,14 +2032,24 @@ func testConfigHotReload(client *TestHTTPClient) func(*testing.T) {
 		configPath := os.Getenv("TEST_DASHBOARD_CONFIG_PATH")
 		require.NotEmpty(t, configPath, "TEST_DASHBOARD_CONFIG_PATH must be set")
 
-		// Read original config
 		originalConfig := readConfig(t, configPath)
 
-		// Restore original config at the end
 		defer func() {
 			restoreConfig(t, configPath, originalConfig)
-			// Wait a bit for config to reload
-			time.Sleep(1 * time.Second)
+			err := wait.PollUntilContextTimeout(context.Background(), 200*time.Millisecond, 10*time.Second, true, func(ctx context.Context) (bool, error) {
+				prow := getComponent(t, client, "Prow")
+				if prow.Description != "Backbone of the CI system" {
+					return false, nil
+				}
+				components := getComponents(t, client)
+				for _, c := range components {
+					if c.Name == "Test Component" {
+						return false, nil
+					}
+				}
+				return true, nil
+			})
+			require.NoError(t, err, "Restored config should be reflected within 10 seconds")
 		}()
 
 		t.Run("Config changes are reflected after reload", func(t *testing.T) {
@@ -1986,9 +2067,9 @@ func testConfigHotReload(client *TestHTTPClient) func(*testing.T) {
 
 				// Add new component
 				newComponent := &types.Component{
-					Name:         "Test Component",
-					Description:  "A test component for hot-reload",
-					ShipTeam:     "TestTeam",
+					Name:        "Test Component",
+					Description: "A test component for hot-reload",
+					ShipTeam:    "TestTeam",
 					SlackReporting: []types.SlackReportingConfig{
 						{Channel: "#test-channel", Severity: &[]types.Severity{types.SeverityDown}[0]},
 					},

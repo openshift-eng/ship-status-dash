@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,6 +50,36 @@ func getComponents(t *testing.T, client *TestHTTPClient) []types.Component {
 	require.NoError(t, err)
 
 	return components
+}
+
+// getSubComponents returns sub-components from GET /api/sub-components with optional query params (componentName, tag, team).
+func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, team string) []types.SubComponent {
+	params := url.Values{}
+	if componentName != "" {
+		params.Set("componentName", componentName)
+	}
+	if tag != "" {
+		params.Set("tag", tag)
+	}
+	if team != "" {
+		params.Set("team", team)
+	}
+	path := "/api/sub-components"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	resp, err := client.Get(path, false)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var subComponents []types.SubComponent
+	err = json.NewDecoder(resp.Body).Decode(&subComponents)
+	require.NoError(t, err)
+
+	return subComponents
 }
 
 // getComponent is a helper function to get a specific component and do basic assertions

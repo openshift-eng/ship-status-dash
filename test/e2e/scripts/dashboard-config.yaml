@@ -9,12 +9,20 @@ components:
       - name: Tide
         description: Merges PRs
         requires_confirmation: true
+        tags:
+          - ci
+          - pr-merging
       - name: Deck
         description: The frontend for Prow
         requires_confirmation: false
+        tags:
+          - frontend
       - name: Hook
         description: Webhook handler for Prow
         requires_confirmation: false
+        tags:
+          - ci
+          - github
         monitoring:
           frequency: 5m
           component_monitor: "app-ci-component-monitor"
@@ -22,6 +30,9 @@ components:
       - name: Plank
         description: Job execution controller for Prow
         requires_confirmation: false
+        tags:
+          - ci
+          - jobs
         monitoring:
           frequency: 5m
           component_monitor: "app-ci-component-monitor"
@@ -40,6 +51,9 @@ components:
       - name: Retester
         description: Retests failed jobs
         requires_confirmation: false
+        tags:
+          - ci
+          - jobs
         monitoring:
           frequency: 5s
           component_monitor: "app-ci-component-monitor"
@@ -56,8 +70,16 @@ components:
     sub_components:
       - name: Build01
         description: AWS build farm cluster
+        tags:
+          - ci
+          - jobs
+          - aws
       - name: Build02
         description: GCP build farm cluster
+        tags:
+          - ci
+          - jobs
+          - gcp
     owners:
       - user: other-developer
   # The Sippy component is used during the component monitor e2e tests

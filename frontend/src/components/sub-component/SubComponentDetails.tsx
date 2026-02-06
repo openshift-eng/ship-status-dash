@@ -24,12 +24,9 @@ import {
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
-import {
-  formatStatusSeverityText,
-  getStatusBackgroundColor,
-  relativeTime,
-} from '../../utils/helpers'
+import { formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
@@ -38,11 +35,11 @@ import { SeverityChip } from '../StatusColors'
 import TagChip from './TagChip'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 1),
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: 24,
-  backgroundColor: getStatusBackgroundColor(theme, status),
   padding: theme.spacing(2),
   borderRadius: theme.spacing(1),
 }))
@@ -57,7 +54,8 @@ const LoadingBox = styled(Box)(({ theme }) => ({
 const StyledPaper = styled(Paper)<{ status?: string }>(({ theme, status }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(2),
-  backgroundColor: status ? getStatusBackgroundColor(theme, status) : undefined,
+  backgroundColor: theme.palette.background.paper,
+  ...(status ? getStatusTintStyles(theme, status, 'inherit') : {}),
 }))
 
 const StyledButton = styled(Button)(({ theme }) => ({
@@ -70,14 +68,37 @@ const StyledButton = styled(Button)(({ theme }) => ({
 }))
 
 const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  color: theme.palette.text.primary,
+  '& .MuiDataGrid-main': {
+    backgroundColor: theme.palette.background.paper,
+  },
+  '& .MuiDataGrid-columnHeaders': {
+    backgroundColor: `${theme.palette.background.paper} !important`,
+    color: theme.palette.text.primary,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  '& .MuiDataGrid-columnHeader': {
+    backgroundColor: `${theme.palette.background.paper} !important`,
+    color: theme.palette.text.primary,
+  },
+  '& .MuiDataGrid-columnHeaderTitle': {
+    color: theme.palette.text.primary,
+    fontWeight: 600,
+  },
   '& .MuiDataGrid-cell': {
     borderBottom: `1px solid ${theme.palette.divider}`,
+    color: theme.palette.text.primary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   '& .MuiDataGrid-row:hover': {
     backgroundColor: theme.palette.action.hover,
+  },
+  '& .MuiDataGrid-footerContainer': {
+    backgroundColor: theme.palette.background.default,
+    color: theme.palette.text.primary,
   },
 }))
 

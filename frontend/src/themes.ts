@@ -69,6 +69,11 @@ export const lightTheme = createTheme(baseLightTheme, {
 
 export const darkTheme = createTheme(baseDarkTheme, {
   palette: {
+    DataGrid: {
+      bg: baseDarkTheme.palette.background.paper,
+      headerBg: baseDarkTheme.palette.background.default,
+      pinnedBg: baseDarkTheme.palette.background.default,
+    },
     status: {
       healthy: {
         main: baseDarkTheme.palette.success.main,

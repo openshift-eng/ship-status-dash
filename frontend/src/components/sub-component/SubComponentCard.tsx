@@ -4,44 +4,29 @@ import { useNavigate } from 'react-router-dom'
 
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
-import {
-  formatStatusSeverityText,
-  getStatusBackgroundColor,
-  getStatusChipColor,
-} from '../../utils/helpers'
+import { formatStatusSeverityText } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
 
 import TagChip from './TagChip'
 
-const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
-  theme,
-  status,
-  useBackgroundColor = false,
-}) => {
-  const color = getStatusChipColor(theme, status)
-  const backgroundColor = useBackgroundColor
-    ? getStatusBackgroundColor(theme, status)
-    : theme.palette.background.paper
-
-  return {
-    border: `2px solid ${color}`,
-    borderRadius: theme.spacing(1.5),
-    cursor: 'pointer',
-    transition: 'all 0.2s ease-in-out',
-    backgroundColor: backgroundColor,
-    minHeight: '160px',
-    display: 'flex',
-    flexDirection: 'column',
-    '&:hover': {
-      boxShadow: theme.shadows[4],
-      transform: 'translateY(-1px)',
-      '& .MuiChip-root': {
-        opacity: 0.9,
-      },
+const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 1.5),
+  borderRadius: theme.spacing(1.5),
+  cursor: 'pointer',
+  transition: 'all 0.2s ease-in-out',
+  minHeight: '160px',
+  display: 'flex',
+  flexDirection: 'column',
+  '&:hover': {
+    boxShadow: theme.shadows[4],
+    transform: 'translateY(-1px)',
+    '& .MuiChip-root': {
+      opacity: 0.9,
     },
-  }
-})
+  },
+}))
 
 const StyledCardContent = styled(CardContent)(({ theme }) => ({
   padding: theme.spacing(2.5),
@@ -98,14 +83,9 @@ const TagsContainer = styled(Box)(({ theme }) => ({
 interface SubComponentCardProps {
   subComponent: SubComponent
   componentName: string
-  useBackgroundColor?: boolean
 }
 
-const SubComponentCardComponent = ({
-  subComponent,
-  componentName,
-  useBackgroundColor = false,
-}: SubComponentCardProps) => {
+const SubComponentCardComponent = ({ subComponent, componentName }: SubComponentCardProps) => {
   const navigate = useNavigate()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
@@ -140,11 +120,7 @@ const SubComponentCardComponent = ({
   }
 
   const cardContent = (
-    <SubComponentCard
-      status={subComponentWithStatus.status || 'Unknown'}
-      useBackgroundColor={useBackgroundColor}
-      onClick={handleClick}
-    >
+    <SubComponentCard status={subComponentWithStatus.status || 'Unknown'} onClick={handleClick}>
       <StyledCardContent>
         <CardHeader>
           <SubComponentTitle>{deslugify(subComponent.name)}</SubComponentTitle>
