@@ -1167,8 +1167,8 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("no filters returns all sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "", "", "")
-			// E2E config: Prow 4 + Downstream CI 1 + Build Farm 2 + Sippy 4 = 11
-			assert.Len(t, subs, 11)
+			// E2E config: Prow 4 + Downstream CI 1 + Build Farm 2 + Sippy 5 = 12
+			assert.Len(t, subs, 12)
 		})
 		t.Run("componentName filter returns only that component's sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "prow", "", "")

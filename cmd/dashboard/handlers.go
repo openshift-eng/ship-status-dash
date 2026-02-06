@@ -653,7 +653,7 @@ func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request)
 	team := r.URL.Query().Get("team")
 
 	components := h.config().Components
-	var subComponents []types.SubComponent
+	var items []types.SubComponentListItem
 	for _, component := range components {
 		if componentSlug != "" && component.Slug != componentSlug {
 			continue
@@ -663,13 +663,15 @@ func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request)
 		}
 
 		if tag == "" {
-			subComponents = append(subComponents, component.Subcomponents...)
+			for _, sub := range component.Subcomponents {
+				items = append(items, types.SubComponentListItem{ComponentName: component.Name, SubComponent: sub})
+			}
 		} else {
 		subComponentLoop:
-			for _, subComponent := range component.Subcomponents {
-				for _, t := range subComponent.Tags {
+			for _, sub := range component.Subcomponents {
+				for _, t := range sub.Tags {
 					if t == tag {
-						subComponents = append(subComponents, subComponent)
+						items = append(items, types.SubComponentListItem{ComponentName: component.Name, SubComponent: sub})
 						continue subComponentLoop
 					}
 				}
@@ -677,7 +679,7 @@ func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	respondWithJSON(w, http.StatusOK, subComponents)
+	respondWithJSON(w, http.StatusOK, items)
 }
 
 func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http.Request) {

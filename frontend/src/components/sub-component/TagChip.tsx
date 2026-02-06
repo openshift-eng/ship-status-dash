@@ -1,4 +1,5 @@
 import { Chip, styled } from '@mui/material'
+import { Link } from 'react-router-dom'
 
 const StyledTagChip = styled(Chip)<{ size?: 'small' | 'medium' }>(({ theme, size }) => ({
   backgroundColor: theme.palette.tagBackgroundColor,
@@ -23,8 +24,14 @@ interface TagChipProps {
   size?: 'small' | 'medium'
 }
 
-const TagChip = ({ tag, size = 'medium' }: TagChipProps) => {
-  return <StyledTagChip label={tag} size={size} />
-}
+const TagChip = ({ tag, size = 'medium' }: TagChipProps) => (
+  <Link
+    to={`/tags/${encodeURIComponent(tag)}`}
+    style={{ textDecoration: 'none' }}
+    onClick={(e) => e.stopPropagation()}
+  >
+    <StyledTagChip label={tag} size={size} />
+  </Link>
+)
 
 export default TagChip

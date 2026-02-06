@@ -53,7 +53,7 @@ func getComponents(t *testing.T, client *TestHTTPClient) []types.Component {
 }
 
 // getSubComponents returns sub-components from GET /api/sub-components with optional query params (componentName, tag, team).
-func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, team string) []types.SubComponent {
+func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, team string) []types.SubComponentListItem {
 	params := url.Values{}
 	if componentName != "" {
 		params.Set("componentName", componentName)
@@ -75,11 +75,10 @@ func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
-	var subComponents []types.SubComponent
-	err = json.NewDecoder(resp.Body).Decode(&subComponents)
+	var items []types.SubComponentListItem
+	err = json.NewDecoder(resp.Body).Decode(&items)
 	require.NoError(t, err)
-
-	return subComponents
+	return items
 }
 
 // getComponent is a helper function to get a specific component and do basic assertions
