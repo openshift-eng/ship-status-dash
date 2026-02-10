@@ -22,3 +22,9 @@ components:
       queries:
         - query: "data_load_failure == 0"
           failure_query: "data_load_failure"
+  - component_slug: "mcp-servers"
+    sub_component_slug: "ert-mcp-server"
+    http_monitor:
+      url: "http://10.0.76.71:8000/health"
+      code: 200
+      retry_after: 5s

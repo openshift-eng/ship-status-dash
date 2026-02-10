@@ -84,3 +84,20 @@ components:
     owners:
       - user: "developer"
       - service_account: "system:serviceaccount:ship-status:component-monitor"
+  - name: "MCP Servers"
+    description: "Model Context Protocol servers providing AI agent tooling"
+    ship_team: "ERT"
+    slack_reporting:
+      - channel: "#alerts-ocp-ert"
+        severity: "Down"
+    sub_components:
+      - name: "ERT MCP Server"
+        description: "Release tests MCP server for AI agent workflows"
+        requires_confirmation: false
+        monitoring:
+          frequency: 30s
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: "developer"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"
