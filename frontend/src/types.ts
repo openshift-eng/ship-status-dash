@@ -98,3 +98,9 @@ export interface Component {
   status?: string
   last_ping_time?: string
 }
+
+export interface Tag {
+  name: string
+  description: string
+  color: string
+}

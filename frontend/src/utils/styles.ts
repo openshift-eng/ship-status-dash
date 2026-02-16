@@ -14,12 +14,10 @@ export const getStatusTintStyles = (
   borderRadius: number | string = 2,
 ) => {
   const statusColor = getStatusBackgroundColor(theme, status)
-  const radius =
-    typeof borderRadius === 'number' ? theme.spacing(borderRadius) : borderRadius
+  const radius = typeof borderRadius === 'number' ? theme.spacing(borderRadius) : borderRadius
 
   return {
     backgroundColor: theme.palette.background.paper,
-    border: `1px solid ${statusColor}`,
     position: 'relative' as const,
     '&::before': {
       content: '""',

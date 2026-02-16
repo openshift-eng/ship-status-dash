@@ -52,6 +52,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
 	t.Run("ListSubComponents", testListSubComponents(client))
+	t.Run("Tags", testTags(client))
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 	t.Run("AbsentReport", testAbsentReport(client))
@@ -1230,6 +1231,35 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 			assert.ElementsMatch(t, []string{"Tide", "Hook", "Plank", "Retester"}, names)
 		})
 
+	}
+}
+
+func testTags(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		resp, err := client.Get("/api/tags", false)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var tags []types.Tag
+		err = json.NewDecoder(resp.Body).Decode(&tags)
+		require.NoError(t, err)
+
+		// E2E config defines 7 tags with proper capitalization
+		assert.Len(t, tags, 7)
+
+		// Check that each tag has required fields
+		tagNames := make([]string, len(tags))
+		for i, tag := range tags {
+			assert.NotEmpty(t, tag.Name)
+			assert.NotEmpty(t, tag.Description)
+			assert.NotEmpty(t, tag.Color)
+			tagNames[i] = tag.Name
+		}
+
+		// Verify expected tags are present (with proper capitalization)
+		assert.ElementsMatch(t, []string{"CI", "PR-Merging", "Frontend", "GitHub", "Jobs", "AWS", "GCP"}, tagNames)
 	}
 }
 

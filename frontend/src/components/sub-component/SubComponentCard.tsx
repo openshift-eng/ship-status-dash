@@ -2,14 +2,14 @@ import { Box, Card, CardContent, Tooltip, Typography, styled } from '@mui/materi
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { useTags } from '../../contexts/TagsContext'
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { formatStatusSeverityText } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
-
-import TagChip from './TagChip'
+import TagChip from '../tags/TagChip'
 
 const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1.5),
@@ -87,6 +87,7 @@ interface SubComponentCardProps {
 
 const SubComponentCardComponent = ({ subComponent, componentName }: SubComponentCardProps) => {
   const navigate = useNavigate()
+  const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
 
@@ -142,7 +143,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           <CardFooter>
             <TagsContainer>
               {subComponent.tags.map((tag) => (
-                <TagChip key={tag} tag={tag} size="small" />
+                <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
               ))}
             </TagsContainer>
           </CardFooter>

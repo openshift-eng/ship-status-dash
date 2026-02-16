@@ -2,15 +2,16 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider } from '@mui/material/styles'
 import { StylesProvider } from '@mui/styles'
 import { useEffect, useMemo, useState } from 'react'
-import { Route, BrowserRouter as Router, Routes, useLocation, useParams } from 'react-router-dom'
+import { Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom'
 
 import ComponentDetailsPage from './components/component/ComponentDetailsPage'
 import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
-import SubComponentList from './components/sub-component/SubComponentList'
+import TagPage from './components/tags/TagPage'
 import { AuthProvider } from './contexts/AuthContext'
+import { TagsProvider } from './contexts/TagsContext'
 import { darkAccessibilityTheme, darkTheme, lightAccessibilityTheme, lightTheme } from './themes'
 import { getProtectedDomain, getPublicDomain } from './utils/endpoints'
 
@@ -37,13 +38,6 @@ function RedirectIfProtected() {
   }, [location])
 
   return null
-}
-
-function SubComponentListByTagPage() {
-  const { tag } = useParams<{ tag: string }>()
-  const filters = useMemo(() => (tag ? { tag } : undefined), [tag])
-  if (!filters || !tag) return null
-  return <SubComponentList filters={filters} title={`${tag} Sub Components`} />
 }
 
 function App() {
@@ -84,25 +78,27 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          <Router>
-            <RedirectIfProtected />
-            <Header
-              onToggleTheme={toggleTheme}
-              isDarkMode={isDarkMode}
-              onToggleAccessibility={toggleAccessibilityMode}
-              isAccessibilityMode={isAccessibilityMode}
-            />
-            <Routes>
-              <Route path="/" element={<ComponentStatusList />} />
-              <Route path="/tags/:tag" element={<SubComponentListByTagPage />} />
-              <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
-              <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
-              <Route
-                path="/:componentSlug/:subComponentSlug/outages/:outageId"
-                element={<OutageDetailsPage />}
+          <TagsProvider>
+            <Router>
+              <RedirectIfProtected />
+              <Header
+                onToggleTheme={toggleTheme}
+                isDarkMode={isDarkMode}
+                onToggleAccessibility={toggleAccessibilityMode}
+                isAccessibilityMode={isAccessibilityMode}
               />
-            </Routes>
-          </Router>
+              <Routes>
+                <Route path="/" element={<ComponentStatusList />} />
+                <Route path="/tags/:tag" element={<TagPage />} />
+                <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
+                <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
+                <Route
+                  path="/:componentSlug/:subComponentSlug/outages/:outageId"
+                  element={<OutageDetailsPage />}
+                />
+              </Routes>
+            </Router>
+          </TagsProvider>
         </AuthProvider>
       </ThemeProvider>
     </StylesProvider>

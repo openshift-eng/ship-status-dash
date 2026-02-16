@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
+import { useTags } from '../../contexts/TagsContext'
 import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
@@ -31,8 +32,7 @@ import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
-
-import TagChip from './TagChip'
+import TagChip from '../tags/TagChip'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1),
@@ -41,7 +41,6 @@ const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   alignItems: 'center',
   marginBottom: 24,
   padding: theme.spacing(2),
-  borderRadius: theme.spacing(1),
 }))
 
 const LoadingBox = styled(Box)(({ theme }) => ({
@@ -137,6 +136,7 @@ const SubComponentDetails = () => {
     subComponentSlug: string
   }>()
   const { isComponentAdmin } = useAuth()
+  const { getTag } = useTags()
   const [outages, setOutages] = useState<Outage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
@@ -465,7 +465,7 @@ const SubComponentDetails = () => {
           {subComponent?.tags && subComponent.tags.length > 0 && (
             <TagsContainer>
               {subComponent.tags.map((tag) => (
-                <TagChip key={tag} tag={tag} size="small" />
+                <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
               ))}
             </TagsContainer>
           )}

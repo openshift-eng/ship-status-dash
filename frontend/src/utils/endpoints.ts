@@ -20,6 +20,8 @@ export const getProtectedDomain = () => {
 
 export const getComponentsEndpoint = () => `${getPublicDomain()}/api/components`
 
+export const getTagsEndpoint = () => `${getPublicDomain()}/api/tags`
+
 export const getComponentInfoEndpoint = (componentName: string) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}`
 

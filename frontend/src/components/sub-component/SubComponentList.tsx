@@ -69,9 +69,16 @@ function toSubComponent(item: SubComponentListItem): SubComponent {
 interface SubComponentListProps {
   filters: SubComponentListParams
   title: string
+  showHeader?: boolean
+  showContainer?: boolean
 }
 
-const SubComponentList = ({ filters, title }: SubComponentListProps) => {
+const SubComponentList = ({
+  filters,
+  title,
+  showHeader = true,
+  showContainer = true,
+}: SubComponentListProps) => {
   const navigate = useNavigate()
   const [items, setItems] = useState<SubComponentListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,11 +113,13 @@ const SubComponentList = ({ filters, title }: SubComponentListProps) => {
     }
   }, [filters])
 
-  return (
-    <StyledContainer maxWidth="lg">
-      <BackButton variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate('/')}>
-        Main Dashboard
-      </BackButton>
+  const content = (
+    <>
+      {showContainer && (
+        <BackButton variant="outlined" startIcon={<ArrowBack />} onClick={() => navigate('/')}>
+          Main Dashboard
+        </BackButton>
+      )}
 
       {loading && (
         <LoadingBox>
@@ -122,9 +131,11 @@ const SubComponentList = ({ filters, title }: SubComponentListProps) => {
 
       {!loading && !error && (
         <>
-          <ListHeader elevation={2}>
-            <ListTitle>{title}</ListTitle>
-          </ListHeader>
+          {showHeader && (
+            <ListHeader elevation={2}>
+              <ListTitle>{title}</ListTitle>
+            </ListHeader>
+          )}
 
           {items.length === 0 ? (
             <Typography color="text.secondary">
@@ -143,8 +154,10 @@ const SubComponentList = ({ filters, title }: SubComponentListProps) => {
           )}
         </>
       )}
-    </StyledContainer>
+    </>
   )
+
+  return showContainer ? <StyledContainer maxWidth="lg">{content}</StyledContainer> : content
 }
 
 export default SubComponentList

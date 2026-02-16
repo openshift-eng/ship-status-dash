@@ -645,6 +645,11 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	return types.StatusHealthy
 }
 
+// ListTagsJSON returns the list of configured tags.
+func (h *Handlers) ListTagsJSON(w http.ResponseWriter, r *http.Request) {
+	respondWithJSON(w, http.StatusOK, h.config().Tags)
+}
+
 // ListSubComponentsJSON handles HTTP requests to fetch a list of sub-components based on filters like componentName, team, or tag.
 // All must be matched for a sub-component to be returned. If no filters are provided, all sub-components are returned.
 func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request) {
