@@ -1,4 +1,10 @@
-import { CheckCircle, Error, OpenInNew, ReportProblem, Warning } from '@mui/icons-material'
+import {
+  CheckCircle,
+  Error as ErrorIcon,
+  OpenInNew,
+  ReportProblem,
+  Warning,
+} from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -257,7 +263,7 @@ const SubComponentDetails = () => {
 
         return (
           <Tooltip title={status} arrow>
-            {isActive ? <Error color="error" /> : <CheckCircle color="success" />}
+            {isActive ? <ErrorIcon color="error" /> : <CheckCircle color="success" />}
           </Tooltip>
         )
       },

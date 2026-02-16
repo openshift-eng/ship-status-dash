@@ -79,7 +79,7 @@ const TagPage = () => {
             {tagInfo?.description && <TagDescription>{tagInfo.description}</TagDescription>}
           </TagHeader>
 
-          <SubComponentList filters={{ tag }} title="" showHeader={false} showContainer={false} />
+          <SubComponentList filters={{ tag }} />
         </>
       )}
     </StyledContainer>

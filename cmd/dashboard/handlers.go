@@ -658,7 +658,7 @@ func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request)
 	team := r.URL.Query().Get("team")
 
 	components := h.config().Components
-	var items []types.SubComponentListItem
+	items := []types.SubComponentListItem{}
 	for _, component := range components {
 		if componentSlug != "" && component.Slug != componentSlug {
 			continue
