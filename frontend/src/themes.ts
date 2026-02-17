@@ -1,7 +1,21 @@
 import { createTheme } from '@mui/material/styles'
 
-const baseLightTheme = createTheme({ palette: { mode: 'light' } })
-const baseDarkTheme = createTheme({ palette: { mode: 'dark' } })
+const baseLightTheme = createTheme({
+  palette: {
+    mode: 'light',
+    tagBorderColor: '#000000',
+    tagBackgroundColor: '#ffffff',
+    tagTextColor: '#000000',
+  },
+})
+const baseDarkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    tagBorderColor: '#ffffff',
+    tagBackgroundColor: '#000000',
+    tagTextColor: '#ffffff',
+  },
+})
 
 // Light and dark themes with status colors
 export const lightTheme = createTheme(baseLightTheme, {

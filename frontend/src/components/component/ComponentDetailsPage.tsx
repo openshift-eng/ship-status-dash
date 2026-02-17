@@ -18,12 +18,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Component } from '../../types'
 import { getComponentInfoEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
-import {
-  formatStatusSeverityText,
-  getStatusBackgroundColor,
-  relativeTime,
-} from '../../utils/helpers'
+import { formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
@@ -40,17 +37,12 @@ const BackButton = styled(Button)(({ theme }) => ({
   marginBottom: theme.spacing(3),
 }))
 
-const ComponentHeader = styled(Paper)<{ status: string }>(({ theme, status }) => {
-  const color = getStatusBackgroundColor(theme, status)
-
-  return {
-    padding: theme.spacing(4),
-    marginBottom: theme.spacing(4),
-    borderRadius: theme.spacing(2),
-    backgroundColor: color,
-    border: `2px solid ${color}`,
-  }
-})
+const ComponentHeader = styled(Paper)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 2),
+  padding: theme.spacing(4),
+  marginBottom: theme.spacing(4),
+  borderRadius: theme.spacing(2),
+}))
 
 const HeaderContent = styled(Box)(({ theme }) => ({
   display: 'flex',
@@ -319,7 +311,6 @@ const ComponentDetailsPage = () => {
                   key={subComponent.name}
                   subComponent={subComponent}
                   componentName={component.name}
-                  useBackgroundColor={true}
                 />
               ))}
             </SubComponentsGrid>

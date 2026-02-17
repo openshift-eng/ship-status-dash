@@ -645,6 +645,48 @@ func determineStatusFromSeverity(outages []types.Outage) types.Status {
 	return types.StatusHealthy
 }
 
+// ListTagsJSON returns the list of configured tags.
+func (h *Handlers) ListTagsJSON(w http.ResponseWriter, r *http.Request) {
+	respondWithJSON(w, http.StatusOK, h.config().Tags)
+}
+
+// ListSubComponentsJSON handles HTTP requests to fetch a list of sub-components based on filters like componentName, team, or tag.
+// All must be matched for a sub-component to be returned. If no filters are provided, all sub-components are returned.
+func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request) {
+	componentSlug := r.URL.Query().Get("componentName")
+	tag := r.URL.Query().Get("tag")
+	team := r.URL.Query().Get("team")
+
+	components := h.config().Components
+	items := []types.SubComponentListItem{}
+	for _, component := range components {
+		if componentSlug != "" && component.Slug != componentSlug {
+			continue
+		}
+		if team != "" && team != component.ShipTeam {
+			continue
+		}
+
+		if tag == "" {
+			for _, sub := range component.Subcomponents {
+				items = append(items, types.SubComponentListItem{ComponentName: component.Name, SubComponent: sub})
+			}
+		} else {
+		subComponentLoop:
+			for _, sub := range component.Subcomponents {
+				for _, t := range sub.Tags {
+					if t == tag {
+						items = append(items, types.SubComponentListItem{ComponentName: component.Name, SubComponent: sub})
+						continue subComponentLoop
+					}
+				}
+			}
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, items)
+}
+
 func (h *Handlers) PostComponentMonitorReportJSON(w http.ResponseWriter, r *http.Request) {
 	var req types.ComponentMonitorReportRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

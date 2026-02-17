@@ -27,11 +27,11 @@ import { getOutageEndpoint } from '../../utils/endpoints'
 import {
   formatDuration,
   formatStatusSeverityText,
-  getStatusBackgroundColor,
   getStatusChipColor,
   relativeTime,
 } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 
 import OutageActions from './actions/OutageActions'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
@@ -55,14 +55,12 @@ const HeaderPaper = styled(Paper)<{
   } else {
     severityStatus = severity
   }
-  const bgColor = getStatusBackgroundColor(theme, severityStatus)
 
   return {
+    ...getStatusTintStyles(theme, severityStatus, 2),
     padding: theme.spacing(4),
     marginBottom: theme.spacing(3),
     borderRadius: theme.spacing(2),
-    backgroundColor: bgColor,
-    border: `2px solid ${bgColor}`,
     boxShadow: theme.shadows[4],
   }
 })

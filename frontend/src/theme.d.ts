@@ -18,6 +18,9 @@ declare module '@mui/material/styles' {
       partial: StatusColor
       unknown: StatusColor
     }
+    tagBorderColor: string
+    tagBackgroundColor: string
+    tagTextColor: string
   }
 
   interface PaletteOptions {
@@ -30,5 +33,8 @@ declare module '@mui/material/styles' {
       partial?: StatusColor
       unknown?: StatusColor
     }
+    tagBorderColor?: string
+    tagBackgroundColor?: string
+    tagTextColor?: string
   }
 }

@@ -1,45 +1,32 @@
-import { Box, Card, CardContent, Typography, styled } from '@mui/material'
+import { Box, Card, CardContent, Tooltip, Typography, styled } from '@mui/material'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { useTags } from '../../contexts/TagsContext'
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
-import {
-  formatStatusSeverityText,
-  getStatusBackgroundColor,
-  getStatusChipColor,
-} from '../../utils/helpers'
+import { formatStatusSeverityText } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
+import TagChip from '../tags/TagChip'
 
-const SubComponentCard = styled(Card)<{ status: string; useBackgroundColor?: boolean }>(({
-  theme,
-  status,
-  useBackgroundColor = false,
-}) => {
-  const color = getStatusChipColor(theme, status)
-  const backgroundColor = useBackgroundColor
-    ? getStatusBackgroundColor(theme, status)
-    : theme.palette.background.paper
-
-  return {
-    border: `2px solid ${color}`,
-    borderRadius: theme.spacing(1.5),
-    cursor: 'pointer',
-    transition: 'all 0.2s ease-in-out',
-    backgroundColor: backgroundColor,
-    minHeight: '120px',
-    display: 'flex',
-    flexDirection: 'column',
-    '&:hover': {
-      boxShadow: theme.shadows[4],
-      transform: 'translateY(-1px)',
-      '& .MuiChip-root': {
-        opacity: 0.9,
-      },
+const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 1.5),
+  borderRadius: theme.spacing(1.5),
+  cursor: 'pointer',
+  transition: 'all 0.2s ease-in-out',
+  minHeight: '160px',
+  display: 'flex',
+  flexDirection: 'column',
+  '&:hover': {
+    boxShadow: theme.shadows[4],
+    transform: 'translateY(-1px)',
+    '& .MuiChip-root': {
+      opacity: 0.9,
     },
-  }
-})
+  },
+}))
 
 const StyledCardContent = styled(CardContent)(({ theme }) => ({
   padding: theme.spacing(2.5),
@@ -55,7 +42,7 @@ const CardHeader = styled(Box)(({ theme }) => ({
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'flex-start',
-  marginBottom: theme.spacing(1),
+  marginBottom: theme.spacing(1.5),
 }))
 
 const SubComponentTitle = styled(Typography)(({ theme }) => ({
@@ -71,24 +58,36 @@ const SubComponentDescription = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
   lineHeight: 1.5,
   flex: 1,
+  marginBottom: theme.spacing(1),
 }))
 
 const StatusChipBox = styled(Box)(() => ({
   flexShrink: 0,
 }))
 
+const CardFooter = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  marginTop: theme.spacing(1.5),
+  paddingTop: theme.spacing(1.5),
+  borderTop: `1px solid ${theme.palette.divider}`,
+}))
+
+const TagsContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.spacing(0.5),
+  flex: 1,
+}))
+
 interface SubComponentCardProps {
   subComponent: SubComponent
   componentName: string
-  useBackgroundColor?: boolean
 }
 
-const SubComponentCardComponent = ({
-  subComponent,
-  componentName,
-  useBackgroundColor = false,
-}: SubComponentCardProps) => {
+const SubComponentCardComponent = ({ subComponent, componentName }: SubComponentCardProps) => {
   const navigate = useNavigate()
+  const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
 
@@ -121,12 +120,8 @@ const SubComponentCardComponent = ({
     }
   }
 
-  return (
-    <SubComponentCard
-      status={subComponentWithStatus.status || 'Unknown'}
-      useBackgroundColor={useBackgroundColor}
-      onClick={handleClick}
-    >
+  const cardContent = (
+    <SubComponentCard status={subComponentWithStatus.status || 'Unknown'} onClick={handleClick}>
       <StyledCardContent>
         <CardHeader>
           <SubComponentTitle>{deslugify(subComponent.name)}</SubComponentTitle>
@@ -144,9 +139,46 @@ const SubComponentCardComponent = ({
           </StatusChipBox>
         </CardHeader>
         <SubComponentDescription>{subComponent.description}</SubComponentDescription>
+        {subComponent.tags && subComponent.tags.length > 0 && (
+          <CardFooter>
+            <TagsContainer>
+              {subComponent.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
+              ))}
+            </TagsContainer>
+          </CardFooter>
+        )}
       </StyledCardContent>
     </SubComponentCard>
   )
+
+  if (subComponent.long_description) {
+    return (
+      <Tooltip
+        title={subComponent.long_description}
+        arrow
+        placement="top"
+        enterDelay={300}
+        leaveDelay={100}
+        slotProps={{
+          tooltip: {
+            sx: (theme) =>
+              theme.palette.mode === 'light'
+                ? {
+                    backgroundColor: '#ffffff',
+                    color: '#000000',
+                    border: `1px solid ${theme.palette.grey[700]}`,
+                  }
+                : { border: '1px solid #ffffff' },
+          },
+        }}
+      >
+        {cardContent}
+      </Tooltip>
+    )
+  }
+
+  return cardContent
 }
 
 export default SubComponentCardComponent

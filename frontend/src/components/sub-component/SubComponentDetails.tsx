@@ -1,4 +1,10 @@
-import { CheckCircle, Error, ReportProblem, Warning } from '@mui/icons-material'
+import {
+  CheckCircle,
+  Error as ErrorIcon,
+  OpenInNew,
+  ReportProblem,
+  Warning,
+} from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -18,31 +24,29 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
+import { useTags } from '../../contexts/TagsContext'
 import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
-import {
-  formatStatusSeverityText,
-  getStatusBackgroundColor,
-  relativeTime,
-} from '../../utils/helpers'
+import { formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import OutageActions from '../outage/actions/OutageActions'
 import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
+import TagChip from '../tags/TagChip'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 1),
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: 24,
-  backgroundColor: getStatusBackgroundColor(theme, status),
   padding: theme.spacing(2),
-  borderRadius: theme.spacing(1),
 }))
 
 const LoadingBox = styled(Box)(({ theme }) => ({
@@ -55,7 +59,8 @@ const LoadingBox = styled(Box)(({ theme }) => ({
 const StyledPaper = styled(Paper)<{ status?: string }>(({ theme, status }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(2),
-  backgroundColor: status ? getStatusBackgroundColor(theme, status) : undefined,
+  backgroundColor: theme.palette.background.paper,
+  ...(status ? getStatusTintStyles(theme, status, 'inherit') : {}),
 }))
 
 const StyledButton = styled(Button)(({ theme }) => ({
@@ -68,8 +73,27 @@ const StyledButton = styled(Button)(({ theme }) => ({
 }))
 
 const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
+  backgroundColor: theme.palette.background.paper,
+  color: theme.palette.text.primary,
+  '& .MuiDataGrid-main': {
+    backgroundColor: theme.palette.background.paper,
+  },
+  '& .MuiDataGrid-columnHeaders': {
+    backgroundColor: `${theme.palette.background.paper} !important`,
+    color: theme.palette.text.primary,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  '& .MuiDataGrid-columnHeader': {
+    backgroundColor: `${theme.palette.background.paper} !important`,
+    color: theme.palette.text.primary,
+  },
+  '& .MuiDataGrid-columnHeaderTitle': {
+    color: theme.palette.text.primary,
+    fontWeight: 600,
+  },
   '& .MuiDataGrid-cell': {
     borderBottom: `1px solid ${theme.palette.divider}`,
+    color: theme.palette.text.primary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -77,6 +101,38 @@ const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   '& .MuiDataGrid-row:hover': {
     backgroundColor: theme.palette.action.hover,
   },
+  '& .MuiDataGrid-footerContainer': {
+    backgroundColor: theme.palette.background.default,
+    color: theme.palette.text.primary,
+  },
+}))
+
+const SubComponentDescription = styled(Typography)<{
+  hasLongDescription?: boolean
+  hasTags?: boolean
+}>(({ theme, hasLongDescription, hasTags }) => ({
+  marginBottom: hasLongDescription || hasTags ? theme.spacing(2) : 0,
+}))
+
+const SubComponentLongDescription = styled(Typography)<{
+  hasDocumentation?: boolean
+  hasTags?: boolean
+}>(({ theme, hasDocumentation, hasTags }) => ({
+  color: theme.palette.text.secondary,
+  whiteSpace: 'pre-wrap',
+  lineHeight: 1.6,
+  marginBottom: hasDocumentation || hasTags ? theme.spacing(2) : 0,
+}))
+
+const DocumentationButtonContainer = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(2),
+}))
+
+const TagsContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.spacing(1),
+  marginBottom: theme.spacing(2),
 }))
 
 const SubComponentDetails = () => {
@@ -86,6 +142,7 @@ const SubComponentDetails = () => {
     subComponentSlug: string
   }>()
   const { isComponentAdmin } = useAuth()
+  const { getTag } = useTags()
   const [outages, setOutages] = useState<Outage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
@@ -206,7 +263,7 @@ const SubComponentDetails = () => {
 
         return (
           <Tooltip title={status} arrow>
-            {isActive ? <Error color="error" /> : <CheckCircle color="success" />}
+            {isActive ? <ErrorIcon color="error" /> : <CheckCircle color="success" />}
           </Tooltip>
         )
       },
@@ -396,6 +453,53 @@ const SubComponentDetails = () => {
           </Box>
         </HeaderBox>
       </StyledPaper>
+
+      {(subComponent?.description ||
+        subComponent?.long_description ||
+        subComponent?.documentation_url ||
+        (subComponent?.tags && subComponent.tags.length > 0)) && (
+        <StyledPaper>
+          {subComponent?.description && (
+            <SubComponentDescription
+              variant="body1"
+              hasLongDescription={!!subComponent?.long_description}
+              hasTags={!!(subComponent?.tags && subComponent.tags.length > 0)}
+            >
+              {subComponent.description}
+            </SubComponentDescription>
+          )}
+          {subComponent?.tags && subComponent.tags.length > 0 && (
+            <TagsContainer>
+              {subComponent.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
+              ))}
+            </TagsContainer>
+          )}
+          {subComponent?.long_description && (
+            <SubComponentLongDescription
+              variant="body2"
+              hasDocumentation={!!subComponent?.documentation_url}
+              hasTags={!!(subComponent?.tags && subComponent.tags.length > 0)}
+            >
+              {subComponent.long_description}
+            </SubComponentLongDescription>
+          )}
+          {subComponent?.documentation_url && (
+            <DocumentationButtonContainer>
+              <Button
+                variant="outlined"
+                component="a"
+                startIcon={<OpenInNew />}
+                href={subComponent.documentation_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View Documentation
+              </Button>
+            </DocumentationButtonContainer>
+          )}
+        </StyledPaper>
+      )}
 
       <StyledPaper>
         {loading && (

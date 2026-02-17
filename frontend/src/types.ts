@@ -63,12 +63,24 @@ export interface SubComponent {
   name: string
   slug: string
   description: string
-  managed: boolean
+  long_description?: string
+  documentation_url?: string
+  tags?: string[]
   requires_confirmation: boolean
   monitoring?: Monitoring
   slack_reporting?: SlackReportingConfig[]
   status?: Status
   active_outages?: Outage[]
+}
+
+export interface SubComponentListItem extends SubComponent {
+  component_name: string
+}
+
+export interface SubComponentListParams {
+  componentName?: string
+  tag?: string
+  team?: string
 }
 
 export interface Component {
@@ -85,4 +97,10 @@ export interface Component {
   }>
   status?: string
   last_ping_time?: string
+}
+
+export interface Tag {
+  name: string
+  description: string
+  color: string
 }

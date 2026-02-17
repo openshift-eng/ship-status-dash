@@ -81,6 +81,18 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: false,
 		},
 		{
+			path:      "/api/tags",
+			method:    http.MethodGet,
+			handler:   s.handlers.ListTagsJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/sub-components",
+			method:    http.MethodGet,
+			handler:   s.handlers.ListSubComponentsJSON,
+			protected: false,
+		},
+		{
 			path:      "/api/components/{componentName}",
 			method:    http.MethodGet,
 			handler:   s.handlers.GetComponentInfoJSON,

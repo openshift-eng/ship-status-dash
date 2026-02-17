@@ -3,6 +3,7 @@ package types
 // DashboardConfig contains the dashboardapplication configuration including component definitions.
 type DashboardConfig struct {
 	Components []*Component `json:"components" yaml:"components"`
+	Tags       []Tag        `json:"tags" yaml:"tags"`
 }
 
 func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {
@@ -39,6 +40,9 @@ type SubComponent struct {
 	Name                 string                 `json:"name" yaml:"name"`
 	Slug                 string                 `json:"slug"`
 	Description          string                 `json:"description" yaml:"description"`
+	LongDescription      string                 `json:"long_description,omitempty" yaml:"long_description,omitempty"`
+	DocumentationURL     string                 `json:"documentation_url,omitempty" yaml:"documentation_url,omitempty"`
+	Tags                 []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Monitoring           *Monitoring            `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
 	RequiresConfirmation bool                   `json:"requires_confirmation" yaml:"requires_confirmation"`
 	SlackReporting       []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
@@ -152,4 +156,10 @@ func GetSlackReporting(component *Component, subComponent *SubComponent) []Slack
 		return component.SlackReporting
 	}
 	return nil
+}
+
+type Tag struct {
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description" yaml:"description"`
+	Color       string `json:"color" yaml:"color"`
 }

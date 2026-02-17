@@ -9,7 +9,9 @@ import ComponentStatusList from './components/ComponentStatusList'
 import Header from './components/Header'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
+import TagPage from './components/tags/TagPage'
 import { AuthProvider } from './contexts/AuthContext'
+import { TagsProvider } from './contexts/TagsContext'
 import { darkAccessibilityTheme, darkTheme, lightAccessibilityTheme, lightTheme } from './themes'
 import { getProtectedDomain, getPublicDomain } from './utils/endpoints'
 
@@ -76,24 +78,27 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          <Router>
-            <RedirectIfProtected />
-            <Header
-              onToggleTheme={toggleTheme}
-              isDarkMode={isDarkMode}
-              onToggleAccessibility={toggleAccessibilityMode}
-              isAccessibilityMode={isAccessibilityMode}
-            />
-            <Routes>
-              <Route path="/" element={<ComponentStatusList />} />
-              <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
-              <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
-              <Route
-                path="/:componentSlug/:subComponentSlug/outages/:outageId"
-                element={<OutageDetailsPage />}
+          <TagsProvider>
+            <Router>
+              <RedirectIfProtected />
+              <Header
+                onToggleTheme={toggleTheme}
+                isDarkMode={isDarkMode}
+                onToggleAccessibility={toggleAccessibilityMode}
+                isAccessibilityMode={isAccessibilityMode}
               />
-            </Routes>
-          </Router>
+              <Routes>
+                <Route path="/" element={<ComponentStatusList />} />
+                <Route path="/tags/:tag" element={<TagPage />} />
+                <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
+                <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
+                <Route
+                  path="/:componentSlug/:subComponentSlug/outages/:outageId"
+                  element={<OutageDetailsPage />}
+                />
+              </Routes>
+            </Router>
+          </TagsProvider>
         </AuthProvider>
       </ThemeProvider>
     </StylesProvider>

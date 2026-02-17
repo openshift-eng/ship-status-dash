@@ -1,3 +1,5 @@
+import type { SubComponentListParams } from '../types'
+
 import { slugify } from './slugify'
 
 export const getPublicDomain = () => {
@@ -18,6 +20,8 @@ export const getProtectedDomain = () => {
 
 export const getComponentsEndpoint = () => `${getPublicDomain()}/api/components`
 
+export const getTagsEndpoint = () => `${getPublicDomain()}/api/tags`
+
 export const getComponentInfoEndpoint = (componentName: string) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}`
 
@@ -28,6 +32,15 @@ export const getSubComponentStatusEndpoint = (componentName: string, subComponen
 
 export const getComponentStatusEndpoint = (componentName: string) =>
   `${getPublicDomain()}/api/status/${slugify(componentName)}`
+
+export const getListSubComponentsEndpoint = (params: SubComponentListParams = {}) => {
+  const search = new URLSearchParams()
+  if (params.componentName) search.set('componentName', params.componentName)
+  if (params.tag) search.set('tag', params.tag)
+  if (params.team) search.set('team', params.team)
+  const q = search.toString()
+  return `${getPublicDomain()}/api/sub-components${q ? `?${q}` : ''}`
+}
 
 export const createOutageEndpoint = (componentName: string, subComponentName: string) =>
   `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages`

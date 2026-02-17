@@ -2,25 +2,21 @@ import { Box, Button, Card, CardContent, styled, Typography } from '@mui/materia
 import { useNavigate } from 'react-router-dom'
 
 import type { Component, SubComponent } from '../../types'
-import { formatStatusSeverityText, getStatusBackgroundColor } from '../../utils/helpers'
+import { formatStatusSeverityText } from '../../utils/helpers'
 import { slugify } from '../../utils/slugify'
+import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
 
-const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => {
-  const color = getStatusBackgroundColor(theme, status)
-
-  return {
-    backgroundColor: color,
-    border: `2px solid ${color}`,
-    borderRadius: theme.spacing(2),
-    transition: 'all 0.2s ease-in-out',
-    '&:hover': {
-      boxShadow: theme.shadows[6],
-      transform: 'translateY(-2px)',
-    },
-  }
-})
+const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => ({
+  ...getStatusTintStyles(theme, status, 2),
+  borderRadius: theme.spacing(2),
+  transition: 'all 0.2s ease-in-out',
+  '&:hover': {
+    boxShadow: theme.shadows[6],
+    transform: 'translateY(-2px)',
+  },
+}))
 
 const SubComponentsGrid = styled(Box)(({ theme }) => ({
   display: 'grid',
