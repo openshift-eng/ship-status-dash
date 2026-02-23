@@ -188,8 +188,8 @@ func TestValidatePrometheusLocations(t *testing.T) {
 					SubComponentSlug: "test",
 					PrometheusMonitor: &types.PrometheusMonitor{
 						PrometheusLocation: types.PrometheusLocation{
-							Cluster:  "in-cluster",
-							Service:  "prometheus-operated",
+							Cluster: "in-cluster",
+							Service: "prometheus-operated",
 						},
 						Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
 					},
