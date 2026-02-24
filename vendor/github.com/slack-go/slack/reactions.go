@@ -33,40 +33,29 @@ func NewGetReactionsParameters() GetReactionsParameters {
 }
 
 type getReactionsResponseFull struct {
-	Type    string
-	Channel string `json:"channel,omitempty"` // channel is at the root level for message types
-	M       struct {
-		*Message // message structure already contains reactions
+	Type string
+	M    struct {
+		Reactions []ItemReaction
 	} `json:"message"`
 	F struct {
-		*File
 		Reactions []ItemReaction
 	} `json:"file"`
 	FC struct {
-		*Comment
 		Reactions []ItemReaction
 	} `json:"comment"`
 	SlackResponse
 }
 
-func (res getReactionsResponseFull) extractReactedItem() ReactedItem {
-	item := ReactedItem{}
-	item.Type = res.Type
-
-	switch item.Type {
+func (res getReactionsResponseFull) extractReactions() []ItemReaction {
+	switch res.Type {
 	case "message":
-		item.Channel = res.Channel
-		item.Message = res.M.Message
-		item.Reactions = res.M.Reactions
+		return res.M.Reactions
 	case "file":
-		item.File = res.F.File
-		item.Reactions = res.F.Reactions
+		return res.F.Reactions
 	case "file_comment":
-		item.File = res.F.File
-		item.Comment = res.FC.Comment
-		item.Reactions = res.FC.Reactions
+		return res.FC.Reactions
 	}
-	return item
+	return []ItemReaction{}
 }
 
 const (
@@ -211,15 +200,15 @@ func (api *Client) RemoveReactionContext(ctx context.Context, name string, item 
 	return response.Err()
 }
 
-// GetReactions returns item and details about the reactions on an item.
+// GetReactions returns details about the reactions on an item.
 // For more details, see GetReactionsContext documentation.
-func (api *Client) GetReactions(item ItemRef, params GetReactionsParameters) (ReactedItem, error) {
+func (api *Client) GetReactions(item ItemRef, params GetReactionsParameters) ([]ItemReaction, error) {
 	return api.GetReactionsContext(context.Background(), item, params)
 }
 
-// GetReactionsContext returns item and details about the reactions on an item with a custom context.
+// GetReactionsContext returns details about the reactions on an item with a custom context.
 // Slack API docs: https://api.slack.com/methods/reactions.get
-func (api *Client) GetReactionsContext(ctx context.Context, item ItemRef, params GetReactionsParameters) (ReactedItem, error) {
+func (api *Client) GetReactionsContext(ctx context.Context, item ItemRef, params GetReactionsParameters) ([]ItemReaction, error) {
 	values := url.Values{
 		"token": {api.token},
 	}
@@ -235,20 +224,20 @@ func (api *Client) GetReactionsContext(ctx context.Context, item ItemRef, params
 	if item.Comment != "" {
 		values.Set("file_comment", item.Comment)
 	}
-	if params.Full {
+	if params.Full != DEFAULT_REACTIONS_FULL {
 		values.Set("full", strconv.FormatBool(params.Full))
 	}
 
 	response := &getReactionsResponseFull{}
 	if err := api.postMethod(ctx, "reactions.get", values, response); err != nil {
-		return ReactedItem{}, err
+		return nil, err
 	}
 
 	if err := response.Err(); err != nil {
-		return ReactedItem{}, err
+		return nil, err
 	}
 
-	return response.extractReactedItem(), nil
+	return response.extractReactions(), nil
 }
 
 // ListReactions returns information about the items a user reacted to.
@@ -275,7 +264,7 @@ func (api *Client) ListReactionsContext(ctx context.Context, params ListReaction
 	if params.Page != DEFAULT_REACTIONS_PAGE {
 		values.Add("page", strconv.Itoa(params.Page))
 	}
-	if params.Full {
+	if params.Full != DEFAULT_REACTIONS_FULL {
 		values.Add("full", strconv.FormatBool(params.Full))
 	}
 

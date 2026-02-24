@@ -1,6 +1,8 @@
 module ship-status-dash
 
-go 1.25.0
+go 1.24.0
+
+toolchain go1.24.4
 
 require (
 	github.com/18F/hmacauth v0.0.0-20151013130326-9232a6386b73
@@ -11,19 +13,18 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
 	github.com/sirupsen/logrus v1.9.4
-	github.com/slack-go/slack v0.18.0
+	github.com/slack-go/slack v0.17.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
-	k8s.io/apimachinery v0.35.1
+	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
 )
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

@@ -56,10 +56,6 @@ type RemoteFile struct {
 // ExternalID is a user defined GUID, ExternalURL is where the remote file can be accessed,
 // and Title is the name of the file.
 //
-// PreviewImage is a file path to upload as preview. PreviewImageReader is an io.Reader
-// alternative. When using PreviewImageReader, set PreviewImageName to specify the filename
-// with proper extension (e.g., "preview.jpg") to preserve image format.
-//
 // For more details:
 // https://api.slack.com/methods/files.remote.add
 type RemoteFileParameters struct {
@@ -70,7 +66,6 @@ type RemoteFileParameters struct {
 	IndexableFileContents string
 	PreviewImage          string
 	PreviewImageReader    io.Reader
-	PreviewImageName      string // filename for PreviewImageReader (e.g., "preview.jpg")
 }
 
 // ListRemoteFilesParameters contains arguments for the ListRemoteFiles method.
@@ -129,11 +124,7 @@ func (api *Client) AddRemoteFileContext(ctx context.Context, params RemoteFilePa
 	if params.PreviewImage != "" {
 		err = postLocalWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.add", params.PreviewImage, "preview_image", api.token, values, response, api)
 	} else if params.PreviewImageReader != nil {
-		name := params.PreviewImageName
-		if name == "" {
-			name = "preview.png"
-		}
-		err = postWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.add", name, "preview_image", api.token, values, params.PreviewImageReader, response, api)
+		err = postWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.add", "preview.png", "preview_image", api.token, values, params.PreviewImageReader, response, api)
 	} else {
 		response, err = api.remoteFileRequest(ctx, "files.remote.add", values)
 	}
@@ -223,7 +214,7 @@ func (api *Client) ShareRemoteFile(channels []string, externalID, fileID string)
 // ShareRemoteFileContext shares a remote file to channels with a custom context.
 // Slack API docs: https://api.slack.com/methods/files.remote.share
 func (api *Client) ShareRemoteFileContext(ctx context.Context, channels []string, externalID, fileID string) (file *RemoteFile, err error) {
-	if len(channels) == 0 {
+	if channels == nil || len(channels) == 0 {
 		return nil, ErrParametersMissing
 	}
 	if fileID == "" && externalID == "" {
@@ -275,14 +266,8 @@ func (api *Client) UpdateRemoteFileContext(ctx context.Context, fileID string, p
 	if params.IndexableFileContents != "" {
 		values.Add("indexable_file_contents", params.IndexableFileContents)
 	}
-	if params.PreviewImage != "" {
-		err = postLocalWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.update", params.PreviewImage, "preview_image", api.token, values, response, api)
-	} else if params.PreviewImageReader != nil {
-		name := params.PreviewImageName
-		if name == "" {
-			name = "preview.png"
-		}
-		err = postWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.update", name, "preview_image", api.token, values, params.PreviewImageReader, response, api)
+	if params.PreviewImageReader != nil {
+		err = postWithMultipartResponse(ctx, api.httpclient, api.endpoint+"files.remote.update", "preview.png", "preview_image", api.token, values, params.PreviewImageReader, response, api)
 	} else {
 		values.Add("token", api.token)
 		response, err = api.remoteFileRequest(ctx, "files.remote.update", values)

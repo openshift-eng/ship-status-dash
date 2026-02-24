@@ -328,7 +328,7 @@ func (r RichTextSectionChannelElement) RichTextSectionElementType() RichTextSect
 
 func NewRichTextSectionChannelElement(channelID string, style *RichTextSectionTextStyle) *RichTextSectionChannelElement {
 	return &RichTextSectionChannelElement{
-		Type:      RTSEChannel,
+		Type:      RTSEText,
 		ChannelID: channelID,
 		Style:     style,
 	}

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// AppsManifestCreateResponseError ("/apps.manifest.create")
+// Apps Manifest Create Response Errors ("/apps.manifest.create")
 type AppsManifestCreateResponseError struct {
 	Code             string `json:"code,omitempty"`
 	Message          string `json:"message"`
@@ -27,7 +27,7 @@ type AppsManifestCreateResponseError struct {
 	RelatedComponent string `json:"related_component,omitempty"`
 }
 
-// ConversationsInviteResponseError ("/conversations.invite")
+// Conversations Invite Response Errors ("/conversations.invite")
 type ConversationsInviteResponseError struct {
 	Error string `json:"error"`
 	Ok    bool   `json:"ok"`
@@ -69,7 +69,7 @@ func (e *SlackResponseErrors) UnmarshalJSON(data []byte) error {
 	}
 
 	// Try to determine the error type by checking for unique fields
-	var raw map[string]any
+	var raw map[string]interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		// If we can't unmarshal as object, try as string (fallback case)
 		//
@@ -116,68 +116,6 @@ type SlackResponse struct {
 	Error            string                `json:"error"`
 	Errors           []SlackResponseErrors `json:"errors,omitempty"`
 	ResponseMetadata ResponseMetadata      `json:"response_metadata"`
-}
-
-// KickUserFromConversationSlackResponse is a variant of SlackResponse that can handle the case where
-// "errors" can be either an empty object {} or an array of errors.
-// This addresses issue #1446 where conversations.kick endpoint returns {"ok":true,"errors":{}}
-type KickUserFromConversationSlackResponse struct {
-	Ok               bool                  `json:"ok"`
-	Error            string                `json:"error"`
-	Errors           []SlackResponseErrors `json:"-"`
-	ResponseMetadata ResponseMetadata      `json:"response_metadata"`
-}
-
-// UnmarshalJSON implements custom unmarshaling for KickUserFromConversationSlackResponse to handle
-// the case where "errors" can be either an empty object {} or an array of errors
-func (s *KickUserFromConversationSlackResponse) UnmarshalJSON(data []byte) error {
-	// First, unmarshal everything except errors
-	type Alias KickUserFromConversationSlackResponse
-	aux := &struct {
-		*Alias
-		ErrorsRaw json.RawMessage `json:"errors,omitempty"`
-	}{
-		Alias: (*Alias)(s),
-	}
-
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	// Handle the errors field
-	if len(aux.ErrorsRaw) > 0 {
-		// Check if it's an empty object by looking for just "{}"
-		trimmed := bytes.TrimSpace(aux.ErrorsRaw)
-		if bytes.Equal(trimmed, []byte("{}")) {
-			// Empty object, leave errors as nil/empty slice
-			s.Errors = nil
-		} else {
-			// Try to unmarshal as array of errors
-			var errors []SlackResponseErrors
-			if err := json.Unmarshal(aux.ErrorsRaw, &errors); err != nil {
-				return err
-			}
-			s.Errors = errors
-		}
-	}
-
-	return nil
-}
-
-// Err returns any API error present in the response.
-func (s KickUserFromConversationSlackResponse) Err() error {
-	if s.Ok {
-		return nil
-	}
-
-	// handle pure text based responses like chat.post
-	// which while they have a slack response in their data structure
-	// it doesn't actually get set during parsing.
-	if strings.TrimSpace(s.Error) == "" {
-		return nil
-	}
-
-	return SlackErrorResponse{Err: s.Error, Errors: s.Errors, ResponseMetadata: s.ResponseMetadata}
 }
 
 func (t SlackResponse) Err() error {
@@ -265,7 +203,7 @@ func formReq(ctx context.Context, endpoint string, values url.Values) (req *http
 	return req, nil
 }
 
-func jsonReq(ctx context.Context, endpoint string, body any) (req *http.Request, err error) {
+func jsonReq(ctx context.Context, endpoint string, body interface{}) (req *http.Request, err error) {
 	buffer := bytes.NewBuffer([]byte{})
 	if err = json.NewEncoder(buffer).Encode(body); err != nil {
 		return nil, err
@@ -279,7 +217,7 @@ func jsonReq(ctx context.Context, endpoint string, body any) (req *http.Request,
 	return req, nil
 }
 
-func postLocalWithMultipartResponse(ctx context.Context, client httpClient, method, fpath, fieldname, token string, values url.Values, intf any, d Debug) error {
+func postLocalWithMultipartResponse(ctx context.Context, client httpClient, method, fpath, fieldname, token string, values url.Values, intf interface{}, d Debug) error {
 	fullpath, err := filepath.Abs(fpath)
 	if err != nil {
 		return err
@@ -293,7 +231,7 @@ func postLocalWithMultipartResponse(ctx context.Context, client httpClient, meth
 	return postWithMultipartResponse(ctx, client, method, filepath.Base(fpath), fieldname, token, values, file, intf, d)
 }
 
-func postWithMultipartResponse(ctx context.Context, client httpClient, path, name, fieldname, token string, values url.Values, r io.Reader, intf any, d Debug) error {
+func postWithMultipartResponse(ctx context.Context, client httpClient, path, name, fieldname, token string, values url.Values, r io.Reader, intf interface{}, d Debug) error {
 	pipeReader, pipeWriter := io.Pipe()
 	wr := multipart.NewWriter(pipeWriter)
 
@@ -378,7 +316,7 @@ func doPost(client httpClient, req *http.Request, parser responseParser, d Debug
 }
 
 // post JSON.
-func postJSON(ctx context.Context, client httpClient, endpoint, token string, json []byte, intf any, d Debug) error {
+func postJSON(ctx context.Context, client httpClient, endpoint, token string, json []byte, intf interface{}, d Debug) error {
 	reqBody := bytes.NewBuffer(json)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, reqBody)
 	if err != nil {
@@ -391,7 +329,7 @@ func postJSON(ctx context.Context, client httpClient, endpoint, token string, js
 }
 
 // post a url encoded form.
-func postForm(ctx context.Context, client httpClient, endpoint string, values url.Values, intf any, d Debug) error {
+func postForm(ctx context.Context, client httpClient, endpoint string, values url.Values, intf interface{}, d Debug) error {
 	reqBody := strings.NewReader(values.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, reqBody)
 	if err != nil {
@@ -401,7 +339,7 @@ func postForm(ctx context.Context, client httpClient, endpoint string, values ur
 	return doPost(client, req, newJSONParser(intf), d)
 }
 
-func getResource(ctx context.Context, client httpClient, endpoint, token string, values url.Values, intf any, d Debug) error {
+func getResource(ctx context.Context, client httpClient, endpoint, token string, values url.Values, intf interface{}, d Debug) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
@@ -414,7 +352,7 @@ func getResource(ctx context.Context, client httpClient, endpoint, token string,
 	return doPost(client, req, newJSONParser(intf), d)
 }
 
-func parseAdminResponse(ctx context.Context, client httpClient, method string, teamName string, values url.Values, intf any, d Debug) error {
+func parseAdminResponse(ctx context.Context, client httpClient, method string, teamName string, values url.Values, intf interface{}, d Debug) error {
 	endpoint := fmt.Sprintf(WEBAPIURLFormat, teamName, method, time.Now().Unix())
 	return postForm(ctx, client, endpoint, values, intf, d)
 }
@@ -459,7 +397,7 @@ func checkStatusCode(resp *http.Response, d Debug) error {
 
 type responseParser func(*http.Response) error
 
-func newJSONParser(dst any) responseParser {
+func newJSONParser(dst interface{}) responseParser {
 	return func(resp *http.Response) error {
 		if dst == nil {
 			return nil
@@ -468,7 +406,7 @@ func newJSONParser(dst any) responseParser {
 	}
 }
 
-func newTextParser(dst any) responseParser {
+func newTextParser(dst interface{}) responseParser {
 	return func(resp *http.Response) error {
 		if dst == nil {
 			return nil
@@ -487,7 +425,7 @@ func newTextParser(dst any) responseParser {
 	}
 }
 
-func newContentTypeParser(dst any) responseParser {
+func newContentTypeParser(dst interface{}) responseParser {
 	return func(req *http.Response) (err error) {
 		var (
 			ctype string
