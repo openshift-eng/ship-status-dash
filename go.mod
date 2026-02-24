@@ -12,7 +12,7 @@ require (
 	github.com/openshift/client-go v0.0.0-20251205093018-96a6cbc1420c
 	github.com/prometheus/client_golang v1.17.0
 	github.com/prometheus/common v0.44.0
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	github.com/slack-go/slack v0.17.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
