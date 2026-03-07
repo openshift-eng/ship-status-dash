@@ -1,8 +1,6 @@
 module ship-status-dash
 
-go 1.24.0
-
-toolchain go1.24.4
+go 1.25
 
 require (
 	github.com/18F/hmacauth v0.0.0-20151013130326-9232a6386b73
@@ -13,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
 	github.com/sirupsen/logrus v1.9.4
-	github.com/slack-go/slack v0.17.3
+	github.com/slack-go/slack v0.19.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
