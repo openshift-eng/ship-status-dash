@@ -96,6 +96,10 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	log.Infof("Probing Frequency configured to: %s", frequency)
 
 	for _, component := range cfg.Components {
+		if component.SystemdMonitor != nil && strings.TrimSpace(component.SystemdMonitor.Unit) == "" {
+			return nil, fmt.Errorf("systemd unit is required for component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+		}
+
 		if component.HTTPMonitor != nil {
 			retryAfter, err := time.ParseDuration(component.HTTPMonitor.RetryAfter)
 			if err != nil {

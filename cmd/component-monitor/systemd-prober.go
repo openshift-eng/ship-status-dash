@@ -12,14 +12,14 @@ import (
 
 // dbusConnector is an interface for creating D-Bus connections, allowing for testing.
 type dbusConnector interface {
-	SystemBus() (*dbus.Conn, error)
+	ConnectSystemBus() (*dbus.Conn, error)
 }
 
 // realDBusConnector connects to the real system D-Bus.
 type realDBusConnector struct{}
 
-func (r *realDBusConnector) SystemBus() (*dbus.Conn, error) {
-	return dbus.SystemBus()
+func (r *realDBusConnector) ConnectSystemBus() (*dbus.Conn, error) {
+	return dbus.ConnectSystemBus()
 }
 
 // SystemdProber monitors a systemd unit via D-Bus.
@@ -52,14 +52,14 @@ func escapeUnitName(unit string) string {
 		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
 			b.WriteRune(c)
 		} else {
-			b.WriteString(fmt.Sprintf("_%x", c))
+			b.WriteString(fmt.Sprintf("_%02x", c))
 		}
 	}
 	return b.String()
 }
 
 func (p *SystemdProber) Probe(ctx context.Context, results chan<- ProbeResult) {
-	conn, err := p.connector.SystemBus()
+	conn, err := p.connector.ConnectSystemBus()
 	if err != nil {
 		results <- p.formatErrorResult(fmt.Errorf("failed to connect to system D-Bus: %w", err))
 		return

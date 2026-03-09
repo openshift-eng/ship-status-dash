@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 //
 //	sudo podman run --rm \
 //	  --security-opt label=disable \
+//	  -e SYSTEMD_TEST_UNITS=sshd.service,oar-bot.service \
 //	  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro \
 //	  -v /tmp/systemd-prober-test:/systemd-prober-test:ro \
 //	  registry.access.redhat.com/ubi9/ubi-minimal:latest \
@@ -43,24 +46,25 @@ func probeUnit(t *testing.T, unit string, severity types.Severity) ProbeResult {
 }
 
 func TestSystemdProber_Integration_ActiveUnits(t *testing.T) {
-	units := []struct {
-		name string
-		unit string
-	}{
-		{"sshd", "sshd.service"},
-		{"oar-bot", "oar-bot.service"},
-		{"release-progress-dashboard", "release-progress-dashboard.service"},
-		{"dummy-test", "dummy-test.service"},
+	// Set SYSTEMD_TEST_UNITS to a comma-separated list of active units to test.
+	// Example: SYSTEMD_TEST_UNITS=sshd.service,oar-bot.service
+	unitsEnv := os.Getenv("SYSTEMD_TEST_UNITS")
+	if unitsEnv == "" {
+		t.Skip("set SYSTEMD_TEST_UNITS to a comma-separated list of active systemd units to test")
 	}
 
-	for _, tt := range units {
-		t.Run(tt.name, func(t *testing.T) {
-			result := probeUnit(t, tt.unit, types.SeverityDown)
-			require.NoError(t, result.Error, "Probe should not error for %s", tt.unit)
-			assert.Equal(t, types.StatusHealthy, result.Status, "%s should be active/healthy", tt.unit)
+	for _, unit := range strings.Split(unitsEnv, ",") {
+		unit = strings.TrimSpace(unit)
+		if unit == "" {
+			continue
+		}
+		t.Run(unit, func(t *testing.T) {
+			result := probeUnit(t, unit, types.SeverityDown)
+			require.NoError(t, result.Error, "Probe should not error for %s", unit)
+			assert.Equal(t, types.StatusHealthy, result.Status, "%s should be active/healthy", unit)
 			require.Len(t, result.Reasons, 1)
 			assert.Equal(t, types.CheckTypeSystemd, result.Reasons[0].Type)
-			assert.Equal(t, tt.unit, result.Reasons[0].Check)
+			assert.Equal(t, unit, result.Reasons[0].Check)
 			assert.Equal(t, "ActiveState: active", result.Reasons[0].Results)
 		})
 	}
