@@ -39,7 +39,7 @@ type fakeDBusConnector struct {
 	err error
 }
 
-func (f *fakeDBusConnector) ConnectSystemBus() (*dbus.Conn, error) {
+func (f *fakeDBusConnector) ConnectSystemBus(_ context.Context) (*dbus.Conn, error) {
 	return nil, f.err
 }
 

@@ -12,14 +12,14 @@ import (
 
 // dbusConnector is an interface for creating D-Bus connections, allowing for testing.
 type dbusConnector interface {
-	ConnectSystemBus() (*dbus.Conn, error)
+	ConnectSystemBus(ctx context.Context) (*dbus.Conn, error)
 }
 
 // realDBusConnector connects to the real system D-Bus.
 type realDBusConnector struct{}
 
-func (r *realDBusConnector) ConnectSystemBus() (*dbus.Conn, error) {
-	return dbus.ConnectSystemBus()
+func (r *realDBusConnector) ConnectSystemBus(ctx context.Context) (*dbus.Conn, error) {
+	return dbus.ConnectSystemBus(dbus.WithContext(ctx))
 }
 
 // SystemdProber monitors a systemd unit via D-Bus.
@@ -59,7 +59,7 @@ func escapeUnitName(unit string) string {
 }
 
 func (p *SystemdProber) Probe(ctx context.Context, results chan<- ProbeResult) {
-	conn, err := p.connector.ConnectSystemBus()
+	conn, err := p.connector.ConnectSystemBus(ctx)
 	if err != nil {
 		results <- p.formatErrorResult(fmt.Errorf("failed to connect to system D-Bus: %w", err))
 		return
@@ -67,7 +67,11 @@ func (p *SystemdProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 	defer conn.Close()
 
 	objectPath := dbus.ObjectPath("/org/freedesktop/systemd1/unit/" + escapeUnitName(p.unit))
-	prop, err := conn.Object("org.freedesktop.systemd1", objectPath).GetProperty("org.freedesktop.systemd1.Unit.ActiveState")
+	obj := conn.Object("org.freedesktop.systemd1", objectPath)
+
+	var prop dbus.Variant
+	err = obj.CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0,
+		"org.freedesktop.systemd1.Unit", "ActiveState").Store(&prop)
 	if err != nil {
 		results <- p.formatErrorResult(fmt.Errorf("failed to get ActiveState for unit %s: %w", p.unit, err))
 		return
