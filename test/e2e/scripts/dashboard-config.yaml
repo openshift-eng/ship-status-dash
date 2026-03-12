@@ -123,6 +123,20 @@ components:
     owners:
       - user: developer
       - service_account: system:serviceaccount:ship-status:component-monitor
+  # The Errata Reliability component is used during the systemd component monitor e2e tests
+  - name: Errata Reliability
+    description: Services maintained by the Errata Reliability Team
+    ship_team: ERT
+    sub_components:
+      - name: systemd-test
+        description: Systemd monitor e2e test sub-component
+        monitoring:
+          frequency: 10s
+          component_monitor: "e2e-component-monitor"
+          auto_resolve: true
+    owners:
+      - user: developer
+      - service_account: system:serviceaccount:ship-status:component-monitor
 tags:
   - name: CI
     description: "Core CI infrastructure components"

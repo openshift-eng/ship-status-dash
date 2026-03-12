@@ -83,7 +83,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 4)
+		assert.Len(t, components, 5)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
@@ -125,6 +125,12 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "Sippy", components[3].Subcomponents[0].Name)
 		assert.Equal(t, "api", components[3].Subcomponents[1].Name)
 		assert.Equal(t, "data-load", components[3].Subcomponents[2].Name)
+
+		assert.Equal(t, "Errata Reliability", components[4].Name)
+		assert.Equal(t, "Services maintained by the Errata Reliability Team", components[4].Description)
+		assert.Equal(t, "ERT", components[4].ShipTeam)
+		assert.Len(t, components[4].Subcomponents, 1)
+		assert.Equal(t, "systemd-test", components[4].Subcomponents[0].Name)
 	}
 }
 
@@ -1004,8 +1010,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI) based on test config
-			assert.Len(t, allStatuses, 4)
+			// Should have exactly 5 components (Prow, Downstream CI, Build Farm, Sippy, and Errata Reliability) based on test config
+			assert.Len(t, allStatuses, 5)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
@@ -1043,8 +1049,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
-			assert.Len(t, allStatuses, 4)
+			// Should have exactly 5 components (Prow, Downstream CI, Build Farm, Sippy, and Errata Reliability)
+			assert.Len(t, allStatuses, 5)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1066,8 +1072,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
-			assert.Len(t, allStatuses, 4)
+			// Should have exactly 5 components (Prow, Downstream CI, Build Farm, Sippy, and Errata Reliability)
+			assert.Len(t, allStatuses, 5)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1090,8 +1096,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
-			assert.Len(t, allStatuses, 4)
+			// Should have exactly 5 components (Prow, Downstream CI, Build Farm, Sippy, and Errata Reliability)
+			assert.Len(t, allStatuses, 5)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1122,8 +1128,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Should have exactly 4 components (Prow, Build Farm, Sippy, and Downstream CI)
-			assert.Len(t, allStatuses, 4)
+			// Should have exactly 5 components (Prow, Downstream CI, Build Farm, Sippy, and Errata Reliability)
+			assert.Len(t, allStatuses, 5)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1170,8 +1176,8 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("no filters returns all sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "", "", "")
-			// E2E config: Prow 4 + Downstream CI 1 + Build Farm 2 + Sippy 5 = 12
-			assert.Len(t, subs, 12)
+			// E2E config: Prow 4 + Downstream CI 1 + Build Farm 2 + Sippy 5 + Errata Reliability 1 = 13
+			assert.Len(t, subs, 13)
 		})
 		t.Run("componentName filter returns only that component's sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "prow", "", "")
