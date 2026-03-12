@@ -79,6 +79,31 @@ func TestSystemdProber_Probe_ConnectionError(t *testing.T) {
 	}
 }
 
+func TestSystemdProber_Probe_CanceledContext(t *testing.T) {
+	connErr := errors.New("connection refused")
+	prober := NewSystemdProber("test-component", "test-subcomponent", "test.service", types.SeverityDown)
+	prober.connector = &fakeDBusConnector{err: connErr}
+
+	// Unbuffered channel with no reader: Probe must not block waiting to send.
+	// With a canceled context, sendResult should exit via ctx.Done() instead of blocking.
+	results := make(chan ProbeResult)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		prober.Probe(ctx, results)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Probe returned without blocking — correct behavior.
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Probe blocked despite canceled context")
+	}
+}
+
 func TestSystemdProber_DefaultSeverity(t *testing.T) {
 	prober := NewSystemdProber("comp", "sub", "test.service", "")
 	if prober.severity != types.SeverityDown {
