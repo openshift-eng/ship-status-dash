@@ -18,7 +18,6 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
 import { useCallback, useEffect, useState } from 'react'
@@ -136,6 +135,61 @@ const TagsContainer = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }))
 
+const PageContainer = styled(Container)(({ theme }) => ({
+  marginTop: theme.spacing(4),
+  marginBottom: theme.spacing(4),
+}))
+
+const LastCheckedText = styled(Typography)(({ theme }) => ({
+  marginTop: theme.spacing(1),
+  opacity: 0.8,
+}))
+
+const HeaderActionsRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  gap: theme.spacing(2),
+}))
+
+const ReportOutageButton = styled(Button)(({ theme }) => ({
+  backgroundColor: theme.palette.status.down.main,
+  color: theme.palette.getContrastText(theme.palette.status.down.main),
+  '&:hover': {
+    backgroundColor: theme.palette.status.down.dark,
+    color: theme.palette.getContrastText(theme.palette.status.down.dark),
+  },
+}))
+
+const StatusDownIcon = styled(ErrorIcon)(({ theme }) => ({
+  color: theme.palette.status.down.main,
+}))
+
+const StatusHealthyIcon = styled(CheckCircle)(({ theme }) => ({
+  color: theme.palette.status.healthy.main,
+}))
+
+const StatusDegradedIcon = styled(Warning)(({ theme }) => ({
+  color: theme.palette.status.degraded.main,
+}))
+
+const OngoingTimeText = styled(Typography)(({ theme }) => ({
+  color: theme.palette.status.down.main,
+}))
+
+const ErrorAlert = styled(Alert)(({ theme }) => ({
+  marginBottom: theme.spacing(2),
+}))
+
+const OutageFilterToolbar = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'flex-end',
+  marginBottom: theme.spacing(2),
+}))
+
+const DataGridContainer = styled(Box)({
+  height: 600,
+  width: '100%',
+})
+
 const SubComponentDetails = () => {
   const navigate = useNavigate()
   const { componentSlug, subComponentSlug } = useParams<{
@@ -151,7 +205,6 @@ const SubComponentDetails = () => {
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
-  const theme = useTheme()
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const isAdmin = isComponentAdmin(componentSlug || '')
@@ -265,11 +318,7 @@ const SubComponentDetails = () => {
 
         return (
           <Tooltip title={status} arrow>
-            {isActive ? (
-              <ErrorIcon sx={{ color: theme.palette.status.down.main }} />
-            ) : (
-              <CheckCircle sx={{ color: theme.palette.status.healthy.main }} />
-            )}
+            {isActive ? <StatusDownIcon /> : <StatusHealthyIcon />}
           </Tooltip>
         )
       },
@@ -301,11 +350,7 @@ const SubComponentDetails = () => {
 
               return (
                 <Tooltip title={isConfirmed ? 'Confirmed' : 'Unconfirmed'} arrow>
-                  {isConfirmed ? (
-                    <CheckCircle sx={{ color: theme.palette.status.healthy.main }} />
-                  ) : (
-                    <Warning sx={{ color: theme.palette.status.degraded.main }} />
-                  )}
+                  {isConfirmed ? <StatusHealthyIcon /> : <StatusDegradedIcon />}
                 </Tooltip>
               )
             },
@@ -354,11 +399,7 @@ const SubComponentDetails = () => {
             </Typography>
           )
         }
-        return (
-          <Typography variant="body2" sx={{ color: theme.palette.status.down.main }}>
-            Ongoing
-          </Typography>
-        )
+        return <OngoingTimeText variant="body2">Ongoing</OngoingTimeText>
       },
     },
     {
@@ -424,14 +465,14 @@ const SubComponentDetails = () => {
 
   if (!componentName || !subComponentName) {
     return (
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }} data-tour="subcomponent-detail">
+      <PageContainer maxWidth="xl" data-tour="subcomponent-detail">
         <Alert severity="error">Invalid component or subcomponent</Alert>
-      </Container>
+      </PageContainer>
     )
   }
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }} data-tour="subcomponent-detail">
+    <PageContainer maxWidth="xl" data-tour="subcomponent-detail">
       <StyledPaper status={subComponentStatus?.status || 'Unknown'}>
         <HeaderBox
           status={subComponentStatus?.status || 'Unknown'}
@@ -442,31 +483,23 @@ const SubComponentDetails = () => {
               {componentName} / {subComponentName} - Outages
             </Typography>
             {subComponentStatus?.last_ping_time && subComponent?.monitoring?.frequency && (
-              <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
+              <LastCheckedText variant="body2">
                 Last Checked:{' '}
                 {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())} · Expected
                 Frequency: {subComponent.monitoring.frequency}
-              </Typography>
+              </LastCheckedText>
             )}
           </Box>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <HeaderActionsRow>
             {isAdmin && (
-              <Button
+              <ReportOutageButton
                 variant="contained"
                 startIcon={<ReportProblem />}
                 onClick={() => setCreateOutageModalOpen(true)}
                 data-tour="subcomponent-report-outage"
-                sx={{
-                  backgroundColor: theme.palette.status.down.main,
-                  color: theme.palette.getContrastText(theme.palette.status.down.main),
-                  '&:hover': {
-                    backgroundColor: theme.palette.status.down.dark,
-                    color: theme.palette.getContrastText(theme.palette.status.down.dark),
-                  },
-                }}
               >
                 Report Outage
-              </Button>
+              </ReportOutageButton>
             )}
             <StyledButton
               variant="contained"
@@ -475,7 +508,7 @@ const SubComponentDetails = () => {
             >
               {componentName} Details
             </StyledButton>
-          </Box>
+          </HeaderActionsRow>
         </HeaderBox>
       </StyledPaper>
 
@@ -534,17 +567,12 @@ const SubComponentDetails = () => {
         )}
 
         {(validationError || error) && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {validationError || error}
-          </Alert>
+          <ErrorAlert severity="error">{validationError || error}</ErrorAlert>
         )}
 
         {!loading && !validationError && !error && (
           <Box>
-            <Box
-              sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}
-              data-tour="subcomponent-detail-filter"
-            >
+            <OutageFilterToolbar data-tour="subcomponent-detail-filter">
               <ToggleButtonGroup
                 value={statusFilter}
                 exclusive
@@ -562,8 +590,8 @@ const SubComponentDetails = () => {
                   Resolved
                 </ToggleButton>
               </ToggleButtonGroup>
-            </Box>
-            <Box sx={{ height: 600, width: '100%' }} data-tour="subcomponent-detail-grid">
+            </OutageFilterToolbar>
+            <DataGridContainer data-tour="subcomponent-detail-grid">
               <StyledDataGrid
                 rows={sortedOutages}
                 columns={columns}
@@ -576,7 +604,7 @@ const SubComponentDetails = () => {
                 disableRowSelectionOnClick
                 getRowId={(row) => row.ID}
               />
-            </Box>
+            </DataGridContainer>
           </Box>
         )}
       </StyledPaper>
@@ -588,7 +616,7 @@ const SubComponentDetails = () => {
         componentName={componentName || ''}
         subComponentName={subComponentName || ''}
       />
-    </Container>
+    </PageContainer>
   )
 }
 

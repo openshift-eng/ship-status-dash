@@ -21,10 +21,6 @@ func severityPtr(s types.Severity) *types.Severity {
 	return &s
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
-
 func TestGetEffectiveSeverity(t *testing.T) {
 	tests := []struct {
 		name   string

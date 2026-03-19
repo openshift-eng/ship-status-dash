@@ -24,11 +24,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Outage } from '../../../types'
 import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
-import {
-  formatDateForDateTimeLocal,
-  getCurrentLocalTime,
-  toISOStringSeconds,
-} from '../../../utils/helpers'
+import { formatDateForDateTimeLocal, getCurrentLocalTime } from '../../../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
   '& .MuiDialog-paper': {
@@ -180,19 +176,19 @@ const UpsertOutageModal = ({
     const requestData: Record<string, unknown> = {
       severity: formData.severity,
       description: formData.description || undefined,
-      start_time: toISOStringSeconds(new Date(formData.start_time)),
+      start_time: new Date(formData.start_time).toISOString(),
       triage_notes: formData.triage_notes || undefined,
       confirmed: formData.confirmed,
     }
 
     if (formData.end_time) {
       requestData.end_time = {
-        Time: toISOStringSeconds(new Date(formData.end_time)),
+        Time: new Date(formData.end_time).toISOString(),
         Valid: true,
       }
     } else if (isUpdateMode && outage?.end_time.Valid) {
       requestData.end_time = {
-        Time: toISOStringSeconds(new Date()),
+        Time: new Date().toISOString(),
         Valid: false,
       }
     }

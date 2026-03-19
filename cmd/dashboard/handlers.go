@@ -491,11 +491,13 @@ func (h *Handlers) GetOutageAuditLogsJSON(w http.ResponseWriter, r *http.Request
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
 	}
 
 	auditLogs, err := h.outageManager.GetOutageAuditLogs(outage.ID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage audit logs")
+		return
 	}
 
 	respondWithJSON(w, http.StatusOK, auditLogs)

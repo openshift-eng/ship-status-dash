@@ -132,6 +132,18 @@ const (
 	CurrentUserKey contextKey = "current_user"
 )
 
+// normalizeOutageTimesUTC converts outage timestamps to UTC so audit log diffs
+// do not show spurious timezone changes (pgx returns times in the session TZ).
+func normalizeOutageTimesUTC(o *Outage) {
+	o.StartTime = o.StartTime.UTC()
+	if o.EndTime.Valid {
+		o.EndTime.Time = o.EndTime.Time.UTC()
+	}
+	if o.ConfirmedAt.Valid {
+		o.ConfirmedAt.Time = o.ConfirmedAt.Time.UTC()
+	}
+}
+
 func (o *Outage) BeforeUpdate(db *gorm.DB) error {
 	return o.before(db)
 }
@@ -151,15 +163,7 @@ func (o *Outage) before(db *gorm.DB) error {
 		return err
 	}
 
-	// Normalize to UTC so audit log diffs don't show spurious timezone changes
-	// (pgx returns times in the PostgreSQL session timezone, not UTC).
-	old.StartTime = old.StartTime.UTC()
-	if old.EndTime.Valid {
-		old.EndTime.Time = old.EndTime.Time.UTC()
-	}
-	if old.ConfirmedAt.Valid {
-		old.ConfirmedAt.Time = old.ConfirmedAt.Time.UTC()
-	}
+	normalizeOutageTimesUTC(&old)
 
 	db.Statement.Context = context.WithValue(db.Statement.Context, OldOutageKey, old)
 	return nil
@@ -187,16 +191,21 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 		}
 		oldOutageJSON, err = json.Marshal(oldOutage)
 		if err != nil {
-			return fmt.Errorf("error marshalling old outage record: %w", err)
+			return fmt.Errorf("error marshaling old outage record: %w", err)
 		}
 	}
 
 	var newTriageJSON []byte
 	if operation != Delete {
+		var fresh Outage
+		if err := db.Preload("Reasons").Preload("SlackThreads").First(&fresh, o.ID).Error; err != nil {
+			return fmt.Errorf("failed to reload outage for audit: %w", err)
+		}
+		normalizeOutageTimesUTC(&fresh)
 		var err error
-		newTriageJSON, err = json.Marshal(o)
+		newTriageJSON, err = json.Marshal(fresh)
 		if err != nil {
-			return fmt.Errorf("error marshalling new outage record: %w", err)
+			return fmt.Errorf("error marshaling new outage record: %w", err)
 		}
 	}
 	user := db.Statement.Context.Value(CurrentUserKey)

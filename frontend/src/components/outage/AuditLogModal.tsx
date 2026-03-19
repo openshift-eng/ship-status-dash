@@ -14,7 +14,7 @@ import {
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import * as Diff from 'diff'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { OutageAuditLog } from '../../types'
 import { getOutageAuditLogsEndpoint } from '../../utils/endpoints'
@@ -88,9 +88,18 @@ const ScrollContent = styled(Box)(({ theme }) => ({
 function decodeJsonPayload(raw: string | undefined): string {
   if (!raw) return ''
   try {
-    const decoded = atob(raw)
-    const parsed = JSON.parse(decoded) as unknown
-    return JSON.stringify(parsed, null, 2)
+    const latin1Binary = atob(raw)
+    const bytes = new Uint8Array(latin1Binary.length)
+    for (let i = 0; i < latin1Binary.length; i++) {
+      bytes[i] = latin1Binary.charCodeAt(i)
+    }
+    const utf8String = new TextDecoder('utf-8').decode(bytes)
+    try {
+      const parsed = JSON.parse(utf8String) as unknown
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return utf8String
+    }
   } catch {
     return raw
   }
@@ -134,22 +143,42 @@ const AuditLogModal = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchLogs = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    fetch(getOutageAuditLogsEndpoint(componentName, subComponentName, outageId))
-      .then((res) => {
-        if (!res.ok) throw new Error(res.statusText)
-        return res.json()
-      })
-      .then(setLogs)
-      .catch((err) => setError(err.message || 'Failed to load audit logs'))
-      .finally(() => setLoading(false))
-  }, [componentName, subComponentName, outageId])
-
   useEffect(() => {
-    if (open) fetchLogs()
-  }, [open, fetchLogs])
+    if (!open) {
+      return
+    }
+
+    let cancelled = false
+    const timeoutId = window.setTimeout(() => {
+      setLoading(true)
+      setError(null)
+      fetch(getOutageAuditLogsEndpoint(componentName, subComponentName, outageId))
+        .then((res) => {
+          if (!res.ok) throw new Error(res.statusText)
+          return res.json()
+        })
+        .then((data) => {
+          if (!cancelled) {
+            setLogs(data)
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(err.message || 'Failed to load audit logs')
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoading(false)
+          }
+        })
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [open, componentName, subComponentName, outageId])
 
   const formatDateTime = (dateString: string) => new Date(dateString).toLocaleString()
 
