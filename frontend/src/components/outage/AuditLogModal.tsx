@@ -96,15 +96,16 @@ function decodeJsonPayload(raw: string | undefined): string {
   }
 }
 
+type DiffLineVariant = 'add' | 'remove' | 'unchanged'
+
 function getUnifiedDiffLines(
   oldStr: string,
   newStr: string,
-): Array<{ variant: 'add' | 'remove'; line: string }> {
+): Array<{ variant: DiffLineVariant; line: string }> {
   const changes = Diff.diffLines(oldStr, newStr)
-  const lines: Array<{ variant: 'add' | 'remove'; line: string }> = []
+  const lines: Array<{ variant: DiffLineVariant; line: string }> = []
   for (const change of changes) {
-    if (!change.added && !change.removed) continue
-    const variant = change.added ? 'add' : 'remove'
+    const variant: DiffLineVariant = change.added ? 'add' : change.removed ? 'remove' : 'unchanged'
     const lineStrings = change.value.split('\n')
     if (lineStrings[lineStrings.length - 1] === '') lineStrings.pop()
     for (const line of lineStrings) {
