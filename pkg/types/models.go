@@ -208,14 +208,18 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 			return fmt.Errorf("error marshaling new outage record: %w", err)
 		}
 	}
-	user := db.Statement.Context.Value(CurrentUserKey)
-	if user == nil {
+	userVal := db.Statement.Context.Value(CurrentUserKey)
+	if userVal == nil {
 		return fmt.Errorf("current user not found in context")
+	}
+	userStr, ok := userVal.(string)
+	if !ok {
+		return fmt.Errorf("current user in context has invalid type %T, expected string", userVal)
 	}
 	audit := OutageAuditLog{
 		Operation: string(operation),
 		OutageID:  o.ID,
-		User:      user.(string),
+		User:      userStr,
 		Old:       oldOutageJSON,
 		New:       newTriageJSON,
 	}
