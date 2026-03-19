@@ -130,8 +130,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 					for i := range activeOutages {
 						activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
 						resolver := subComponent.Monitoring.ComponentMonitor
-						activeOutages[i].ResolvedBy = &resolver
-						if err := a.outageManager.UpdateOutage(&activeOutages[i]); err != nil {
+						if err := a.outageManager.UpdateOutage(&activeOutages[i], resolver); err != nil {
 							componentLogger.WithFields(logrus.Fields{
 								"outage_id": activeOutages[i].ID,
 								"error":     err,
@@ -163,8 +162,6 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 
 			// Auto-confirm if the sub-component doesn't require confirmation
 			if !subComponent.RequiresConfirmation {
-				creator := AbsentReportCreator
-				outage.ConfirmedBy = &creator
 				outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
 			}
 
@@ -173,7 +170,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			if err := a.outageManager.CreateOutage(&outage, nil); err != nil {
+			if err := a.outageManager.CreateOutage(&outage, nil, AbsentReportCreator); err != nil {
 				componentLogger.WithField("error", err).Error("Failed to create absent-report outage")
 				continue
 			}

@@ -1,7 +1,10 @@
 package types
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -81,15 +84,14 @@ type Outage struct {
 	// DiscoveredFrom describes where this outage was created: frontend, component-monitor, MCP, API
 	DiscoveredFrom string       `json:"discovered_from" gorm:"column:discovered_from;not null"`
 	CreatedBy      string       `json:"created_by" gorm:"column:created_by;not null"`
-	ResolvedBy     *string      `json:"resolved_by,omitempty" gorm:"column:resolved_by"`
-	ConfirmedBy    *string      `json:"confirmed_by,omitempty" gorm:"column:confirmed_by"`
 	ConfirmedAt    sql.NullTime `json:"confirmed_at" gorm:"column:confirmed_at"`
 	TriageNotes    *string      `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
 	// Reasons are the Reason records that describe the reason for the outage
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
 	// SlackThreads are the Slack threads associated with the outage
-	SlackThreads []SlackThread `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
+	SlackThreads []SlackThread    `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
+	AuditLogs    []OutageAuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:OutageID"`
 	//TODO: Add optional link to jira card, and incident slack thread link for outage
 }
 
@@ -123,6 +125,85 @@ func (o *Outage) Validate() (string, bool) {
 	return "", true
 }
 
+type contextKey string
+
+const (
+	OldOutageKey   contextKey = "old_outage"
+	CurrentUserKey contextKey = "current_user"
+)
+
+func (o *Outage) BeforeUpdate(db *gorm.DB) error {
+	return o.before(db)
+}
+
+func (o *Outage) BeforeDelete(db *gorm.DB) error {
+	return o.before(db)
+}
+
+func (o *Outage) before(db *gorm.DB) error {
+	// Check if we've already captured the old outage in this transaction
+	if existing := db.Statement.Context.Value(OldOutageKey); existing != nil {
+		return nil
+	}
+
+	var old Outage
+	if err := db.Preload("Reasons").Preload("SlackThreads").First(&old, o.ID).Error; err != nil {
+		return err
+	}
+
+	db.Statement.Context = context.WithValue(db.Statement.Context, OldOutageKey, old)
+	return nil
+}
+
+func (o *Outage) AfterUpdate(db *gorm.DB) error {
+	return o.after(db, Update)
+}
+
+func (o *Outage) AfterCreate(db *gorm.DB) error {
+	return o.after(db, Create)
+}
+
+func (o *Outage) AfterDelete(db *gorm.DB) error {
+	return o.after(db, Delete)
+}
+
+func (o *Outage) after(db *gorm.DB, operation OperationType) error {
+	var oldOutageJSON []byte
+	if operation == Update || operation == Delete {
+		var err error
+		oldOutage, ok := db.Statement.Context.Value(OldOutageKey).(Outage)
+		if !ok {
+			return fmt.Errorf("value of old_outage is not an Outage type")
+		}
+		oldOutageJSON, err = json.Marshal(oldOutage)
+		if err != nil {
+			return fmt.Errorf("error marshalling old outage record: %w", err)
+		}
+	}
+
+	var newTriageJSON []byte
+	if operation != Delete {
+		var err error
+		newTriageJSON, err = json.Marshal(o)
+		if err != nil {
+			return fmt.Errorf("error marshalling new outage record: %w", err)
+		}
+	}
+	user := db.Statement.Context.Value(CurrentUserKey)
+	if user == nil {
+		return fmt.Errorf("current user not found in context")
+	}
+	audit := OutageAuditLog{
+		Operation: string(operation),
+		OutageID:  o.ID,
+		User:      user.(string),
+		Old:       oldOutageJSON,
+		New:       newTriageJSON,
+	}
+
+	return db.Create(&audit).Error
+}
+
 type Reason struct {
 	gorm.Model
 	OutageID uint `json:"-" gorm:"column:outage_id;not null;index"`
@@ -153,4 +234,21 @@ type SlackThread struct {
 	ChannelID       string `json:"channel_id" gorm:"column:channel_id;not null"`
 	ThreadTimestamp string `json:"thread_timestamp" gorm:"column:thread_timestamp;not null"`
 	ThreadURL       string `json:"thread_url" gorm:"column:thread_url;not null"`
+}
+
+type OperationType string
+
+const (
+	Create OperationType = "CREATE"
+	Update OperationType = "UPDATE"
+	Delete OperationType = "DELETE"
+)
+
+type OutageAuditLog struct {
+	gorm.Model
+	OutageID  uint   `json:"outage_id" gorm:"column:outage_id;not null;index"`
+	User      string `json:"user" gorm:"column:user;not null"`
+	Operation string `json:"operation" gorm:"column:operation;not null"`
+	Old       []byte `json:"old,omitempty" gorm:"column:old;type:jsonb"`
+	New       []byte `json:"new,omitempty" gorm:"column:new;type:jsonb"`
 }

@@ -21,6 +21,17 @@ export interface SlackThread {
   thread_url: string
 }
 
+export interface OutageAuditLog {
+  ID: number
+  CreatedAt: string
+  UpdatedAt: string
+  outage_id: number
+  user: string
+  operation: string
+  old?: string
+  new?: string
+}
+
 export interface Outage {
   ID: number
   CreatedAt: string

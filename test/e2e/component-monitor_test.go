@@ -111,8 +111,6 @@ func testHTTPComponentMonitorProbe(client *TestHTTPClient, mockMonitoredComponen
 		require.NotNil(t, resolvedOutage, "Should find the previously created outage")
 
 		assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved with EndTime set")
-		assert.NotNil(t, resolvedOutage.ResolvedBy, "Outage should have ResolvedBy set")
-		assert.Equal(t, "e2e-component-monitor", *resolvedOutage.ResolvedBy)
 	}
 }
 
@@ -298,8 +296,6 @@ func restoreHealthyMetricsAndVerifyRecovery(t *testing.T, mockMonitoredComponent
 	}
 	require.NotNil(t, resolvedOutage, "Should find the previously created outage")
 	assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved with EndTime set")
-	require.NotNil(t, resolvedOutage.ResolvedBy, "Outage should have ResolvedBy set")
-	assert.Equal(t, "e2e-component-monitor", *resolvedOutage.ResolvedBy)
 }
 
 func updateMetrics(t *testing.T, baseURL string, metrics map[string]interface{}) {

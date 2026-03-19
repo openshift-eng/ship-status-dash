@@ -35,6 +35,11 @@ type MockOutageRepository struct {
 	OutageByIDError           error
 	ActiveOutagesForSubComp   []types.Outage
 	ActiveOutagesForComponent []types.Outage
+	OutageAuditLogs           []types.OutageAuditLog
+}
+
+func (m *MockOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
+	return m.OutageAuditLogs, nil
 }
 
 // MockComponentPingRepository is a mock implementation of ComponentPingRepository for testing.
@@ -65,7 +70,7 @@ func (m *MockOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 	return m.ActiveOutages, nil
 }
 
-func (m *MockOutageRepository) SaveOutage(outage *types.Outage) error {
+func (m *MockOutageRepository) SaveOutage(outage *types.Outage, user string) error {
 	m.SaveCount++
 	outageCopy := *outage
 	m.SavedOutages = append(m.SavedOutages, &outageCopy)
@@ -84,7 +89,7 @@ func (m *MockOutageRepository) CreateReason(reason *types.Reason) error {
 	return m.CreateReasonError
 }
 
-func (m *MockOutageRepository) CreateOutage(outage *types.Outage) error {
+func (m *MockOutageRepository) CreateOutage(outage *types.Outage, user string) error {
 	outageCopy := *outage
 	m.CreatedOutages = append(m.CreatedOutages, &outageCopy)
 	if m.CreateOutageFn != nil {
@@ -132,7 +137,7 @@ func (m *MockOutageRepository) GetActiveOutagesForComponent(componentSlug string
 	return m.ActiveOutagesForComponent, nil
 }
 
-func (m *MockOutageRepository) DeleteOutage(outage *types.Outage) error {
+func (m *MockOutageRepository) DeleteOutage(outage *types.Outage, user string) error {
 	outageCopy := *outage
 	m.DeletedOutages = append(m.DeletedOutages, &outageCopy)
 	return m.DeleteOutageError

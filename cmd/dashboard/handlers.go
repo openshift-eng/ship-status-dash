@@ -232,15 +232,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 
 	confirmed := (outageReq.Confirmed != nil && *outageReq.Confirmed)
 	if confirmed || !subComponent.RequiresConfirmation {
-		outage.ConfirmedBy = &activeUser
 		outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
-	}
-
-	if outageReq.EndTime != nil {
-		outage.EndTime = *outageReq.EndTime
-		if outage.EndTime.Valid && outage.ResolvedBy == nil {
-			outage.ResolvedBy = &activeUser
-		}
 	}
 
 	if message, valid := outage.Validate(); !valid {
@@ -248,7 +240,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.CreateOutage(&outage, nil); err != nil {
+	if err := h.outageManager.CreateOutage(&outage, nil, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return
@@ -335,11 +327,6 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		endTimeChanged := updateReq.EndTime.Valid != outage.EndTime.Valid || !updateReq.EndTime.Time.Equal(outage.EndTime.Time)
 		if endTimeChanged {
 			outage.EndTime = *updateReq.EndTime
-			if updateReq.EndTime.Valid {
-				outage.ResolvedBy = &activeUser
-			} else {
-				outage.ResolvedBy = nil
-			}
 		}
 	}
 	if updateReq.Description != nil {
@@ -348,17 +335,15 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	if updateReq.Confirmed != nil {
 		if *updateReq.Confirmed && !outage.ConfirmedAt.Valid {
 			outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
-			outage.ConfirmedBy = &activeUser
 		} else if !*updateReq.Confirmed && outage.ConfirmedAt.Valid {
 			outage.ConfirmedAt = sql.NullTime{Valid: false}
-			outage.ConfirmedBy = nil
 		}
 	}
 	if updateReq.TriageNotes != nil {
 		outage.TriageNotes = updateReq.TriageNotes
 	}
 
-	if err := h.outageManager.UpdateOutage(outage); err != nil {
+	if err := h.outageManager.UpdateOutage(outage, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to update outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to update outage")
 		return
@@ -470,7 +455,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.DeleteOutage(outage); err != nil {
+	if err := h.outageManager.DeleteOutage(outage, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to delete outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete outage")
 		return
@@ -478,6 +463,42 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Successfully deleted outage")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) GetOutageAuditLogsJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageIDStr,
+	})
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+	// Get the Outage using the component and subComponents to verify that the outage belongs to them
+	outage, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+	}
+
+	auditLogs, err := h.outageManager.GetOutageAuditLogs(outage.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage audit logs")
+	}
+
+	respondWithJSON(w, http.StatusOK, auditLogs)
 }
 
 // GetSubComponentStatusJSON returns the status of a subcomponent based on active outages

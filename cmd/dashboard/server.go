@@ -117,6 +117,12 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: false,
 		},
 		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/audit-logs",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageAuditLogsJSON,
+			protected: false,
+		},
+		{
 			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
 			method:    http.MethodPatch,
 			handler:   s.handlers.UpdateOutageJSON,

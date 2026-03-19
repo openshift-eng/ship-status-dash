@@ -133,3 +133,8 @@ export const formatDateForDateTimeLocal = (date: Date) => {
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
+
+// Returns ISO string with second precision (no milliseconds) to match backend roundOutageTimes.
+export const toISOStringSeconds = (date: Date): string => {
+  return date.toISOString().slice(0, 19) + 'Z'
+}

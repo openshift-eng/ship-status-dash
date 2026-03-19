@@ -1,6 +1,7 @@
 package outage
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // setupTestDB creates an in-memory SQLite database for testing and migrates the standard outage-related models.
@@ -24,7 +26,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{})
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{})
 	if err != nil {
 		t.Fatalf("Failed to migrate test database: %v", err)
 	}
@@ -196,7 +198,7 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 			tm := setupTestManager(t, tt.config)
 			defer tm.close()
 
-			err := tm.manager.CreateOutage(tt.outage, tt.reasons)
+			err := tm.manager.CreateOutage(tt.outage, tt.reasons, "test-user")
 			if err != nil {
 				t.Fatalf("Failed to create outage: %v", err)
 			}
@@ -220,6 +222,13 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 			}
 
 			assertSlackMessages(t, tm.mockServer, tt.wantSlackMessages)
+
+			var logs []types.OutageAuditLog
+			err = tm.db.Where("outage_id = ?", createdOutages[0].ID).Find(&logs).Error
+			require.NoError(t, err)
+			require.Len(t, logs, 1)
+			assert.Equal(t, "CREATE", logs[0].Operation)
+			assert.Equal(t, "test-user", logs[0].User)
 		})
 	}
 }
@@ -288,7 +297,8 @@ func TestOutageManager_UpdateOutage(t *testing.T) {
 
 			oldOutage := *tt.outage
 			tt.mutateOutage(&oldOutage)
-			err := tm.db.Create(&oldOutage).Error
+			ctx := context.WithValue(context.Background(), types.CurrentUserKey, "test-user")
+			err := tm.db.WithContext(ctx).Create(&oldOutage).Error
 			if err != nil {
 				t.Fatalf("Failed to create old outage: %v", err)
 			}
@@ -302,7 +312,7 @@ func TestOutageManager_UpdateOutage(t *testing.T) {
 				}
 			}
 
-			err = tm.manager.UpdateOutage(tt.outage)
+			err = tm.manager.UpdateOutage(tt.outage, "test-user")
 			if err != nil {
 				t.Fatalf("Failed to update outage: %v", err)
 			}
@@ -322,6 +332,148 @@ func TestOutageManager_UpdateOutage(t *testing.T) {
 			}
 
 			assertSlackMessages(t, tm.mockServer, tt.wantSlackMessages)
+
+			var logs []types.OutageAuditLog
+			err = tm.db.Where("outage_id = ?", tt.outage.ID).Order("created_at DESC").Find(&logs).Error
+			require.NoError(t, err)
+			require.Len(t, logs, 2)
+			assert.Equal(t, "UPDATE", logs[0].Operation)
+			assert.Equal(t, "test-user", logs[0].User)
+			assert.Equal(t, "CREATE", logs[1].Operation)
+			assert.Equal(t, "test-user", logs[1].User)
 		})
 	}
+}
+
+func TestOutageManager_GetOutageAuditLogs(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(t *testing.T, tm *testManager) uint
+		wantLogs []types.OutageAuditLog
+	}{
+		{
+			name: "create only returns one CREATE log",
+			setup: func(t *testing.T, tm *testManager) uint {
+				outage := &types.Outage{
+					Model:            gorm.Model{ID: 1},
+					ComponentName:    "test-component",
+					SubComponentName: "test-sub",
+					Severity:         types.SeverityDown,
+					CreatedBy:        "system",
+					DiscoveredFrom:   "component-monitor",
+				}
+				config := &types.DashboardConfig{
+					Components: []*types.Component{
+						{
+							Slug: "test-component",
+							Name: "Test Component",
+							Subcomponents: []types.SubComponent{
+								{Slug: "test-sub", Name: "Test Sub"},
+							},
+						},
+					},
+				}
+				tm2 := setupTestManager(t, config)
+				*tm = *tm2
+				err := tm.manager.CreateOutage(outage, nil, "test-user")
+				require.NoError(t, err)
+				return outage.ID
+			},
+			wantLogs: []types.OutageAuditLog{
+				{Operation: "CREATE", User: "test-user"},
+			},
+		},
+		{
+			name: "create and update returns two logs newest first",
+			setup: func(t *testing.T, tm *testManager) uint {
+				config := &types.DashboardConfig{
+					Components: []*types.Component{
+						{
+							Slug: "test-component",
+							Name: "Test Component",
+							Subcomponents: []types.SubComponent{
+								{Slug: "test-sub", Name: "Test Sub"},
+							},
+						},
+					},
+				}
+				tm2 := setupTestManager(t, config)
+				*tm = *tm2
+				outage := &types.Outage{
+					Model:            gorm.Model{ID: 1},
+					ComponentName:    "test-component",
+					SubComponentName: "test-sub",
+					Severity:         types.SeverityDown,
+					CreatedBy:        "system",
+					DiscoveredFrom:   "component-monitor",
+				}
+				ctx := context.WithValue(context.Background(), types.CurrentUserKey, "test-user")
+				err := tm.db.WithContext(ctx).Create(outage).Error
+				require.NoError(t, err)
+				outage.Severity = types.SeverityDegraded
+				err = tm.manager.UpdateOutage(outage, "test-user")
+				require.NoError(t, err)
+				return outage.ID
+			},
+			wantLogs: []types.OutageAuditLog{
+				{Operation: "UPDATE", User: "test-user"},
+				{Operation: "CREATE", User: "test-user"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tm testManager
+			outageID := tt.setup(t, &tm)
+			defer tm.close()
+
+			logs, err := tm.manager.GetOutageAuditLogs(outageID)
+			require.NoError(t, err)
+			require.Len(t, logs, len(tt.wantLogs))
+			for i := range tt.wantLogs {
+				assert.Equal(t, tt.wantLogs[i].Operation, logs[i].Operation)
+				assert.Equal(t, tt.wantLogs[i].User, logs[i].User)
+			}
+		})
+	}
+}
+
+func TestOutageManager_DeleteOutage(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		Model:            gorm.Model{ID: 1},
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "test-user")
+	require.NoError(t, err)
+	outageID := outage.ID
+
+	err = tm.manager.DeleteOutage(outage, "test-user")
+	require.NoError(t, err)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outageID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	assert.Equal(t, "DELETE", logs[0].Operation)
+	assert.Equal(t, "test-user", logs[0].User)
+	assert.Equal(t, "CREATE", logs[1].Operation)
+	assert.Equal(t, "test-user", logs[1].User)
 }

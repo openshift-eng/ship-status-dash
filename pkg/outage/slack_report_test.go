@@ -377,7 +377,6 @@ func TestSlackReporter_ReportOutage(t *testing.T) {
 					Time:  time.Date(2024, 1, 15, 10, 35, 0, 0, time.UTC),
 					Valid: true,
 				},
-				ResolvedBy:     stringPtr("test-user"),
 				CreatedBy:      "system",
 				DiscoveredFrom: "component-monitor",
 			},
@@ -533,7 +532,6 @@ func TestSlackReporter_ReportOutageUpdate(t *testing.T) {
 					Time:  time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC),
 					Valid: true,
 				},
-				ResolvedBy: stringPtr("test-user"),
 			},
 			oldOutage: &types.Outage{
 				Severity: types.SeverityDown,
@@ -551,7 +549,7 @@ func TestSlackReporter_ReportOutageUpdate(t *testing.T) {
 			wantMessages: []PostedMessage{
 				{
 					Channel:         "#test-channel",
-					Text:            ":outage_resolved: Outage Updated: Test Component/Test Sub (#1)\n\nResolved: by `test-user` at `2024-01-15T11:00:00Z`\n\n<https://ship-status.ci.openshift.org/test-component/test-sub/outages/1|View Outage>",
+					Text:            ":outage_resolved: Outage Updated: Test Component/Test Sub (#1)\n\nResolved at `2024-01-15T11:00:00Z`\n\n<https://ship-status.ci.openshift.org/test-component/test-sub/outages/1|View Outage>",
 					ThreadTimestamp: "1234567890.123456",
 					ResponseTS:      "1234567890.000001",
 				},

@@ -209,7 +209,7 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 
 	if oldOutage.EndTime.Valid != outage.EndTime.Valid {
 		if outage.EndTime.Valid {
-			changes = append(changes, fmt.Sprintf("Resolved: by `%s` at `%s`", getStringValue(outage.ResolvedBy, "Unknown"), outage.EndTime.Time.Format(time.RFC3339)))
+			changes = append(changes, fmt.Sprintf("Resolved at `%s`", outage.EndTime.Time.Format(time.RFC3339)))
 		} else {
 			changes = append(changes, "Reopened")
 		}
@@ -221,7 +221,7 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 
 	if oldOutage.ConfirmedAt.Valid != outage.ConfirmedAt.Valid {
 		if outage.ConfirmedAt.Valid {
-			changes = append(changes, fmt.Sprintf("Confirmed: `%s` at `%s`", getStringValue(outage.ConfirmedBy, "Unknown"), outage.ConfirmedAt.Time.Format(time.RFC3339)))
+			changes = append(changes, fmt.Sprintf("Confirmed at `%s`", outage.ConfirmedAt.Time.Format(time.RFC3339)))
 		} else {
 			changes = append(changes, "Unconfirmed")
 		}

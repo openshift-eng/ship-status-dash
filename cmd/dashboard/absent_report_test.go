@@ -108,7 +108,6 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 				assert.Equal(t, AbsentReportCreator, outage.CreatedBy)
 				assert.Contains(t, outage.Description, "No report from component-monitor found")
 				assert.True(t, outage.ConfirmedAt.Valid)
-				assert.Equal(t, AbsentReportCreator, *outage.ConfirmedBy)
 			},
 		},
 		{
@@ -250,7 +249,6 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 				require.Len(t, m.CreatedOutages, 1, "Expected 1 outage to be created")
 				outage := m.CreatedOutages[0].Outage
 				assert.False(t, outage.ConfirmedAt.Valid)
-				assert.Nil(t, outage.ConfirmedBy)
 			},
 		},
 		{
