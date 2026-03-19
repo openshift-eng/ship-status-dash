@@ -24,14 +24,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
-import {
-  formatDuration,
-  formatStatusSeverityText,
-  getStatusChipColor,
-  relativeTime,
-} from '../../utils/helpers'
+import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
+import { StatusChip } from '../StatusColors'
 
 import OutageActions from './actions/OutageActions'
 import AuditLogModal from './AuditLogModal'
@@ -79,25 +75,7 @@ const ChipSpacer = styled(Box)(({ theme }) => ({
   marginTop: theme.spacing(0.5),
 }))
 
-const SeverityChip = styled(Chip)<{ severity: string }>(({ theme, severity }) => {
-  const colorValue = getStatusChipColor(theme, severity)
-  return {
-    backgroundColor: colorValue,
-    color: theme.palette.getContrastText(colorValue),
-  }
-})
-
-const HeaderChip = styled(SeverityChip)(() => ({
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  height: 32,
-}))
-
-const ResolvedChip = styled(Chip)(() => ({
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  height: 32,
-}))
+const HeaderChipSx = { fontSize: '0.95rem', fontWeight: 600, height: 32 }
 
 const GridContainer = styled(Box)(({ theme }) => ({
   display: 'grid',
@@ -392,12 +370,13 @@ const OutageDetailsPage = () => {
             </Typography>
           </HeaderTitleBox>
           {isResolved() ? (
-            <ResolvedChip label="Resolved" color="success" size="medium" />
+            <StatusChip label="Resolved" status="Healthy" variant="filled" sx={HeaderChipSx} />
           ) : (
-            <HeaderChip
+            <StatusChip
               label={formatStatusSeverityText(outage.severity)}
-              severity={outage.severity}
-              size="medium"
+              status={outage.severity}
+              variant="filled"
+              sx={HeaderChipSx}
             />
           )}
         </HeaderContent>
@@ -413,9 +392,10 @@ const OutageDetailsPage = () => {
                 Severity
               </FieldLabel>
               <ChipSpacer>
-                <SeverityChip
+                <StatusChip
                   label={formatStatusSeverityText(outage.severity)}
-                  severity={outage.severity}
+                  status={outage.severity}
+                  variant="filled"
                   size="small"
                 />
               </ChipSpacer>
@@ -475,11 +455,11 @@ const OutageDetailsPage = () => {
               Confirmed
             </FieldLabel>
             <ConfirmationChipContainer>
-              <Chip
-                label={outage.confirmed_at.Valid ? 'Yes' : 'No'}
-                color={outage.confirmed_at.Valid ? 'success' : 'default'}
-                size="small"
-              />
+              {outage.confirmed_at.Valid ? (
+                <StatusChip label="Yes" status="Healthy" variant="filled" size="small" />
+              ) : (
+                <Chip label="No" color="default" size="small" />
+              )}
               {outage.confirmed_at.Valid && (
                 <Typography variant="body2" color="text.secondary">
                   {formatDateTime(outage.confirmed_at.Time)}

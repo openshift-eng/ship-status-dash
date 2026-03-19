@@ -12,6 +12,7 @@ import {
   Typography,
   styled,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import * as Diff from 'diff'
 import { useCallback, useEffect, useState } from 'react'
 
@@ -51,21 +52,19 @@ const DiffLine = styled('div')<{ variant?: 'add' | 'remove' | 'unchanged' }>(({
   theme,
   variant = 'unchanged',
 }) => {
+  const addColor = theme.palette.diff?.add.main ?? theme.palette.success.main
+  const removeColor = theme.palette.diff?.remove.main ?? theme.palette.error.main
   const bg =
     variant === 'add'
-      ? theme.palette.mode === 'dark'
-        ? 'rgba(76, 175, 80, 0.25)'
-        : 'rgba(76, 175, 80, 0.15)'
+      ? alpha(addColor, theme.palette.mode === 'dark' ? 0.25 : 0.15)
       : variant === 'remove'
-        ? theme.palette.mode === 'dark'
-          ? 'rgba(244, 67, 54, 0.25)'
-          : 'rgba(244, 67, 54, 0.15)'
+        ? alpha(removeColor, theme.palette.mode === 'dark' ? 0.25 : 0.15)
         : 'transparent'
   const borderLeft =
     variant === 'add'
-      ? `3px solid ${theme.palette.success.main}`
+      ? `3px solid ${addColor}`
       : variant === 'remove'
-        ? `3px solid ${theme.palette.error.main}`
+        ? `3px solid ${removeColor}`
         : '3px solid transparent'
   return {
     fontFamily: 'monospace',
@@ -97,16 +96,15 @@ function decodeJsonPayload(raw: string | undefined): string {
   }
 }
 
-type DiffLineVariant = 'add' | 'remove' | 'unchanged'
-
 function getUnifiedDiffLines(
   oldStr: string,
   newStr: string,
-): Array<{ variant: DiffLineVariant; line: string }> {
+): Array<{ variant: 'add' | 'remove'; line: string }> {
   const changes = Diff.diffLines(oldStr, newStr)
-  const lines: Array<{ variant: DiffLineVariant; line: string }> = []
+  const lines: Array<{ variant: 'add' | 'remove'; line: string }> = []
   for (const change of changes) {
-    const variant: DiffLineVariant = change.added ? 'add' : change.removed ? 'remove' : 'unchanged'
+    if (!change.added && !change.removed) continue
+    const variant = change.added ? 'add' : 'remove'
     const lineStrings = change.value.split('\n')
     if (lineStrings[lineStrings.length - 1] === '') lineStrings.pop()
     for (const line of lineStrings) {

@@ -18,6 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
 import { useCallback, useEffect, useState } from 'react'
@@ -150,6 +151,7 @@ const SubComponentDetails = () => {
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
+  const theme = useTheme()
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const isAdmin = isComponentAdmin(componentSlug || '')
@@ -263,7 +265,11 @@ const SubComponentDetails = () => {
 
         return (
           <Tooltip title={status} arrow>
-            {isActive ? <ErrorIcon color="error" /> : <CheckCircle color="success" />}
+            {isActive ? (
+              <ErrorIcon sx={{ color: theme.palette.status.down.main }} />
+            ) : (
+              <CheckCircle sx={{ color: theme.palette.status.healthy.main }} />
+            )}
           </Tooltip>
         )
       },
@@ -295,7 +301,11 @@ const SubComponentDetails = () => {
 
               return (
                 <Tooltip title={isConfirmed ? 'Confirmed' : 'Unconfirmed'} arrow>
-                  {isConfirmed ? <CheckCircle color="success" /> : <Warning color="warning" />}
+                  {isConfirmed ? (
+                    <CheckCircle sx={{ color: theme.palette.status.healthy.main }} />
+                  ) : (
+                    <Warning sx={{ color: theme.palette.status.degraded.main }} />
+                  )}
                 </Tooltip>
               )
             },
@@ -345,7 +355,7 @@ const SubComponentDetails = () => {
           )
         }
         return (
-          <Typography variant="body2" color="error">
+          <Typography variant="body2" sx={{ color: theme.palette.status.down.main }}>
             Ongoing
           </Typography>
         )
@@ -443,10 +453,17 @@ const SubComponentDetails = () => {
             {isAdmin && (
               <Button
                 variant="contained"
-                color="error"
                 startIcon={<ReportProblem />}
                 onClick={() => setCreateOutageModalOpen(true)}
                 data-tour="subcomponent-report-outage"
+                sx={{
+                  backgroundColor: theme.palette.status.down.main,
+                  color: theme.palette.getContrastText(theme.palette.status.down.main),
+                  '&:hover': {
+                    backgroundColor: theme.palette.status.down.dark,
+                    color: theme.palette.getContrastText(theme.palette.status.down.dark),
+                  },
+                }}
               >
                 Report Outage
               </Button>
