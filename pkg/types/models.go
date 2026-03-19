@@ -151,6 +151,16 @@ func (o *Outage) before(db *gorm.DB) error {
 		return err
 	}
 
+	// Normalize to UTC so audit log diffs don't show spurious timezone changes
+	// (pgx returns times in the PostgreSQL session timezone, not UTC).
+	old.StartTime = old.StartTime.UTC()
+	if old.EndTime.Valid {
+		old.EndTime.Time = old.EndTime.Time.UTC()
+	}
+	if old.ConfirmedAt.Valid {
+		old.ConfirmedAt.Time = old.ConfirmedAt.Time.UTC()
+	}
+
 	db.Statement.Context = context.WithValue(db.Statement.Context, OldOutageKey, old)
 	return nil
 }

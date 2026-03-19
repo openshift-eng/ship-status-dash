@@ -320,7 +320,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		outage.Severity = types.Severity(*updateReq.Severity)
 	}
-	if updateReq.StartTime != nil {
+	if updateReq.StartTime != nil && !updateReq.StartTime.Equal(outage.StartTime) {
 		outage.StartTime = *updateReq.StartTime
 	}
 	if updateReq.EndTime != nil {

@@ -42,16 +42,16 @@ func NewGORMOutageRepository(db *gorm.DB) OutageRepository {
 
 // roundOutageTimes truncates all time fields in an outage down to the nearest second.
 func roundOutageTimes(outage *types.Outage) {
-	outage.StartTime = outage.StartTime.Truncate(time.Second)
+	outage.StartTime = outage.StartTime.Truncate(time.Second).UTC()
 	if outage.EndTime.Valid {
 		outage.EndTime = sql.NullTime{
-			Time:  outage.EndTime.Time.Truncate(time.Second),
+			Time:  outage.EndTime.Time.Truncate(time.Second).UTC(),
 			Valid: true,
 		}
 	}
 	if outage.ConfirmedAt.Valid {
 		outage.ConfirmedAt = sql.NullTime{
-			Time:  outage.ConfirmedAt.Time.Truncate(time.Second),
+			Time:  outage.ConfirmedAt.Time.Truncate(time.Second).UTC(),
 			Valid: true,
 		}
 	}
