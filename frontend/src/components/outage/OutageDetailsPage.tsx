@@ -414,6 +414,31 @@ const OutageDetailsPage = () => {
           />
         </Section>
 
+        <Section icon={<Assignment />} title="Additional Information">
+          <Field label="Created By" value={outage.created_by} />
+          <Field label="Discovered From" value={outage.discovered_from} />
+          <FieldBox>
+            <FieldLabel variant="caption" color="text.secondary">
+              Confirmed
+            </FieldLabel>
+            <ConfirmationChipContainer>
+              {outage.confirmed_at.Valid ? (
+                <StatusChip label="Yes" status="Healthy" variant="filled" size="small" />
+              ) : (
+                <Chip label="No" color="default" size="small" />
+              )}
+              {outage.confirmed_at.Valid && (
+                <Typography variant="body2" color="text.secondary">
+                  {formatDateTime(outage.confirmed_at.Time)}
+                </Typography>
+              )}
+            </ConfirmationChipContainer>
+          </FieldBox>
+          {outage.triage_notes && (
+            <Field label="Triage Notes" value={outage.triage_notes} valueVariant="pre-wrap" />
+          )}
+        </Section>
+
         {outage.reasons && outage.reasons.length > 0 && (
           <FullWidthGridItem>
             <Section icon={<BugReport />} title="Automated Monitoring Failures">
@@ -446,31 +471,6 @@ const OutageDetailsPage = () => {
             </Section>
           </FullWidthGridItem>
         )}
-
-        <Section icon={<Assignment />} title="Additional Information">
-          <Field label="Created By" value={outage.created_by} />
-          <Field label="Discovered From" value={outage.discovered_from} />
-          <FieldBox>
-            <FieldLabel variant="caption" color="text.secondary">
-              Confirmed
-            </FieldLabel>
-            <ConfirmationChipContainer>
-              {outage.confirmed_at.Valid ? (
-                <StatusChip label="Yes" status="Healthy" variant="filled" size="small" />
-              ) : (
-                <Chip label="No" color="default" size="small" />
-              )}
-              {outage.confirmed_at.Valid && (
-                <Typography variant="body2" color="text.secondary">
-                  {formatDateTime(outage.confirmed_at.Time)}
-                </Typography>
-              )}
-            </ConfirmationChipContainer>
-          </FieldBox>
-          {outage.triage_notes && (
-            <Field label="Triage Notes" value={outage.triage_notes} valueVariant="pre-wrap" />
-          )}
-        </Section>
 
         {outage.slack_threads && outage.slack_threads.length > 0 && (
           <Section icon={<Forum />} title="Automated Slack Reporting">

@@ -1,6 +1,8 @@
 package outage
 
 import (
+	"fmt"
+
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/repositories"
 	"ship-status-dash/pkg/types"
@@ -58,6 +60,10 @@ func NewDBOutageManager(
 
 // CreateOutage creates a new outage and posts to Slack channels if configured.
 func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
+	if msg, ok := outage.Validate(); !ok {
+		return fmt.Errorf("validation failed: %s", msg)
+	}
+
 	if err := m.db.Transaction(func(tx *gorm.DB) error {
 		outageRepo := repositories.NewGORMOutageRepository(tx)
 		if err := outageRepo.CreateOutage(outage, user); err != nil {
@@ -91,6 +97,10 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 
 // UpdateOutage updates an existing outage and posts thread replies to Slack.
 func (m *DBOutageManager) UpdateOutage(outage *types.Outage, user string) error {
+	if msg, ok := outage.Validate(); !ok {
+		return fmt.Errorf("validation failed: %s", msg)
+	}
+
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	oldOutage, err := outageRepo.GetOutageByID(outage.ComponentName, outage.SubComponentName, outage.ID)
 	if err != nil {

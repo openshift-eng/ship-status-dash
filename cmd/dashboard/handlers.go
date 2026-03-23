@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -218,11 +219,16 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		"discovered_from": discoveredFrom,
 	})
 
+	var description string
+	if outageReq.Description != nil {
+		description = strings.TrimSpace(*outageReq.Description)
+	}
+
 	outage := types.Outage{
 		ComponentName:    componentName,
 		SubComponentName: subComponentName,
 		Severity:         types.Severity(severity),
-		Description:      *outageReq.Description,
+		Description:      description,
 		StartTime:        *outageReq.StartTime,
 		DiscoveredFrom:   discoveredFrom,
 		TriageNotes:      outageReq.TriageNotes,
@@ -330,7 +336,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if updateReq.Description != nil {
-		outage.Description = *updateReq.Description
+		outage.Description = strings.TrimSpace(*updateReq.Description)
 	}
 	if updateReq.Confirmed != nil {
 		if *updateReq.Confirmed && !outage.ConfirmedAt.Valid {
@@ -341,6 +347,11 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	if updateReq.TriageNotes != nil {
 		outage.TriageNotes = updateReq.TriageNotes
+	}
+
+	if message, valid := outage.Validate(); !valid {
+		respondWithError(w, http.StatusBadRequest, message)
+		return
 	}
 
 	if err := h.outageManager.UpdateOutage(outage, activeUser); err != nil {
