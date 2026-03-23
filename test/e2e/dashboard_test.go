@@ -48,6 +48,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("UpdateOutage", testUpdateOutage(client))
 	t.Run("DeleteOutage", testDeleteOutage(client))
 	t.Run("GetOutage", testGetOutage(client))
+	t.Run("OutageAuditLogs", testOutageAuditLogs(client))
 	t.Run("SubComponentStatus", testSubComponentStatus(client))
 	t.Run("ComponentStatus", testComponentStatus(client))
 	t.Run("AllComponentsStatus", testAllComponentsStatus(client))
@@ -432,9 +433,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		err = json.NewDecoder(confirmResp.Body).Decode(&confirmedOutage)
 		require.NoError(t, err)
 
-		// Verify that confirmed_by is set to the user from X-Forwarded-User header
-		assert.NotNil(t, confirmedOutage.ConfirmedBy, "confirmed_by should be set when confirmed is true")
-		assert.Equal(t, "developer", *confirmedOutage.ConfirmedBy, "confirmed_by should be set to the user from X-Forwarded-User header")
 		assert.True(t, confirmedOutage.ConfirmedAt.Valid, "confirmed_at should be set when confirmed is true")
 		// Verify that ConfirmedAt is rounded to the nearest second (no sub-second precision)
 		assert.Equal(t, 0, confirmedOutage.ConfirmedAt.Time.Nanosecond(), "ConfirmedAt should be rounded to the nearest second")
@@ -481,10 +479,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(resolveResp.Body).Decode(&resolvedOutage)
 			require.NoError(t, err)
 
-			// Verify that resolved_by is set to developer
-			require.NotNil(t, resolvedOutage.ResolvedBy, "resolved_by should be set when end_time is provided")
-			originalResolver := *resolvedOutage.ResolvedBy
-			assert.Equal(t, "developer", originalResolver, "resolved_by should be set to developer who resolved it")
 			assert.True(t, resolvedOutage.EndTime.Valid, "end_time should be valid after resolution")
 			// Verify that EndTime is rounded to the nearest second (no sub-second precision)
 			assert.Equal(t, 0, resolvedOutage.EndTime.Time.Nanosecond(), "EndTime should be rounded to the nearest second")
@@ -511,9 +505,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(updateResp.Body).Decode(&updatedOutage)
 			require.NoError(t, err)
 
-			// Verify that resolved_by is still set to the original resolver (developer), not editor
-			require.NotNil(t, updatedOutage.ResolvedBy, "resolved_by should still be set after update")
-			assert.Equal(t, originalResolver, *updatedOutage.ResolvedBy, "resolved_by should remain unchanged when end_time is not modified")
 			assert.True(t, updatedOutage.EndTime.Valid, "end_time should still be valid")
 			assert.WithinDuration(t, originalEndTime, updatedOutage.EndTime.Time, time.Second, "end_time should not have changed")
 
@@ -538,9 +529,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(changeEndTimeResp.Body).Decode(&changedEndTimeOutage)
 			require.NoError(t, err)
 
-			// Verify that resolved_by is now set to editor since end_time was changed
-			require.NotNil(t, changedEndTimeOutage.ResolvedBy, "resolved_by should be set when end_time is changed")
-			assert.Equal(t, "editor", *changedEndTimeOutage.ResolvedBy, "resolved_by should be updated to editor when end_time is modified")
 			assert.True(t, changedEndTimeOutage.EndTime.Valid, "end_time should still be valid")
 			assert.WithinDuration(t, newResolveTime, changedEndTimeOutage.EndTime.Time, time.Second, "end_time should have been updated")
 		})
@@ -668,6 +656,54 @@ func testGetOutage(client *TestHTTPClient) func(*testing.T) {
 	}
 }
 
+func testOutageAuditLogs(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("GET audit-logs after create, update, and delete", func(t *testing.T) {
+			createdOutage := createOutage(t, client, "Prow", "Tide")
+
+			auditLogsURL := fmt.Sprintf("/api/components/%s/%s/outages/%d/audit-logs", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID)
+
+			resp, err := client.Get(auditLogsURL, false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var logsAfterCreate []types.OutageAuditLog
+			err = json.NewDecoder(resp.Body).Decode(&logsAfterCreate)
+			require.NoError(t, err)
+			require.Len(t, logsAfterCreate, 1, "audit logs after create should have one entry")
+			assert.Equal(t, createdOutage.ID, logsAfterCreate[0].OutageID)
+			assert.Equal(t, "CREATE", logsAfterCreate[0].Operation)
+			assert.Equal(t, "developer", logsAfterCreate[0].User)
+
+			updateOutage(t, client, "Prow", "Tide", createdOutage.ID, map[string]interface{}{
+				"description": "Updated description for audit test",
+			})
+
+			resp2, err := client.Get(auditLogsURL, false)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			require.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			var logsAfterUpdate []types.OutageAuditLog
+			err = json.NewDecoder(resp2.Body).Decode(&logsAfterUpdate)
+			require.NoError(t, err)
+			require.Len(t, logsAfterUpdate, 2, "audit logs after update should have two entries")
+			// API returns logs newest first (created_at DESC)
+			assert.Equal(t, "UPDATE", logsAfterUpdate[0].Operation)
+			assert.Equal(t, "CREATE", logsAfterUpdate[1].Operation)
+			assert.Equal(t, "developer", logsAfterUpdate[0].User)
+
+			deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
+
+			resp3, err := client.Get(auditLogsURL, false)
+			require.NoError(t, err)
+			defer resp3.Body.Close()
+			assert.Equal(t, http.StatusNotFound, resp3.StatusCode, "audit-logs for deleted outage should return 404")
+		})
+	}
+}
+
 func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("GET status for healthy sub-component returns Healthy", func(t *testing.T) {
@@ -743,12 +779,9 @@ func testSubComponentStatus(client *TestHTTPClient) func(*testing.T) {
 
 			assert.Equal(t, http.StatusOK, updateResp.StatusCode)
 
-			// Verify that resolved_by is set to the user from X-Forwarded-User header when end_time is set
 			var updatedOutage types.Outage
 			err = json.NewDecoder(updateResp.Body).Decode(&updatedOutage)
 			require.NoError(t, err)
-			assert.NotNil(t, updatedOutage.ResolvedBy, "resolved_by should be set when end_time is provided")
-			assert.Equal(t, "developer", *updatedOutage.ResolvedBy, "resolved_by should be set to the user from X-Forwarded-User header")
 
 			// Check that the status endpoint still considers this outage active
 			status := getStatus(t, client, "Prow", "Deck")
@@ -1543,8 +1576,6 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 			}
 			require.NotNil(t, resolvedOutage, "Outage should still exist")
 			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
-			assert.NotNil(t, resolvedOutage.ResolvedBy)
-			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
 
 			// Verify that ping time was updated
 			status := getStatus(t, client, "Prow", "Hook")
@@ -2001,8 +2032,6 @@ func testAbsentReport(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err, "Outage should be resolved within 20 seconds")
 			require.NotNil(t, resolvedOutage, "Outage should still exist after resolution")
 			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
-			assert.NotNil(t, resolvedOutage.ResolvedBy)
-			assert.Equal(t, "app-ci-component-monitor", *resolvedOutage.ResolvedBy)
 
 			// Verify the component status is now healthy
 			updatedStatus := getStatus(t, client, "Downstream CI", "Retester")

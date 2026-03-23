@@ -79,7 +79,6 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Empty(t, m.CreatedOutages, "Should not create new outages")
 				for _, outage := range m.UpdatedOutages {
 					assert.True(t, outage.EndTime.Valid)
-					assert.Equal(t, "test-monitor", *outage.ResolvedBy)
 				}
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
@@ -146,7 +145,6 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Equal(t, types.CheckTypePrometheus, created.Reasons[0].Type)
 				assert.Equal(t, "test-component", created.Outage.ComponentName)
 				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
-				assert.Equal(t, "test-monitor", *created.Outage.ConfirmedBy)
 				assert.True(t, created.Outage.ConfirmedAt.Valid)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
@@ -183,7 +181,6 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Len(t, m.CreatedOutages, 1)
 				created := m.CreatedOutages[0]
 				assert.Len(t, created.Reasons, 1)
-				assert.Nil(t, created.Outage.ConfirmedBy)
 				assert.False(t, created.Outage.ConfirmedAt.Valid)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
@@ -303,7 +300,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				m.ActiveOutagesCreatedBy = []types.Outage{
 					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
 				}
-				m.UpdateOutageFn = func(*types.Outage) error {
+				m.UpdateOutageFn = func(*types.Outage, string) error {
 					return errors.New("update error")
 				}
 			},

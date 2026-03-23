@@ -130,8 +130,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			}
 			for i := range activeOutages {
 				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
-				activeOutages[i].ResolvedBy = &req.ComponentMonitor
-				if err := p.outageManager.UpdateOutage(&activeOutages[i]); err != nil {
+				if err := p.outageManager.UpdateOutage(&activeOutages[i], req.ComponentMonitor); err != nil {
 					statusLogger.WithFields(logrus.Fields{
 						"outage_id": activeOutages[i].ID,
 						"error":     err,
@@ -171,7 +170,6 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			}
 
 			if !subComponent.RequiresConfirmation {
-				outage.ConfirmedBy = &req.ComponentMonitor
 				outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
 			}
 
@@ -179,7 +177,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				return fmt.Errorf("validation failed: %s", message)
 			}
 
-			if err := p.outageManager.CreateOutage(&outage, status.Reasons); err != nil {
+			if err := p.outageManager.CreateOutage(&outage, status.Reasons, req.ComponentMonitor); err != nil {
 				statusLogger.WithField("error", err).Error("Failed to create outage and reasons")
 				continue
 			}

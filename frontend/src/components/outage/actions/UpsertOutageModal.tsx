@@ -181,14 +181,12 @@ const UpsertOutageModal = ({
       confirmed: formData.confirmed,
     }
 
-    // Handle end_time - either set it or clear it
     if (formData.end_time) {
       requestData.end_time = {
         Time: new Date(formData.end_time).toISOString(),
         Valid: true,
       }
     } else if (isUpdateMode && outage?.end_time.Valid) {
-      // If we're updating and the outage previously had an end_time, set Valid to false to mark it as ongoing again
       requestData.end_time = {
         Time: new Date().toISOString(),
         Valid: false,

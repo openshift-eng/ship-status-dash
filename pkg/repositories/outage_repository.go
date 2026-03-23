@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -11,10 +12,10 @@ import (
 
 // OutageRepository defines the interface for outage and reason database operations.
 type OutageRepository interface {
-	CreateOutage(outage *types.Outage) error
+	CreateOutage(outage *types.Outage, user string) error
 	CreateReason(reason *types.Reason) error
 
-	SaveOutage(outage *types.Outage) error
+	SaveOutage(outage *types.Outage, user string) error
 
 	GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error)
 	GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
@@ -24,7 +25,9 @@ type OutageRepository interface {
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
 
-	DeleteOutage(outage *types.Outage) error
+	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
+
+	DeleteOutage(outage *types.Outage, user string) error
 }
 
 // gormOutageRepository is a GORM implementation of OutageRepository.
@@ -39,25 +42,25 @@ func NewGORMOutageRepository(db *gorm.DB) OutageRepository {
 
 // roundOutageTimes truncates all time fields in an outage down to the nearest second.
 func roundOutageTimes(outage *types.Outage) {
-	outage.StartTime = outage.StartTime.Truncate(time.Second)
+	outage.StartTime = outage.StartTime.Truncate(time.Second).UTC()
 	if outage.EndTime.Valid {
 		outage.EndTime = sql.NullTime{
-			Time:  outage.EndTime.Time.Truncate(time.Second),
+			Time:  outage.EndTime.Time.Truncate(time.Second).UTC(),
 			Valid: true,
 		}
 	}
 	if outage.ConfirmedAt.Valid {
 		outage.ConfirmedAt = sql.NullTime{
-			Time:  outage.ConfirmedAt.Time.Truncate(time.Second),
+			Time:  outage.ConfirmedAt.Time.Truncate(time.Second).UTC(),
 			Valid: true,
 		}
 	}
 }
 
 // CreateOutage creates a new outage record in the database.
-func (r *gormOutageRepository) CreateOutage(outage *types.Outage) error {
+func (r *gormOutageRepository) CreateOutage(outage *types.Outage, user string) error {
 	roundOutageTimes(outage)
-	return r.db.Create(outage).Error
+	return r.db.WithContext(context.WithValue(context.Background(), types.CurrentUserKey, user)).Create(outage).Error
 }
 
 // CreateReason creates a new reason record in the database.
@@ -67,9 +70,9 @@ func (r *gormOutageRepository) CreateReason(reason *types.Reason) error {
 
 // SaveOutage updates an existing outage record in the database.
 // If the outage does not exist, it will be created.
-func (r *gormOutageRepository) SaveOutage(outage *types.Outage) error {
+func (r *gormOutageRepository) SaveOutage(outage *types.Outage, user string) error {
 	roundOutageTimes(outage)
-	return r.db.Save(outage).Error
+	return r.db.WithContext(context.WithValue(context.Background(), types.CurrentUserKey, user)).Save(outage).Error
 }
 
 // GetOutageByID retrieves a specific outage by ID for a component/sub-component combination.
@@ -150,7 +153,13 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 	return activeOutages, err
 }
 
+func (r *gormOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
+	var outageAuditLogs []types.OutageAuditLog
+	err := r.db.Where("outage_id = ?", outageID).Order("created_at DESC").Find(&outageAuditLogs).Error
+	return outageAuditLogs, err
+}
+
 // DeleteOutage deletes an outage from the database.
-func (r *gormOutageRepository) DeleteOutage(outage *types.Outage) error {
-	return r.db.Delete(outage).Error
+func (r *gormOutageRepository) DeleteOutage(outage *types.Outage, user string) error {
+	return r.db.WithContext(context.WithValue(context.Background(), types.CurrentUserKey, user)).Delete(outage).Error
 }

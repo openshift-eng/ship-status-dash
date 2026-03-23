@@ -19,7 +19,7 @@ type MockOutageManager struct {
 
 	// Mock functions
 	CreateOutageFn                   func(*types.Outage, []types.Reason) error
-	UpdateOutageFn                   func(*types.Outage) error
+	UpdateOutageFn                   func(*types.Outage, string) error
 	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
 }
@@ -36,7 +36,7 @@ func (m *MockOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponen
 }
 
 // CreateOutage captures the outage and reasons for assertions.
-func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason) error {
+func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
 	if m.CreateOutageFn != nil {
 		return m.CreateOutageFn(outage, reasons)
 	}
@@ -55,9 +55,9 @@ func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.R
 }
 
 // UpdateOutage captures the outage for assertions.
-func (m *MockOutageManager) UpdateOutage(outage *types.Outage) error {
+func (m *MockOutageManager) UpdateOutage(outage *types.Outage, user string) error {
 	if m.UpdateOutageFn != nil {
-		return m.UpdateOutageFn(outage)
+		return m.UpdateOutageFn(outage, user)
 	}
 	// Capture the outage
 	outageCopy := *outage
@@ -98,7 +98,12 @@ func (m *MockOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subCom
 	return []types.Outage{}, nil
 }
 
+// GetOutageAuditLogs is included for interface completeness.
+func (m *MockOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
+	return nil, nil
+}
+
 // DeleteOutage is not used by ComponentMonitorReportProcessor but included for interface completeness.
-func (m *MockOutageManager) DeleteOutage(outage *types.Outage) error {
+func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) error {
 	return nil
 }

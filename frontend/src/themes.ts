@@ -20,6 +20,10 @@ const baseDarkTheme = createTheme({
 // Light and dark themes with status colors
 export const lightTheme = createTheme(baseLightTheme, {
   palette: {
+    diff: {
+      add: { main: baseLightTheme.palette.success.main },
+      remove: { main: baseLightTheme.palette.error.main },
+    },
     status: {
       healthy: {
         main: baseLightTheme.palette.success.main,
@@ -69,6 +73,10 @@ export const lightTheme = createTheme(baseLightTheme, {
 
 export const darkTheme = createTheme(baseDarkTheme, {
   palette: {
+    diff: {
+      add: { main: baseDarkTheme.palette.success.main },
+      remove: { main: baseDarkTheme.palette.error.main },
+    },
     status: {
       healthy: {
         main: baseDarkTheme.palette.success.main,
@@ -120,6 +128,10 @@ export const darkTheme = createTheme(baseDarkTheme, {
 // Uses shades of blue for greens (healthy) and shades of orange for reds (down)
 export const lightAccessibilityTheme = createTheme(baseLightTheme, {
   palette: {
+    diff: {
+      add: { main: '#1976d2' },
+      remove: { main: '#e65100' },
+    },
     status: {
       healthy: {
         main: '#1976d2',
@@ -169,6 +181,10 @@ export const lightAccessibilityTheme = createTheme(baseLightTheme, {
 
 export const darkAccessibilityTheme = createTheme(baseDarkTheme, {
   palette: {
+    diff: {
+      add: { main: '#42a5f5' },
+      remove: { main: '#ff9800' },
+    },
     status: {
       healthy: {
         main: '#42a5f5',

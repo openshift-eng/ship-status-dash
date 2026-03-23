@@ -12,8 +12,8 @@ import (
 
 // OutageManager defines the interface for outage management operations.
 type OutageManager interface {
-	CreateOutage(outage *types.Outage, reasons []types.Reason) error
-	UpdateOutage(outage *types.Outage) error
+	CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error
+	UpdateOutage(outage *types.Outage, user string) error
 	GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error)
 	GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
 	GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error)
@@ -21,7 +21,8 @@ type OutageManager interface {
 	GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error)
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
-	DeleteOutage(outage *types.Outage) error
+	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
+	DeleteOutage(outage *types.Outage, user string) error
 }
 
 // DBOutageManager handles outage creation and updates with Slack reporting using a database.
@@ -56,10 +57,10 @@ func NewDBOutageManager(
 }
 
 // CreateOutage creates a new outage and posts to Slack channels if configured.
-func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason) error {
+func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
 	if err := m.db.Transaction(func(tx *gorm.DB) error {
 		outageRepo := repositories.NewGORMOutageRepository(tx)
-		if err := outageRepo.CreateOutage(outage); err != nil {
+		if err := outageRepo.CreateOutage(outage, user); err != nil {
 			return err
 		}
 
@@ -89,14 +90,14 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 }
 
 // UpdateOutage updates an existing outage and posts thread replies to Slack.
-func (m *DBOutageManager) UpdateOutage(outage *types.Outage) error {
+func (m *DBOutageManager) UpdateOutage(outage *types.Outage, user string) error {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	oldOutage, err := outageRepo.GetOutageByID(outage.ComponentName, outage.SubComponentName, outage.ID)
 	if err != nil {
 		return err
 	}
 
-	if err := outageRepo.SaveOutage(outage); err != nil {
+	if err := outageRepo.SaveOutage(outage, user); err != nil {
 		return err
 	}
 
@@ -148,7 +149,12 @@ func (m *DBOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subCompo
 	return outageRepo.GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom)
 }
 
-func (m *DBOutageManager) DeleteOutage(outage *types.Outage) error {
+func (m *DBOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
-	return outageRepo.DeleteOutage(outage)
+	return outageRepo.GetOutageAuditLogs(outageID)
+}
+
+func (m *DBOutageManager) DeleteOutage(outage *types.Outage, user string) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.DeleteOutage(outage, user)
 }

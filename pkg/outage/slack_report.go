@@ -165,7 +165,7 @@ func (r *SlackReporter) formatOutageMessage(outage *types.Outage, component *typ
 		parts = append(parts, "Description:")
 		parts = append(parts, formatQuoteBlock(description))
 	}
-	if triageNotes := getStringValue(outage.TriageNotes, ""); triageNotes != "" {
+	if triageNotes := getStringValue(outage.TriageNotes); triageNotes != "" {
 		truncatedNotes := truncateString(triageNotes)
 		parts = append(parts, "Triage notes:")
 		parts = append(parts, formatQuoteBlock(truncatedNotes))
@@ -209,7 +209,7 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 
 	if oldOutage.EndTime.Valid != outage.EndTime.Valid {
 		if outage.EndTime.Valid {
-			changes = append(changes, fmt.Sprintf("Resolved: by `%s` at `%s`", getStringValue(outage.ResolvedBy, "Unknown"), outage.EndTime.Time.Format(time.RFC3339)))
+			changes = append(changes, fmt.Sprintf("Resolved at `%s`", outage.EndTime.Time.Format(time.RFC3339)))
 		} else {
 			changes = append(changes, "Reopened")
 		}
@@ -221,7 +221,7 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 
 	if oldOutage.ConfirmedAt.Valid != outage.ConfirmedAt.Valid {
 		if outage.ConfirmedAt.Valid {
-			changes = append(changes, fmt.Sprintf("Confirmed: `%s` at `%s`", getStringValue(outage.ConfirmedBy, "Unknown"), outage.ConfirmedAt.Time.Format(time.RFC3339)))
+			changes = append(changes, fmt.Sprintf("Confirmed at `%s`", outage.ConfirmedAt.Time.Format(time.RFC3339)))
 		} else {
 			changes = append(changes, "Unconfirmed")
 		}
@@ -233,8 +233,8 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 		changes = append(changes, formatQuoteBlock(description))
 	}
 
-	if getStringValue(oldOutage.TriageNotes, "") != getStringValue(outage.TriageNotes, "") {
-		triageNotes := truncateString(getStringValue(outage.TriageNotes, ""))
+	if getStringValue(oldOutage.TriageNotes) != getStringValue(outage.TriageNotes) {
+		triageNotes := truncateString(getStringValue(outage.TriageNotes))
 		changes = append(changes, "Triage notes updated:")
 		changes = append(changes, formatQuoteBlock(triageNotes))
 	}
@@ -250,9 +250,9 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 	return strings.Join(parts, "\n")
 }
 
-func getStringValue(ptr *string, defaultValue string) string {
+func getStringValue(ptr *string) string {
 	if ptr == nil {
-		return defaultValue
+		return ""
 	}
 	return *ptr
 }

@@ -4,8 +4,8 @@ import {
   Assignment,
   BugReport,
   Forum,
+  History,
   Info,
-  Person,
   Settings,
 } from '@mui/icons-material'
 import {
@@ -24,16 +24,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
-import {
-  formatDuration,
-  formatStatusSeverityText,
-  getStatusChipColor,
-  relativeTime,
-} from '../../utils/helpers'
+import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
+import { StatusChip } from '../StatusColors'
 
 import OutageActions from './actions/OutageActions'
+import AuditLogModal from './AuditLogModal'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
 import Section from './OutageDetailsSection'
 
@@ -78,25 +75,7 @@ const ChipSpacer = styled(Box)(({ theme }) => ({
   marginTop: theme.spacing(0.5),
 }))
 
-const SeverityChip = styled(Chip)<{ severity: string }>(({ theme, severity }) => {
-  const colorValue = getStatusChipColor(theme, severity)
-  return {
-    backgroundColor: colorValue,
-    color: theme.palette.getContrastText(colorValue),
-  }
-})
-
-const HeaderChip = styled(SeverityChip)(() => ({
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  height: 32,
-}))
-
-const ResolvedChip = styled(Chip)(() => ({
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  height: 32,
-}))
+const HeaderChipSx = { fontSize: '0.95rem', fontWeight: 600, height: 32 }
 
 const GridContainer = styled(Box)(({ theme }) => ({
   display: 'grid',
@@ -156,6 +135,7 @@ const TopActionsContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'center',
+  gap: theme.spacing(2),
   '& button': {
     border: `1px solid ${theme.palette.divider}`,
   },
@@ -227,6 +207,7 @@ const OutageDetailsPage = () => {
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const [outage, setOutage] = useState<Outage | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [auditLogModalOpen, setAuditLogModalOpen] = useState(false)
 
   const validationError =
     !componentName || !subComponentName || !outageId
@@ -358,7 +339,19 @@ const OutageDetailsPage = () => {
           {getBackButtonLabel()}
         </BackButton>
         <TopActionsContainer data-tour="outage-detail-actions">
-          {outage && <OutageActions outage={outage} onSuccess={fetchOutage} onError={setError} />}
+          {outage && (
+            <>
+              <OutageActions outage={outage} onSuccess={fetchOutage} onError={setError} />
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<History />}
+                onClick={() => setAuditLogModalOpen(true)}
+              >
+                Audit Logs
+              </Button>
+            </>
+          )}
         </TopActionsContainer>
       </Box>
 
@@ -377,35 +370,39 @@ const OutageDetailsPage = () => {
             </Typography>
           </HeaderTitleBox>
           {isResolved() ? (
-            <ResolvedChip label="Resolved" color="success" size="medium" />
+            <StatusChip label="Resolved" status="Healthy" variant="filled" sx={HeaderChipSx} />
           ) : (
-            <HeaderChip
+            <StatusChip
               label={formatStatusSeverityText(outage.severity)}
-              severity={outage.severity}
-              size="medium"
+              status={outage.severity}
+              variant="filled"
+              sx={HeaderChipSx}
             />
           )}
         </HeaderContent>
       </HeaderPaper>
 
       <GridContainer>
-        <Section icon={<Info />} title="Basic Information">
-          <Field label="Component" value={deslugify(outage.component_name)} />
-          <Field label="Sub-Component" value={deslugify(outage.sub_component_name)} />
-          <FieldBox>
-            <FieldLabel variant="caption" color="text.secondary">
-              Severity
-            </FieldLabel>
-            <ChipSpacer>
-              <SeverityChip
-                label={formatStatusSeverityText(outage.severity)}
-                severity={outage.severity}
-                size="small"
-              />
-            </ChipSpacer>
-          </FieldBox>
-          {outage.description && <Field label="Description" value={outage.description} />}
-        </Section>
+        <FullWidthGridItem>
+          <Section icon={<Info />} title="Basic Information">
+            <Field label="Component" value={deslugify(outage.component_name)} />
+            <Field label="Sub-Component" value={deslugify(outage.sub_component_name)} />
+            <FieldBox>
+              <FieldLabel variant="caption" color="text.secondary">
+                Severity
+              </FieldLabel>
+              <ChipSpacer>
+                <StatusChip
+                  label={formatStatusSeverityText(outage.severity)}
+                  status={outage.severity}
+                  variant="filled"
+                  size="small"
+                />
+              </ChipSpacer>
+            </FieldBox>
+            {outage.description && <Field label="Description" value={outage.description} />}
+          </Section>
+        </FullWidthGridItem>
 
         <Section icon={<AccessTime />} title="Timing Information">
           <Field label="Start Time" value={formatDateTime(outage.start_time)} />
@@ -450,24 +447,19 @@ const OutageDetailsPage = () => {
           </FullWidthGridItem>
         )}
 
-        <Section icon={<Person />} title="User Information">
-          <Field label="Created By" value={outage.created_by} />
-          {outage.resolved_by && <Field label="Resolved By" value={outage.resolved_by} />}
-          {outage.confirmed_by && <Field label="Confirmed By" value={outage.confirmed_by} />}
-        </Section>
-
         <Section icon={<Assignment />} title="Additional Information">
+          <Field label="Created By" value={outage.created_by} />
           <Field label="Discovered From" value={outage.discovered_from} />
           <FieldBox>
             <FieldLabel variant="caption" color="text.secondary">
               Confirmed
             </FieldLabel>
             <ConfirmationChipContainer>
-              <Chip
-                label={outage.confirmed_at.Valid ? 'Yes' : 'No'}
-                color={outage.confirmed_at.Valid ? 'success' : 'default'}
-                size="small"
-              />
+              {outage.confirmed_at.Valid ? (
+                <StatusChip label="Yes" status="Healthy" variant="filled" size="small" />
+              ) : (
+                <Chip label="No" color="default" size="small" />
+              )}
               {outage.confirmed_at.Valid && (
                 <Typography variant="body2" color="text.secondary">
                   {formatDateTime(outage.confirmed_at.Time)}
@@ -513,6 +505,16 @@ const OutageDetailsPage = () => {
           </Section>
         </FullWidthGridItem>
       </GridContainer>
+
+      {outage && (
+        <AuditLogModal
+          open={auditLogModalOpen}
+          onClose={() => setAuditLogModalOpen(false)}
+          componentName={deslugify(outage.component_name)}
+          subComponentName={deslugify(outage.sub_component_name)}
+          outageId={outage.ID}
+        />
+      )}
     </StyledContainer>
   )
 }

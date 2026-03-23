@@ -18,12 +18,20 @@ declare module '@mui/material/styles' {
       partial: StatusColor
       unknown: StatusColor
     }
+    diff?: {
+      add: { main: string }
+      remove: { main: string }
+    }
     tagBorderColor: string
     tagBackgroundColor: string
     tagTextColor: string
   }
 
   interface PaletteOptions {
+    diff?: {
+      add: { main: string }
+      remove: { main: string }
+    }
     status?: {
       healthy?: StatusColor
       degraded?: StatusColor

@@ -63,6 +63,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate SlackThread table")
 	}
 
+	if err = db.AutoMigrate(&types.OutageAuditLog{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate OutageAuditLog table")
+	}
+
 	log.Info("Migration completed successfully")
 
 	var tableCount int64
