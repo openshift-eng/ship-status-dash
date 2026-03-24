@@ -97,6 +97,7 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 				SubComponentName: "test-sub",
 				Severity:         types.SeverityDown,
 				StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+				Description:      "Automated test outage",
 				CreatedBy:        "system",
 				DiscoveredFrom:   "component-monitor",
 			},
@@ -127,7 +128,7 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 			wantSlackMessages: []PostedMessage{
 				{
 					Channel:         "#test-channel",
-					Text:            "🚨 Outage Detected: Test Component/Test Sub\n\nSeverity: `Down`\nStarted: `2024-01-15T10:30:00Z`\nCreated by: `system`\nDiscovered from: `component-monitor`\n\n<https://test.example.com/test-component/test-sub/outages/1|View Outage>",
+					Text:            "🚨 Outage Detected: Test Component/Test Sub\n\nSeverity: `Down`\nDescription:\n>Automated test outage\nStarted: `2024-01-15T10:30:00Z`\nCreated by: `system`\nDiscovered from: `component-monitor`\n\n<https://test.example.com/test-component/test-sub/outages/1|View Outage>",
 					ThreadTimestamp: "",
 					ResponseTS:      "1234567890.000001",
 				},
@@ -141,6 +142,7 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 				SubComponentName: "test-sub",
 				Severity:         types.SeverityDown,
 				StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+				Description:      "Automated test outage",
 				CreatedBy:        "system",
 				DiscoveredFrom:   "component-monitor",
 			},
@@ -250,6 +252,10 @@ func TestOutageManager_UpdateOutage(t *testing.T) {
 				ComponentName:    "test-component",
 				SubComponentName: "test-sub",
 				Severity:         types.SeverityDown,
+				StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+				Description:      "Automated test outage",
+				CreatedBy:        "system",
+				DiscoveredFrom:   "component-monitor",
 			},
 			mutateOutage: func(o *types.Outage) {
 				o.Severity = types.SeverityDegraded
@@ -278,6 +284,7 @@ func TestOutageManager_UpdateOutage(t *testing.T) {
 				assert.Equal(t, "test-component", outage.ComponentName)
 				assert.Equal(t, "test-sub", outage.SubComponentName)
 				assert.Equal(t, types.SeverityDown, outage.Severity)
+				assert.Equal(t, "Automated test outage", outage.Description)
 			},
 			wantSlackMessages: []PostedMessage{
 				{
@@ -359,6 +366,8 @@ func TestOutageManager_GetOutageAuditLogs(t *testing.T) {
 					ComponentName:    "test-component",
 					SubComponentName: "test-sub",
 					Severity:         types.SeverityDown,
+					StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+					Description:      "Automated test outage",
 					CreatedBy:        "system",
 					DiscoveredFrom:   "component-monitor",
 				}
@@ -404,6 +413,8 @@ func TestOutageManager_GetOutageAuditLogs(t *testing.T) {
 					ComponentName:    "test-component",
 					SubComponentName: "test-sub",
 					Severity:         types.SeverityDown,
+					StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+					Description:      "Automated test outage",
 					CreatedBy:        "system",
 					DiscoveredFrom:   "component-monitor",
 				}
@@ -458,6 +469,8 @@ func TestOutageManager_DeleteOutage(t *testing.T) {
 		ComponentName:    "test-component",
 		SubComponentName: "test-sub",
 		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Automated test outage",
 		CreatedBy:        "system",
 		DiscoveredFrom:   "component-monitor",
 	}

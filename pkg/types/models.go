@@ -80,7 +80,7 @@ type Outage struct {
 	Severity         Severity     `json:"severity" gorm:"column:severity;not null"`
 	StartTime        time.Time    `json:"start_time" gorm:"column:start_time;not null;index"`
 	EndTime          sql.NullTime `json:"end_time" gorm:"column:end_time;index"`
-	Description      string       `json:"description" gorm:"column:description;type:text"`
+	Description      string       `json:"description" gorm:"column:description;type:text;not null"`
 	// DiscoveredFrom describes where this outage was created: frontend, component-monitor, MCP, API
 	DiscoveredFrom string       `json:"discovered_from" gorm:"column:discovered_from;not null"`
 	CreatedBy      string       `json:"created_by" gorm:"column:created_by;not null"`
@@ -108,6 +108,10 @@ func (o *Outage) Validate() (string, bool) {
 
 	if o.StartTime.IsZero() {
 		validationErrors = append(validationErrors, "StartTime is required")
+	}
+
+	if strings.TrimSpace(o.Description) == "" {
+		validationErrors = append(validationErrors, "Description is required")
 	}
 
 	if o.DiscoveredFrom == "" {

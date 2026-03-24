@@ -153,6 +153,9 @@ const UpsertOutageModal = ({
     if (!formData.start_time) {
       return 'Start time is required'
     }
+    if (!formData.description.trim()) {
+      return 'Description is required'
+    }
     if (formData.end_time && formData.start_time) {
       const startTime = new Date(formData.start_time)
       const endTime = new Date(formData.end_time)
@@ -175,7 +178,7 @@ const UpsertOutageModal = ({
 
     const requestData: Record<string, unknown> = {
       severity: formData.severity,
-      description: formData.description || undefined,
+      description: formData.description.trim(),
       start_time: new Date(formData.start_time).toISOString(),
       triage_notes: formData.triage_notes || undefined,
       confirmed: formData.confirmed,
@@ -309,6 +312,7 @@ const UpsertOutageModal = ({
 
         <StyledTextField
           fullWidth
+          required
           label="Description"
           multiline
           rows={3}
