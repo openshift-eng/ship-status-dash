@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-03-21
+
+> [!WARNING]
+> `trigger_id` and `workflow_id` are NOT in any documentation or in any of the official
+libraries, so exercise caution if you use these.
+
+### Added
+
+- **`workflow_id` and `trigger_id` in `Message`** — It seems that some types of messages,
+    e.g: `bot_message`, can carry `trigger_id` and `workflow_id`.
+- **`RichTextQuote.Border` field** — optional border toggle (matches the docs now)
+- **`RichTextPreformatted.Language` field** — enables syntax highlighting for preformatted
+  blocks
+
+### Fixed
+
+- **Remove embedding of `RichTextSection`** — `RichTextQuote` and `RichTextPreformatted`
+  are now flattened as they should have always been. This is a breaking change for anyone
+  using these structs directly.
+
 ## [0.19.0] - 2026-03-04
 
 ### Added
@@ -172,7 +192,8 @@ for details.
 [#1534]: https://github.com/slack-go/slack/pull/1534
 [#1536]: https://github.com/slack-go/slack/pull/1536
 
-[Unreleased]: https://github.com/slack-go/slack/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/slack-go/slack/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/slack-go/slack/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/slack-go/slack/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/slack-go/slack/compare/v0.18.0-rc2...v0.18.0
 [0.18.0-rc2]: https://github.com/slack-go/slack/releases/tag/v0.18.0-rc2
