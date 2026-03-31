@@ -1,5 +1,5 @@
 import { Box, CircularProgress, Typography, useTheme } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { externalPages } from '../constants/externalPages'
@@ -11,10 +11,6 @@ const ExternalPageViewer = () => {
   const theme = useTheme()
   const page = externalPages.find((p) => p.slug === pageSlug)
 
-  useEffect(() => {
-    setLoading(true)
-  }, [pageSlug])
-
   if (!page) {
     return (
       <Typography sx={{ p: 4 }} variant="h6">
@@ -25,6 +21,7 @@ const ExternalPageViewer = () => {
 
   return (
     <Box
+      key={pageSlug}
       sx={{ height: 'calc(100vh - 64px)', position: 'relative' }}
       data-tour="external-page-content"
     >

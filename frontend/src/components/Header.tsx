@@ -3,6 +3,7 @@ import { AppBar, Box, IconButton, styled, Toolbar, Tooltip } from '@mui/material
 import { useNavigate } from 'react-router-dom'
 
 import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../constants/externalPages'
+
 import Auth from './Auth'
 import { TOUR_RESTART_EVENT, useHasTour } from './tour/AppTour'
 
