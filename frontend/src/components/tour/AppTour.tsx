@@ -3,16 +3,24 @@ import 'driver.js/dist/driver.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../../constants/externalPages'
+
 type TourStep = DriveStep & { waitForTarget?: boolean }
 
 const TOUR_SEEN_ROUTE_TYPES_KEY = 'shipStatusTourSeenRouteTypes'
 export const TOUR_RESTART_EVENT = 'shipStatusTourRestart'
 
-const ROUTE_TYPES_WITH_TOURS = ['home', 'subcomponent-detail', 'outage-detail'] as const
+const ROUTE_TYPES_WITH_TOURS = [
+  'home',
+  'subcomponent-detail',
+  'outage-detail',
+  'external-page',
+] as const
 type TourRouteType = (typeof ROUTE_TYPES_WITH_TOURS)[number]
 
 function getRouteType(pathname: string): TourRouteType | null {
   if (pathname === '/') return 'home'
+  if (pathname.startsWith(`${EXTERNAL_PAGES_PATH_PREFIX}/`)) return 'external-page'
   if (pathname.includes('/outages/')) return 'outage-detail'
   const segments = pathname.split('/').filter(Boolean)
   if (segments.length === 2 && !pathname.startsWith('/tags')) return 'subcomponent-detail'
@@ -223,6 +231,23 @@ function getStepsForRoute(pathname: string): TourStep[] {
           description: 'Set the end time and mark this outage resolved.',
           side: 'right',
           align: 'start',
+        },
+      },
+    ]
+  }
+  if (pathname.startsWith(`${EXTERNAL_PAGES_PATH_PREFIX}/`)) {
+    const slug = pathname.slice(`${EXTERNAL_PAGES_PATH_PREFIX}/`.length)
+    const page = externalPages.find((p) => p.slug === slug)
+    return [
+      {
+        element: '[data-tour="external-page-content"]',
+        popover: {
+          title: page?.label ?? 'External Page',
+          description:
+            page?.description ??
+            'This page displays externally hosted content. Content is refreshed periodically.',
+          side: 'top' as const,
+          align: 'center' as const,
         },
       },
     ]
