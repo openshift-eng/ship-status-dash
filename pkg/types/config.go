@@ -85,6 +85,8 @@ type MonitoringComponent struct {
 	HTTPMonitor *HTTPMonitor `json:"http_monitor,omitempty" yaml:"http_monitor,omitempty"`
 	// SystemdMonitor is the configuration for the systemd unit monitor
 	SystemdMonitor *SystemdMonitor `json:"systemd_monitor,omitempty" yaml:"systemd_monitor,omitempty"`
+	// JUnitMonitor reads JUnit XML artifacts produced by a Prow periodic job in GCS.
+	JUnitMonitor *JUnitMonitor `json:"junit_monitor,omitempty" yaml:"junit_monitor,omitempty"`
 }
 
 type PrometheusMonitor struct {
@@ -137,6 +139,23 @@ type SystemdMonitor struct {
 	Unit string `json:"unit" yaml:"unit"`
 	// Severity is the severity of the outage that will be created if the unit is not active.
 	// If not provided, the severity will default to Down.
+	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
+}
+
+// JUnitMonitor reads JUnit XML artifacts from GCS produced by a Prow periodic job.
+// It fetches the latest build's junit XML, parses test failures, and reports the
+// component status based on whether all tests passed.
+type JUnitMonitor struct {
+	// GCSBucket is the GCS bucket name. Defaults to "test-platform-results".
+	GCSBucket string `json:"gcs_bucket,omitempty" yaml:"gcs_bucket,omitempty"`
+	// JobName is the Prow periodic job name whose artifacts to read.
+	JobName string `json:"job_name" yaml:"job_name"`
+	// MaxAge is the maximum age of a build before the prober reports the component
+	// as unhealthy. If the latest build started longer ago than this, the configured
+	// severity is reported. Must be a valid Go duration string (e.g. "2h", "30m").
+	MaxAge string `json:"max_age" yaml:"max_age"`
+	// Severity is the severity reported when tests fail or the latest build is stale.
+	// Defaults to Degraded.
 	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 }
 

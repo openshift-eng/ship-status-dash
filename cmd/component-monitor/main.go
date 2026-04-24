@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -109,6 +110,15 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 				return nil, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, frequency)
 			}
 		}
+
+		if component.JUnitMonitor != nil {
+			if strings.TrimSpace(component.JUnitMonitor.JobName) == "" {
+				return nil, fmt.Errorf("job_name is required for junit_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+			}
+			if _, err := time.ParseDuration(component.JUnitMonitor.MaxAge); err != nil {
+				return nil, fmt.Errorf("invalid max_age for junit_monitor on component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
+			}
+		}
 	}
 
 	setDefaultStepValues(&cfg)
@@ -149,6 +159,15 @@ func createProbers(components []types.MonitoringComponent, prometheusClients map
 			systemdProber := NewSystemdProber(component.ComponentSlug, component.SubComponentSlug, component.SystemdMonitor.Unit, component.SystemdMonitor.Severity)
 			componentLogger.Info("Added systemd prober for component")
 			probers = append(probers, systemdProber)
+		}
+		if component.JUnitMonitor != nil {
+			maxAge, err := time.ParseDuration(component.JUnitMonitor.MaxAge)
+			if err != nil {
+				componentLogger.WithField("error", err).Fatal("Failed to parse max_age duration")
+			}
+			junitProber := NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, component.JUnitMonitor.JobName, maxAge, component.JUnitMonitor.Severity, &http.Client{Timeout: 30 * time.Second})
+			componentLogger.Info("Added JUnit prober for component")
+			probers = append(probers, junitProber)
 		}
 	}
 	return probers

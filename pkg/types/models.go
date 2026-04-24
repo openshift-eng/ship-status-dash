@@ -70,6 +70,7 @@ const (
 	CheckTypePrometheus CheckType = "prometheus"
 	CheckTypeHTTP       CheckType = "http"
 	CheckTypeSystemd    CheckType = "systemd"
+	CheckTypeJUnit      CheckType = "junit"
 )
 
 // Outage represents a component outage with tracking information for incident management.
