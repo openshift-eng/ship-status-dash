@@ -39,6 +39,10 @@ type MockOutageRepository struct {
 	OutageAuditLogs           []types.OutageAuditLog
 }
 
+func (m *MockOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {
+	return []types.Outage{}, nil
+}
+
 func (m *MockOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
 	return m.OutageAuditLogs, nil
 }
