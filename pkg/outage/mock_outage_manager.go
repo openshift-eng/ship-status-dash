@@ -1,6 +1,8 @@
 package outage
 
 import (
+	"time"
+
 	"ship-status-dash/pkg/types"
 )
 
@@ -22,6 +24,11 @@ type MockOutageManager struct {
 	UpdateOutageFn                   func(*types.Outage, string) error
 	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
+	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
+
+	LastGetOutagesDuringQueryStart time.Time
+	LastGetOutagesDuringQueryEnd   time.Time
+	LastGetOutagesDuringRefs       []types.SubComponentRef
 }
 
 // GetActiveOutagesCreatedBy returns mock active outages.
@@ -94,6 +101,17 @@ func (m *MockOutageManager) GetActiveOutagesForComponent(componentSlug string) (
 func (m *MockOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
 	if m.GetActiveOutagesDiscoveredFromFn != nil {
 		return m.GetActiveOutagesDiscoveredFromFn(componentSlug, subComponentSlug, discoveredFrom)
+	}
+	return []types.Outage{}, nil
+}
+
+// GetOutagesDuring records the last call and delegates to GetOutagesDuringFn when set.
+func (m *MockOutageManager) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {
+	m.LastGetOutagesDuringQueryStart = queryStart
+	m.LastGetOutagesDuringQueryEnd = queryEnd
+	m.LastGetOutagesDuringRefs = append([]types.SubComponentRef(nil), refs...)
+	if m.GetOutagesDuringFn != nil {
+		return m.GetOutagesDuringFn(queryStart, queryEnd, refs)
 	}
 	return []types.Outage{}, nil
 }
