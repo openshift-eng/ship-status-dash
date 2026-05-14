@@ -253,6 +253,54 @@ func TestManager_Watch(t *testing.T) {
 	}
 }
 
+func TestManager_ReloadCount(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := createTestConfigFile(t, tmpDir, "value: a")
+	manager := createTestManager(t, configPath)
+
+	tests := []struct {
+		name        string
+		fileContent string
+		callReload  bool
+		wantCount   uint64
+	}{
+		{
+			name:      "initial_counter_after_NewManager",
+			wantCount: 0,
+		},
+		{
+			name:        "first_disk_change_increments",
+			fileContent: "value: b",
+			callReload:  true,
+			wantCount:   1,
+		},
+		{
+			name:        "second_disk_change_increments",
+			fileContent: "value: c",
+			callReload:  true,
+			wantCount:   2,
+		},
+		{
+			name:        "rewrite_same_bytes_does_not_increment",
+			fileContent: "value: c",
+			callReload:  true,
+			wantCount:   2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.fileContent != "" {
+				writeConfigFile(t, configPath, tt.fileContent)
+			}
+			if tt.callReload {
+				manager.reloadIfChanged()
+			}
+			require.Equal(t, tt.wantCount, manager.reloadCount.Load())
+		})
+	}
+}
+
 func TestManager_HashValidation(t *testing.T) {
 	tests := []struct {
 		name           string
