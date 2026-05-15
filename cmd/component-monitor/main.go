@@ -66,6 +66,10 @@ func (o *Options) Validate() error {
 		return errors.New("name is required (use --name flag)")
 	}
 
+	if o.HealthPort < 1 || o.HealthPort > 65535 {
+		return fmt.Errorf("health-port must be between 1 and 65535, got %d", o.HealthPort)
+	}
+
 	if !o.DryRun {
 		if o.ReportAuthTokenFile == "" {
 			return errors.New("report auth token file is required (use --report-auth-token-file flag)")
@@ -348,5 +352,7 @@ func main() {
 	})
 
 	<-ctx.Done()
-	healthServer.Close()
+	if err := healthServer.Close(); err != nil {
+		log.WithField("error", err).Error("Failed to close health server")
+	}
 }

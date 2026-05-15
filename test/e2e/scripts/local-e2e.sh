@@ -431,7 +431,7 @@ COMPONENT_MONITOR_PID=$!
 
 echo "Waiting for component-monitor to be ready..."
 for i in {1..30}; do
-  if curl -s http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
+  if curl -sf http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
     echo "Component-monitor is ready (pid $COMPONENT_MONITOR_PID)"
     break
   fi

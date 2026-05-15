@@ -175,7 +175,7 @@ for i in {1..30}; do
     cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || true
     exit 1
   fi
-  if curl -s http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
+  if curl -sf http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
     echo "Component-monitor is ready (pid $COMPONENT_MONITOR_PID)"
     break
   fi
