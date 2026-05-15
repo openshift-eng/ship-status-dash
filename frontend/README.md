@@ -20,7 +20,7 @@ Before starting the frontend, ensure the backend services are running:
 
 3. Start the development server with required environment variables:
    ```bash
-   VITE_PUBLIC_DOMAIN=http://localhost:8080 \
+   VITE_PUBLIC_DOMAIN=http://localhost:8180 \
    VITE_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```
@@ -29,7 +29,7 @@ The app will open at [http://localhost:3030](http://localhost:3030).
 
 **Note:** The backend provides two routes:
 
-- Public route (port 8080): No authentication required
+- Public route (port 8180): No authentication required
 - Protected route (port 8443): Requires basic auth (`developer:password`)
 
 Basic auth will be requested upon startup. It is as simple as logging in with `developer:password`

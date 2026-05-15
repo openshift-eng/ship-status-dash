@@ -383,14 +383,14 @@ def _run_foreground(
 @mcp.tool()
 def dashboard_serve(
     database_dsn: str | None = None,
-    dashboard_port: int = 8080,
+    dashboard_port: int = 8180,
     proxy_port: int = 8443,
     restart: bool = False,
 ) -> str:
     """Start the dashboard server and mock-oauth-proxy in the background.
 
     Runs database migrations, generates an HMAC secret, starts the dashboard
-    on ``dashboard_port`` (default 8080), and starts mock-oauth-proxy on
+    on ``dashboard_port`` (default 8180), and starts mock-oauth-proxy on
     ``proxy_port`` (default 8443). Skips starting if already running unless
     ``restart`` is True.
     """
@@ -433,7 +433,7 @@ FRONTEND_DEV_PORT = 3030
 
 @mcp.tool()
 def frontend_start(
-    dashboard_port: int = 8080,
+    dashboard_port: int = 8180,
     proxy_port: int = 8443,
     frontend_port: int = FRONTEND_DEV_PORT,
     restart: bool = False,

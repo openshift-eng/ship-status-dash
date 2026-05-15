@@ -7,7 +7,7 @@ description: "Start the dashboard server and mock-oauth-proxy via the ship-statu
 Use the **`dashboard_serve`** MCP tool (server: **`ship-status-dev`**). Do not run the dashboard or mock-oauth-proxy manually — the MCP tool handles migrations, HMAC secret generation, background process management, log routing, and duplicate detection.
 
 The tool starts:
-- **Dashboard** on port **8080** (public, no auth)
+- **Dashboard** on port **8180** (public, no auth)
 - **Mock OAuth Proxy** on port **8443** (protected, credentials: `developer:password`)
 
 If the server is already running, the tool will report it. Ask the user if they want to restart, and if so call again with **`restart=True`**.
