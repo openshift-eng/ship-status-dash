@@ -32,6 +32,7 @@ type Options struct {
 	ReportAuthTokenFile      string
 	DryRun                   bool
 	ConfigUpdatePollInterval time.Duration
+	HealthPort               int
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -45,6 +46,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.ReportAuthTokenFile, "report-auth-token-file", "", "Path to file containing bearer token for authenticating report requests")
 	flag.BoolVar(&opts.DryRun, "dry-run", false, "Run probes once and output JSON report instead of sending to dashboard")
 	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
+	flag.IntVar(&opts.HealthPort, "health-port", 8080, "Port for the health/readiness HTTP endpoint")
 	flag.Parse()
 
 	return opts
@@ -313,6 +315,21 @@ func main() {
 	}
 	defer orchestratorCancel()
 
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	healthServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", opts.HealthPort),
+		Handler: healthMux,
+	}
+	go func() {
+		log.Infof("Health endpoint listening on :%d", opts.HealthPort)
+		if serveErr := healthServer.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
+			log.WithField("error", serveErr).Fatal("Health server failed")
+		}
+	}()
+
 	// If the monitoring config changes, we need to stop the current orchestrator and start a new one with the new config
 	startOrchestrator := func() {
 		newCancel, startErr := startOrchestratorWithConfig(configManager.Get(), opts.KubeconfigDir, opts.DashboardURL, opts.Name, reportAuthToken, log, ctx)
@@ -331,4 +348,5 @@ func main() {
 	})
 
 	<-ctx.Done()
+	healthServer.Close()
 }

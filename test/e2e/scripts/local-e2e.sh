@@ -392,6 +392,21 @@ for i in {1..60}; do
   sleep 1
 done
 
+COMPONENT_MONITOR_HEALTH_PORT=""
+for port in {8100..8119}; do
+  if ! lsof -i :$port > /dev/null 2>&1; then
+    COMPONENT_MONITOR_HEALTH_PORT=$port
+    break
+  fi
+done
+
+if [ -z "$COMPONENT_MONITOR_HEALTH_PORT" ]; then
+  echo "No available port found in range 8100-8119 for component-monitor health"
+  exit 1
+fi
+
+echo "Using port $COMPONENT_MONITOR_HEALTH_PORT for component-monitor health"
+
 echo "Starting component-monitor..."
 COMPONENT_MONITOR_LOG="/tmp/component-monitor.log"
 
@@ -411,8 +426,22 @@ COMPONENT_MONITOR_TOKEN=$(mktemp)
 echo "component-monitor-sa-token" > "$COMPONENT_MONITOR_TOKEN"
 
 # Start component-monitor in background
-go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "$TEST_MOCK_OAUTH_PROXY_URL" --name "e2e-component-monitor" --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" --config-update-poll-interval 10s 2> "$COMPONENT_MONITOR_LOG" &
+go run ./cmd/component-monitor --config-path "$COMPONENT_MONITOR_CONFIG" --dashboard-url "$TEST_MOCK_OAUTH_PROXY_URL" --name "e2e-component-monitor" --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" --config-update-poll-interval 10s --health-port "$COMPONENT_MONITOR_HEALTH_PORT" 2> "$COMPONENT_MONITOR_LOG" &
 COMPONENT_MONITOR_PID=$!
+
+echo "Waiting for component-monitor to be ready..."
+for i in {1..30}; do
+  if curl -s http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
+    echo "Component-monitor is ready (pid $COMPONENT_MONITOR_PID)"
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "Component-monitor failed to become ready within 30 seconds"
+    tail -n 30 "$COMPONENT_MONITOR_LOG" 2>/dev/null || echo "No log found"
+    exit 1
+  fi
+  sleep 1
+done
 
 echo "Running e2e tests..."
 set +e
