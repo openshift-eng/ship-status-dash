@@ -40,8 +40,11 @@ kill_processes_on_port() {
   fi
 }
 
-echo "Ensuring ports 8081 and 9090 are free..."
+COMPONENT_MONITOR_HEALTH_PORT=8082
+
+echo "Ensuring ports 8081, $COMPONENT_MONITOR_HEALTH_PORT, and 9090 are free..."
 kill_processes_on_port 8081 "Stopping processes on port 8081..."
+kill_processes_on_port $COMPONENT_MONITOR_HEALTH_PORT "Stopping processes on port $COMPONENT_MONITOR_HEALTH_PORT..."
 kill_processes_on_port 9090 "Stopping processes on port 9090..."
 
 cleanup() {
@@ -162,31 +165,27 @@ echo "Starting component-monitor..."
 COMPONENT_MONITOR_LOG="$LOG_DIR/component-monitor-local-dev.log"
 echo "Component-monitor logs: $COMPONENT_MONITOR_LOG"
 
-go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml --dashboard-url "$DASHBOARD_URL" --name local-component-monitor --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" > "$COMPONENT_MONITOR_LOG" 2>&1 &
+go run ./cmd/component-monitor --config-path hack/local/component-monitor/config.yaml --dashboard-url "$DASHBOARD_URL" --name local-component-monitor --report-auth-token-file "$COMPONENT_MONITOR_TOKEN" --health-port "$COMPONENT_MONITOR_HEALTH_PORT" > "$COMPONENT_MONITOR_LOG" 2>&1 &
 COMPONENT_MONITOR_PID=$!
 
 echo "Waiting for component-monitor to be ready..."
-READY=false
 for i in {1..30}; do
   if ! kill -0 "$COMPONENT_MONITOR_PID" 2>/dev/null; then
     echo "Component-monitor process exited before becoming ready"
     cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || true
     exit 1
   fi
-  if grep -qE 'Probing [0-9]+ components' "$COMPONENT_MONITOR_LOG" 2>/dev/null; then
-    READY=true
+  if curl -sf http://localhost:$COMPONENT_MONITOR_HEALTH_PORT/health > /dev/null 2>&1; then
+    echo "Component-monitor is ready (pid $COMPONENT_MONITOR_PID)"
     break
   fi
   if [ "$i" -eq 30 ]; then
-    break
+    echo "Component-monitor failed to become ready within 30 seconds"
+    cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || true
+    exit 1
   fi
   sleep 1
 done
-if [ "$READY" != true ]; then
-  echo "Component-monitor failed to become ready within 30 seconds"
-  cat "$COMPONENT_MONITOR_LOG" 2>/dev/null || true
-  exit 1
-fi
 
 echo ""
 echo "Component-monitor stack is running!"

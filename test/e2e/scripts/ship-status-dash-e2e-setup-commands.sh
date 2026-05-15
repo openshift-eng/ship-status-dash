@@ -552,6 +552,12 @@ spec:
       - "--name=e2e-component-monitor"
       - "--config-update-poll-interval=10s"
       - "--report-auth-token-file=/etc/token/token"
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 2
+      failureThreshold: 15
     volumeMounts:
     - mountPath: /etc/config
       name: component-monitor-config
