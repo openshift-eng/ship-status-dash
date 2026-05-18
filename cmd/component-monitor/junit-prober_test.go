@@ -33,6 +33,10 @@ func gcsProwObjectURL(bucket, job string, segs ...string) string {
 	return fmt.Sprintf("https://storage.googleapis.com/%s/logs/%s/%s", bucket, job, tail)
 }
 
+func prowSpyglassViewURL(bucket, job, buildID string) string {
+	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, bucket, job, buildID)
+}
+
 type mockHTTPDoer struct {
 	responses map[string]mockHTTPResponse
 }
@@ -194,10 +198,15 @@ func TestJUnitProber_Probe(t *testing.T) {
 			},
 		},
 		{
-			name:           "stale build",
-			severity:       types.SeverityDegraded,
-			settings:       JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
-			responses:      map[string]mockHTTPResponse{latestURL: {body: build}, startedURL: {body: staleStarted()}},
+			name:     "stale build",
+			severity: types.SeverityDegraded,
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			responses: map[string]mockHTTPResponse{
+				latestURL:                         {body: build},
+				startedURL:                        {body: staleStarted()},
+				finishedURL:                       {statusCode: 404, body: "not found"},
+				gcsListObjectURLTest(bucket, job): {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, build)},
+			},
 			expectedStatus: types.StatusDegraded,
 		},
 		{
@@ -212,13 +221,16 @@ func TestJUnitProber_Probe(t *testing.T) {
 			name:     "started.json returns 404",
 			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: map[string]mockHTTPResponse{
-				latestURL:  {body: build},
-				startedURL: {statusCode: 404, body: "not found"},
+				latestURL:                         {body: build},
+				startedURL:                        {statusCode: 404, body: "not found"},
+				finishedURL:                       {statusCode: 404, body: "not found"},
+				gcsListObjectURLTest(bucket, job): {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, build)},
 			},
 			expectedError: true,
 		},
 		{
-			name:     "junit xml fetch error on finished build",
+			name:     "finished build missing junit with started.json is canary failure",
+			severity: types.SeverityDegraded,
 			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
@@ -226,7 +238,37 @@ func TestJUnitProber_Probe(t *testing.T) {
 				finishedURL: {body: finishedBody},
 				xmlURL:      {statusCode: 404, body: "not found"},
 			},
-			expectedError: true,
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    testComponentSlug,
+				SubComponentSlug: testSubComponentSlug,
+				Status:           types.StatusDegraded,
+				Reasons: []types.Reason{{
+					Type:    types.CheckTypeJUnit,
+					Check:   job,
+					Results: fmt.Sprintf("build 123: missing artifacts/junit_canary.xml; %s", prowSpyglassViewURL(bucket, job, build)),
+				}},
+			},
+		},
+		{
+			name:     "finished build missing junit without started.json",
+			severity: types.SeverityDegraded,
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			responses: map[string]mockHTTPResponse{
+				latestURL:   {body: build},
+				startedURL:  {statusCode: 404, body: "not found"},
+				finishedURL: {body: finishedBody},
+				xmlURL:      {statusCode: 404, body: "not found"},
+			},
+			expectedResult: &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    testComponentSlug,
+				SubComponentSlug: testSubComponentSlug,
+				Status:           types.StatusDegraded,
+				Reasons: []types.Reason{{
+					Type:    types.CheckTypeJUnit,
+					Check:   job,
+					Results: fmt.Sprintf("build 123: missing artifacts/junit_canary.xml; %s", prowSpyglassViewURL(bucket, job, build)),
+				}},
+			},
 		},
 		{
 			name:     "custom gcs bucket",
@@ -288,8 +330,10 @@ func TestJUnitProber_Probe(t *testing.T) {
 			severity: types.SeverityDegraded,
 			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: map[string]mockHTTPResponse{
-				latestURL:  {body: build},
-				startedURL: {body: `{"timestamp": 0}`},
+				latestURL:                         {body: build},
+				startedURL:                        {body: `{"timestamp": 0}`},
+				finishedURL:                       {statusCode: 404, body: "not found"},
+				gcsListObjectURLTest(bucket, job): {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, build)},
 			},
 			expectedError: true,
 		},
@@ -438,12 +482,13 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 				startedLatest:  {body: recentStarted()},
 				finishedLatest: {statusCode: 404, body: "not found"},
 				listURL:        {body: listBody},
+				finishedPrev:   {body: finishedBody},
 				startedPrev:    {body: staleStarted()},
 			},
 			expectedStatus: types.StatusDegraded,
 		},
 		{
-			name: "fallback xml also missing returns error",
+			name: "fallback finished build missing junit reports canary failure",
 			responses: map[string]mockHTTPResponse{
 				latestURL:      {body: latestBuild},
 				startedLatest:  {body: recentStarted()},
@@ -453,7 +498,7 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 				finishedPrev:   {body: finishedBody},
 				xmlPrev:        {statusCode: 404, body: "not found"},
 			},
-			expectedError: true,
+			expectedStatus: types.StatusDegraded,
 		},
 		{
 			name: "no previous build returns error",
@@ -614,6 +659,20 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				startedPrev: {body: recentStarted()},
 			},
 			expectedError: true,
+		},
+		{
+			name: "two missing junit runs meet history threshold",
+			responses: map[string]mockHTTPResponse{
+				latestURL:   {body: latest},
+				startedURL:  {statusCode: 404, body: "not found"},
+				finishedURL: {body: finishedBody},
+				finished199: {body: finishedBody},
+				listURL:     {body: listBody},
+				startedPrev: {statusCode: 404, body: "not found"},
+				xml200:      {statusCode: 404, body: "not found"},
+				xml199:      {statusCode: 404, body: "not found"},
+			},
+			expectedStatus: types.StatusDegraded,
 		},
 	}
 

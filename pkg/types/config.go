@@ -193,6 +193,9 @@ const (
 // JUnitDefaultGCSWebBase is the default GCSweb host for artifact links (aligns with openshift/release ship-status and job report URLs).
 const JUnitDefaultGCSWebBase = "https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com"
 
+// JUnitDefaultProwSpyglassBase is the Prow spyglass view host for build log links in JUnit probe reasons.
+const JUnitDefaultProwSpyglassBase = "https://prow.ci.openshift.org"
+
 // JUnitMonitor configures reading JUnit XML that Prow uploads to GCS for a job (under logs/<job_name>/,
 // e.g. artifacts/junit_canary.xml via latest-build.txt and started.json for staleness—see component-monitor docs).
 //
