@@ -432,6 +432,49 @@ func TestMergeStatusesByComponent(t *testing.T) {
 			},
 		},
 		{
+			name: "junit unhealthy and prometheus healthy merge to unhealthy report",
+			input: []ProbeResult{
+				{
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusDegraded,
+						Reasons: []types.Reason{{
+							Type:    types.CheckTypeJUnit,
+							Check:   "periodic-build-farm-canary-build03",
+							Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-build-farm-canary-build03/123",
+						}},
+					},
+					ProbeType: ProbeTypeJUnit,
+				},
+				{
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    "comp1",
+						SubComponentSlug: "sub1",
+						Status:           types.StatusHealthy,
+						Reasons: []types.Reason{{
+							Type:    types.CheckTypePrometheus,
+							Check:   "up",
+							Results: "query returned successfully",
+						}},
+					},
+					ProbeType: ProbeTypePrometheus,
+				},
+			},
+			expected: []types.ComponentMonitorReportComponentStatus{
+				{
+					ComponentSlug:    "comp1",
+					SubComponentSlug: "sub1",
+					Status:           types.StatusDegraded,
+					Reasons: []types.Reason{{
+						Type:    types.CheckTypeJUnit,
+						Check:   "periodic-build-farm-canary-build03",
+						Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-build-farm-canary-build03/123",
+					}},
+				},
+			},
+		},
+		{
 			name: "different sub-components remain separate",
 			input: []ProbeResult{
 				{

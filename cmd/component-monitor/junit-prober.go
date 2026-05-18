@@ -30,8 +30,9 @@ const (
 
 	// History grouping: runs count toward the threshold when they share the
 	// same normalized failure (sorted unique failing test names, or a zero-test run).
-	junitSignatureZero      = "zero_tests"
-	junitSignatureFailedPfx = "failed:" // + sorted, comma-joined test names
+	junitSignatureZero         = "zero_tests"
+	junitSignatureFailedPfx    = "failed:" // + sorted, comma-joined test names
+	junitSignatureMissingJUnit = "missing_junit"
 )
 
 type httpStatusError struct {
@@ -141,6 +142,15 @@ func (p *JUnitProber) formatErrorResult(err error) ProbeResult {
 func (p *JUnitProber) checkBuildStaleness(ctx context.Context, buildID string) (*ProbeResult, error) {
 	startedBody, err := p.fetchText(ctx, p.prowLogObjectURL(buildID, prowObjectStarted))
 	if err != nil {
+		if isHTTP404(err) {
+			finished, finErr := p.isBuildFinished(ctx, buildID)
+			if finErr != nil {
+				return nil, finErr
+			}
+			if finished {
+				return nil, nil
+			}
+		}
 		return nil, fmt.Errorf("fetching started.json for build %s: %w", buildID, err)
 	}
 	var started prowStarted
@@ -177,6 +187,53 @@ func (p *JUnitProber) isBuildFinished(ctx context.Context, buildID string) (bool
 		return false, nil
 	}
 	return false, err
+}
+
+func (p *JUnitProber) spyglassViewURL(buildID string) string {
+	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, p.bucket, p.jobName, buildID)
+}
+
+func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFile string) ([]string, error) {
+	ids, err := p.listBuildIDPrefixes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing recent builds: %w", err)
+	}
+	seen := make(map[string]struct{})
+	seen[latestFromFile] = struct{}{}
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
+	var all []string
+	for id := range seen {
+		all = append(all, id)
+	}
+	sortBuildIDsDesc(all)
+
+	// The newest build (all[0]) may legitimately be unfinished — its GCS
+	// prefix can appear before artifacts are uploaded. Any older build
+	// without finished.json is an error.
+	var finished []string
+	for i, id := range all {
+		done, fErr := p.isBuildFinished(ctx, id)
+		if fErr != nil {
+			return nil, fmt.Errorf("checking finished.json for build %s: %w", id, fErr)
+		}
+		if done {
+			finished = append(finished, id)
+			continue
+		}
+		if i == 0 {
+			logrus.WithFields(logrus.Fields{
+				"component":     p.componentSlug,
+				"sub_component": p.subComponentSlug,
+				"job":           p.jobName,
+				"build":         id,
+			}).Info("Excluding unfinished latest build from finished build list")
+			continue
+		}
+		return nil, fmt.Errorf("build %s is not the latest but has no finished.json", id)
+	}
+	return finished, nil
 }
 
 func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
@@ -269,16 +326,16 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 	signatureCount := make(map[string]int)
 	summaries := make([]string, 0, len(builds))
 	for _, b := range builds {
-		total, failed, perr := p.junitStatsForBuild(ctx, b)
+		total, failed, artifactSig, perr := p.evaluateBuildJUnit(ctx, b)
 		if perr != nil {
 			results <- p.formatErrorResult(fmt.Errorf("build %s: %w", b, perr))
 			return
 		}
-		summaries = append(summaries, fmt.Sprintf("build %s: %s", b, formatJunitBuildSummary(total, failed)))
-		if !junitUnhealthy(total, failed) {
+		summaries = append(summaries, fmt.Sprintf("build %s: %s", b, formatJunitBuildSummary(total, failed, artifactSig)))
+		if !junitEvalUnhealthy(total, failed, artifactSig) {
 			continue
 		}
-		sig := junitFailureSignature(total, failed)
+		sig := junitEvalSignature(total, failed, artifactSig)
 		signatureCount[sig]++
 	}
 
@@ -320,47 +377,12 @@ func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, latestFromF
 	if p.settings.HistoryRuns <= 1 {
 		return []string{latestFromFile}, nil
 	}
-	ids, err := p.listBuildIDPrefixes(ctx)
+	finished, err := p.listFinishedBuildIDsDesc(ctx, latestFromFile)
 	if err != nil {
-		return nil, fmt.Errorf("listing recent builds: %w", err)
-	}
-	seen := make(map[string]struct{})
-	seen[latestFromFile] = struct{}{}
-	for _, id := range ids {
-		seen[id] = struct{}{}
-	}
-	var all []string
-	for id := range seen {
-		all = append(all, id)
-	}
-	sortBuildIDsDesc(all)
-
-	// The newest build (all[0]) may legitimately be unfinished — its GCS
-	// prefix can appear before artifacts are uploaded. Any older build
-	// without finished.json is an error.
-	var finished []string
-	for i, id := range all {
-		done, fErr := p.isBuildFinished(ctx, id)
-		if fErr != nil {
-			return nil, fmt.Errorf("checking finished.json for build %s: %w", id, fErr)
-		}
-		if done {
-			finished = append(finished, id)
-			continue
-		}
-		if i == 0 {
-			logrus.WithFields(logrus.Fields{
-				"component":     p.componentSlug,
-				"sub_component": p.subComponentSlug,
-				"job":           p.jobName,
-				"build":         id,
-			}).Info("Excluding unfinished latest build from history evaluation")
-			continue
-		}
-		return nil, fmt.Errorf("build %s is not the latest but has no finished.json", id)
+		return nil, err
 	}
 	if len(finished) == 0 {
-		return nil, fmt.Errorf("no finished builds found among %d candidates", len(all))
+		return nil, fmt.Errorf("no finished builds found")
 	}
 
 	n := p.settings.HistoryRuns
@@ -473,26 +495,62 @@ func buildIDGreater(a, b string) bool {
 }
 
 func (p *JUnitProber) probeJunitForBuildID(ctx context.Context, buildID string) (ProbeResult, error) {
-	xmlBody, err := p.fetchJunitBody(ctx, buildID)
+	total, failed, artifactSig, err := p.evaluateBuildJUnit(ctx, buildID)
 	if err != nil {
 		return ProbeResult{}, err
 	}
-	return p.makeStatusFromXMLBody(buildID, xmlBody)
+	if artifactSig != "" {
+		return p.makeMissingJUnitResult(buildID), nil
+	}
+	return p.makeStatusFromAggregates(buildID, total, failed), nil
+}
+
+// evaluateBuildJUnit returns JUnit stats for a build. When the build is finished but
+// junit_canary.xml is missing, artifactSig is set instead of returning an error so
+// the sub-component is reported unhealthy.
+func (p *JUnitProber) evaluateBuildJUnit(ctx context.Context, buildID string) (total int, failed []string, artifactSig string, err error) {
+	xmlBody, err := p.fetchJunitBody(ctx, buildID)
+	if err == nil {
+		suites, parseErr := parseSuitesFromJunitBody(xmlBody)
+		if parseErr != nil {
+			return 0, nil, "", fmt.Errorf("parsing junit XML for build %s: %w", buildID, parseErr)
+		}
+		t, f := aggregateJunitFromSuites(suites)
+		return t, f, "", nil
+	}
+	if !isHTTP404(err) {
+		return 0, nil, "", err
+	}
+	finished, finErr := p.isBuildFinished(ctx, buildID)
+	if finErr != nil {
+		return 0, nil, "", fmt.Errorf("checking finished.json for build %s: %w", buildID, finErr)
+	}
+	if !finished {
+		return 0, nil, "", fmt.Errorf("build %s has no %s and is not finished", buildID, junitProwPath)
+	}
+	return 0, nil, junitSignatureMissingJUnit, nil
+}
+
+func (p *JUnitProber) makeMissingJUnitResult(buildID string) ProbeResult {
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+			Status:           p.severity.ToStatus(),
+			Reasons: []types.Reason{{
+				Type:    types.CheckTypeJUnit,
+				Check:   p.jobName,
+				Results: fmt.Sprintf("build %s: missing %s; %s", buildID, junitProwPath, p.spyglassViewURL(buildID)),
+			}},
+		},
+		ProbeType: ProbeTypeJUnit,
+	}
 }
 
 func (p *JUnitProber) fetchJunitBody(ctx context.Context, buildID string) (string, error) {
 	segs := append([]string{buildID}, strings.Split(junitProwPath, "/")...)
 	u := p.prowLogObjectURL(segs...)
 	return p.fetchText(ctx, u)
-}
-
-func (p *JUnitProber) makeStatusFromXMLBody(buildID, xmlBody string) (ProbeResult, error) {
-	suites, err := parseSuitesFromJunitBody(xmlBody)
-	if err != nil {
-		return ProbeResult{}, fmt.Errorf("parsing junit XML for build %s: %w", buildID, err)
-	}
-	total, failed := aggregateJunitFromSuites(suites)
-	return p.makeStatusFromAggregates(buildID, total, failed), nil
 }
 
 // parseSuitesFromJunitBody decodes a JUnit XML body into one or more suites
@@ -541,6 +599,13 @@ func junitUnhealthy(total int, failed []string) bool {
 	return total == 0 || len(failed) > 0
 }
 
+func junitEvalUnhealthy(total int, failed []string, artifactSig string) bool {
+	if artifactSig != "" {
+		return true
+	}
+	return junitUnhealthy(total, failed)
+}
+
 // junitFailureSignature is a key for the same failure "reason" across runs. Only call when junitUnhealthy.
 // totalJUnitCases is the sum of suite tests attributes from JUnit XML (same as aggregateJunitFromSuites).
 func junitFailureSignature(totalJUnitCases int, failed []string) string {
@@ -554,9 +619,19 @@ func junitFailureSignature(totalJUnitCases int, failed []string) string {
 	return junitSignatureFailedPfx + strings.Join(failed, ",")
 }
 
+func junitEvalSignature(total int, failed []string, artifactSig string) string {
+	if artifactSig != "" {
+		return artifactSig
+	}
+	return junitFailureSignature(total, failed)
+}
+
 func formatJunitSignatureShort(sig string) string {
-	if sig == junitSignatureZero {
+	switch sig {
+	case junitSignatureZero:
 		return "zero tests (no JUnit test cases, or total tests=0)"
+	case junitSignatureMissingJUnit:
+		return fmt.Sprintf("missing %s", junitProwPath)
 	}
 	if !strings.HasPrefix(sig, junitSignatureFailedPfx) {
 		return sig
@@ -568,20 +643,10 @@ func formatJunitSignatureShort(sig string) string {
 	return "failed: " + strings.Join(names, ", ")
 }
 
-func (p *JUnitProber) junitStatsForBuild(ctx context.Context, buildID string) (total int, failed []string, err error) {
-	xml, err := p.fetchJunitBody(ctx, buildID)
-	if err != nil {
-		return 0, nil, err
+func formatJunitBuildSummary(total int, failed []string, artifactSig string) string {
+	if artifactSig == junitSignatureMissingJUnit {
+		return fmt.Sprintf("missing %s", junitProwPath)
 	}
-	suites, err := parseSuitesFromJunitBody(xml)
-	if err != nil {
-		return 0, nil, err
-	}
-	t, f := aggregateJunitFromSuites(suites)
-	return t, f, nil
-}
-
-func formatJunitBuildSummary(total int, failed []string) string {
 	switch {
 	case total == 0:
 		return "zero tests found"
