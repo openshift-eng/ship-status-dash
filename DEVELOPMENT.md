@@ -30,7 +30,7 @@ Start the dashboard server and mock oauth-proxy using the local development scri
 ```
 
 This script:
-- Starts the dashboard server on port 8080 (public route, no auth)
+- Starts the dashboard server on port 8180 (public route, no auth)
 - Starts the mock oauth-proxy on port 8443 (protected route, requires basic auth)
 - Sets up a user with credentials: `developer:password`
 - Generates a temporary HMAC secret for request signing
@@ -54,7 +54,7 @@ This script:
 - Starts Prometheus in a podman container on port 9090
 - Starts the component-monitor with the local configuration
 
-**Note**: The component-monitor expects the dashboard to be running on `http://localhost:8080`. Make sure to start the dashboard first.
+**Note**: The component-monitor expects the dashboard to be running on `http://localhost:8180`. Make sure to start the dashboard first.
 
 ### Authentication Architecture
 
@@ -62,14 +62,14 @@ The dashboard local development script mimics the production architecture using 
 
 #### Setup
 
-1. **Dashboard Server** (port 8080)
+1. **Dashboard Server** (port 8180)
    - Runs with full authentication enabled (no `SKIP_AUTH`)
    - Public routes are accessible without authentication (same as production)
    - Protected routes require authentication via mock-oauth-proxy
 
 2. **Mock OAuth Proxy** (port 8443)
    - Implements basic authentication (username/password)
-   - Proxies to dashboard on `localhost:8080`
+   - Proxies to dashboard on `localhost:8180`
    - Adds same headers as production oauth-proxy
    - Signs requests with HMAC using shared secret
    - Default credentials: `developer:password`
@@ -77,8 +77,8 @@ The dashboard local development script mimics the production architecture using 
 #### Architecture
 
 ```
-Public Route:    http://localhost:8080 → Dashboard (no auth required)
-Protected Route: http://localhost:8443 → Mock OAuth Proxy → Dashboard (localhost:8080)
+Public Route:    http://localhost:8180 → Dashboard (no auth required)
+Protected Route: http://localhost:8443 → Mock OAuth Proxy → Dashboard (localhost:8180)
 ```
 
 **Note**: The `SKIP_AUTH=1` environment variable is available for a simpler (unrecommended) development setup without oauth-proxy, but the local development script uses the full authentication flow with mock-oauth-proxy to accurately mirror production.
@@ -110,7 +110,7 @@ Both processes use the same HMAC secret:
 
 3. Set environment variables (or use the .env.development file) and start the development server:
    ```bash
-   REACT_APP_PUBLIC_DOMAIN=http://localhost:8080 \
+   REACT_APP_PUBLIC_DOMAIN=http://localhost:8180 \
    REACT_APP_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```

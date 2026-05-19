@@ -45,7 +45,7 @@ kill_processes_on_port() {
   fi
 }
 
-DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-8180}"
 PROXY_PORT="${PROXY_PORT:-8443}"
 
 echo "Ensuring ports $DASHBOARD_PORT and $PROXY_PORT are free..."
@@ -71,7 +71,7 @@ if [ "$BACKGROUND" = false ]; then
     echo "Cleaning up..."
 
     PROXY_PORT=${PROXY_PORT:-8443}
-    DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+    DASHBOARD_PORT=${DASHBOARD_PORT:-8180}
 
     if [ ! -z "$TAIL_PID" ]; then
       kill "$TAIL_PID" 2>/dev/null || true

@@ -12,6 +12,9 @@ go mod download
 echo "==> Installing frontend dependencies..."
 make npm
 
+echo "==> Removing legacy Vite cache (host/container use separate node_modules/.vite-* dirs)..."
+rm -rf frontend/node_modules/.vite
+
 echo "==> Setting up MCP server venv..."
 rm -rf mcp/.venv
 python3.12 -m venv mcp/.venv

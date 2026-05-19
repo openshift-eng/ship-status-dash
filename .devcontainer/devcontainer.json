@@ -14,16 +14,17 @@
   "workspaceFolder": "/workspace",
   "remoteUser": "vscode",
   "initializeCommand": ".devcontainer/init-services.sh",
-  "forwardPorts": [8080, 8443, 3030, 5433, 9090],
+  "forwardPorts": [8180, 8443, 3030, 5433, 9090],
   "portsAttributes": {
-    "8080": { "label": "Dashboard API" },
+    "8180": { "label": "Dashboard API" },
     "8443": { "label": "Mock OAuth Proxy" },
     "3030": { "label": "Vite Dev Server" },
     "5433": { "label": "PostgreSQL" },
     "9090": { "label": "Prometheus" }
   },
   "containerEnv": {
-    "SHIP_STATUS_DSN": "postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable"
+    "SHIP_STATUS_DSN": "postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable",
+    "SHIP_STATUS_VITE_CACHE_PROFILE": "devcontainer"
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "customizations": {
