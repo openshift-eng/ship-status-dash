@@ -143,10 +143,10 @@ Both processes use the same HMAC secret:
    npm ci --ignore-scripts
    ```
 
-3. Set environment variables (or use the .env.development file) and start the development server:
+3. Start the development server. [`frontend/.env.development`](frontend/.env.development) already sets `VITE_PUBLIC_DOMAIN` and `VITE_PROTECTED_DOMAIN` for local URLs; override inline if needed:
    ```bash
-   REACT_APP_PUBLIC_DOMAIN=http://localhost:8180 \
-   REACT_APP_PROTECTED_DOMAIN=http://localhost:8443 \
+   VITE_PUBLIC_DOMAIN=http://localhost:8180 \
+   VITE_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```
 
