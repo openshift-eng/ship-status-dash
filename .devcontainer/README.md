@@ -1,5 +1,7 @@
 # Ship Status Dashboard — Dev Container
 
+This is the recommended development environment. See [DEVELOPMENT.md](../DEVELOPMENT.md) for the full guide; manual (non-container) setup is documented there as optional.
+
 ## Quick Start
 
 Use the `/ship-status-dev-setup` slash command in Claude Code or Cursor to set up automatically.

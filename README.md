@@ -2,6 +2,8 @@
 
 SHIP Status and Availability Dashboard monitor
 
+For architecture overview, production authentication, and dataflow diagrams, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Project Structure
 
 This project consists of multiple components:
