@@ -1,4 +1,4 @@
-.PHONY: build e2e test mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
+.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
 
 build: build-frontend build-dashboard
 
@@ -9,14 +9,20 @@ test:
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
 
-mcp-test: mcp-test-api mcp-test-dev
+mcp-venv:
+	@for d in mcp ship-status-dev; do \
+		if [ ! -x $$d/.venv/bin/pytest ]; then \
+			echo "Creating $$d/.venv..."; \
+			python3.12 -m venv $$d/.venv && $$d/.venv/bin/pip install -q -r $$d/requirements-dev.txt; \
+		fi; \
+	done
+
+mcp-test: mcp-venv mcp-test-api mcp-test-dev
 
 mcp-test-api:
-	@test -x mcp/.venv/bin/pytest || (echo "mcp/.venv missing; rebuild devcontainer or: python3.12 -m venv mcp/.venv && mcp/.venv/bin/pip install -r mcp/requirements-dev.txt" >&2; exit 1)
 	@mcp/.venv/bin/pytest mcp/ -q
 
 mcp-test-dev:
-	@test -x ship-status-dev/.venv/bin/pytest || (echo "ship-status-dev/.venv missing; rebuild devcontainer or: python3.12 -m venv ship-status-dev/.venv && ship-status-dev/.venv/bin/pip install -r ship-status-dev/requirements-dev.txt" >&2; exit 1)
 	@ship-status-dev/.venv/bin/pytest ship-status-dev/ -q
 
 lint: npm
