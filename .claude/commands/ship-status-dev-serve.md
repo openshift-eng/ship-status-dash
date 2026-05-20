@@ -15,4 +15,4 @@ If the server is already running, the tool will report it. Ask the user if they 
 
 Logs: **`ship-status-dev-logs/dashboard_serve.log`** and **`ship-status-dev-logs/mock_oauth_proxy.log`**.
 
-See **`mcp/server.py`** for all parameters.
+See **`ship-status-dev/server.py`** for all parameters.

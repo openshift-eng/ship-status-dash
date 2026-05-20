@@ -4,6 +4,7 @@ ARG GOLANGCI_LINT_VERSION=2.10.1
 
 RUN dnf module enable nodejs:20 -y && \
     dnf install -y --allowerasing \
+    curl \
     git \
     make \
     jq \
@@ -33,6 +34,12 @@ RUN groupadd -g 1000 vscode && \
 
 ENV GOPATH=/home/vscode/go
 ENV PATH="/home/vscode/.local/bin:${GOPATH}/bin:/usr/local/go/bin:${PATH}"
+
+# uv/uvx for `make apm` — pinned copy from Astral image (no curl|sh installer)
+ARG UV_VERSION=0.7.13
+COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uvx /usr/local/bin/uvx
+RUN uv --version && uvx --version
 
 USER vscode
 

@@ -66,6 +66,16 @@ Both oauth-proxy and dashboard share the same HMAC secret. The signature include
 Each of these headers are included when the OpenShift Oauth Proxy creates it's signature, and we must provide complete parity.
 See [SignatureHeaders](https://github.com/openshift/oauth-proxy/blob/master/oauthproxy.go).
 
+## MCP Server (`ship-status`)
+
+A separate **ship-status** MCP server ([`mcp/`](../../mcp/)) exposes dashboard REST API tools for AI agents (status, outages, `outages/during`, discovery). It is deployed as an optional **sidecar** ([`images/mcp/Dockerfile`](../../images/mcp/Dockerfile)) in the dashboard pod.
+
+- **Reads**: loopback `http://127.0.0.1:8080/api` (public routes)
+- **Writes** (future): `http://127.0.0.1:8443/api` with a mounted OpenShift service-account Bearer token (`SHIP_STATUS_AUTH_TOKEN_FILE`); oauth-proxy validates the token and signs requests to the dashboard
+- OpenShift Deployment/Route changes are maintained in the external cluster config repo
+
+Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not this server.
+
 ## Slack Integration
 
 The dashboard supports Slack integration for outage reporting. When enabled, the dashboard will:

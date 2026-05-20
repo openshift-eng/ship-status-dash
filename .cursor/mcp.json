@@ -1,6 +1,10 @@
 {
   "mcpServers": {
     "ship-status-dev": {
+      "command": "ship-status-dev/run.sh",
+      "args": []
+    },
+    "ship-status": {
       "command": "mcp/run.sh",
       "args": []
     }
