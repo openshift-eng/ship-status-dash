@@ -3,6 +3,10 @@ paths:
   - "mcp/**"
 ---
 
-Shared MCP server for AI-callable dev tasks (migrate, serve, test, monitor). Configuration, tool list, and extension notes are in `mcp/server.py`.
+MCP server **`ship-status`** wraps the public (and future protected) dashboard REST API for AI agents. Code lives in `mcp/api_client.py` and `mcp/api_server.py`.
 
-When adding or modifying MCP tools, follow existing patterns in `mcp/server.py` (`_run_script_background`, `_run_foreground`, `_find_pids`, `_ensure_dev_log_dir`). Restart the MCP server after changes.
+- Local config: [`.mcp.json`](../../.mcp.json) → `mcp/run.sh`
+- Env: `SHIP_STATUS_PUBLIC_API_URL`, `SHIP_STATUS_PROTECTED_API_URL`, `SHIP_STATUS_AUTH_TOKEN_FILE` (writes, later)
+- Tests: `mcp/.venv/bin/pytest mcp/` (install `mcp/requirements-dev.txt` first)
+
+Do not add dev workflow tools here — use **`ship-status-dev`** (`ship-status-dev/`).

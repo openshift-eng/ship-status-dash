@@ -33,6 +33,12 @@ Start dev server: `cd frontend && npm run start`
 
 Run lint/format: `cd frontend && npx eslint . --fix && npx prettier --write .`
 
+### APM
+
+Regenerate agent context (rules, commands, `AGENTS.md`): `make apm`
+
+Requires **uv** / **uvx** (preinstalled in the devcontainer). Check outputs are current: `make verify-apm`
+
 <!-- Source: local .apm/instructions/general.instructions.md -->
 **Ship Status Dashboard** is a status monitoring and availability tracking system for OpenShift CI components. It provides:
 

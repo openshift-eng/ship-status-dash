@@ -10,4 +10,4 @@ Typical URL: **`http://localhost:3030`**. The tool automatically sets `VITE_PUBL
 
 If the dev server is already running, the tool will report it. Ask the user if they want to restart, and if so call again with **`restart=True`**.
 
-Log: **`ship-status-dev-logs/frontend_start.log`**. See **`mcp/server.py`** for all parameters.
+Log: **`ship-status-dev-logs/frontend_start.log`**. See **`ship-status-dev/server.py`** for all parameters.

@@ -1,0 +1,10 @@
+---
+paths:
+  - "ship-status-dev/**"
+---
+
+Shared MCP server for AI-callable dev tasks (migrate, serve, test, monitor). Configuration and tools are in `ship-status-dev/server.py`.
+
+When adding or modifying MCP tools, follow existing patterns in `ship-status-dev/server.py` (`_run_script_background`, `_run_foreground`, `_find_pids`, `_ensure_dev_log_dir`). Restart the MCP server after changes.
+
+Dashboard API tools for agents live in the separate **`ship-status`** MCP (`mcp/`).

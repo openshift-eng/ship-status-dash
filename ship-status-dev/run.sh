@@ -39,4 +39,4 @@ if [ "$NEED_INSTALL" = true ]; then
     fi
 fi
 
-exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/api_server.py"
+exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/server.py"

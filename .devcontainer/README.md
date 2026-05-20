@@ -1,5 +1,7 @@
 # Ship Status Dashboard — Dev Container
 
+This is the recommended development environment. See [DEVELOPMENT.md](../DEVELOPMENT.md) for the full guide; manual (non-container) setup is documented there as optional.
+
 ## Quick Start
 
 Use the `/ship-status-dev-setup` slash command in Claude Code or Cursor to set up automatically.
@@ -51,6 +53,8 @@ devcontainer up --workspace-folder .
 ## Environment
 
 Copy `.devcontainer/.env.example` to `.devcontainer/.env` and fill in any blank values.
+
+The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `make verify-apm` work without extra setup. MCP Python venvs for `mcp/` and `ship-status-dev/` are created in `post-create.sh`.
 
 ## GCP Authentication
 

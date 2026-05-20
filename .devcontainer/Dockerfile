@@ -4,6 +4,7 @@ ARG GOLANGCI_LINT_VERSION=2.10.1
 
 RUN dnf module enable nodejs:20 -y && \
     dnf install -y --allowerasing \
+    curl \
     git \
     make \
     jq \
@@ -54,5 +55,9 @@ RUN sudo cp /usr/bin/base64 /usr/bin/base64.gnu && \
 
 ARG CLAUDE_INSTALLER_VERSION=latest
 RUN curl -fsSL https://claude.ai/install.sh | sh
+
+# uv provides uvx for `make apm` (APM CLI compile/install)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    uv --version && uvx --version
 
 WORKDIR /workspace
