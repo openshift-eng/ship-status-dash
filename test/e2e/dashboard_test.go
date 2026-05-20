@@ -1043,14 +1043,14 @@ func testComponentStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Len(t, status.ActiveOutages, 4)
 		})
 
-		t.Run("GET status for component with unconfirmed outages on one sub-component returns Partial", func(t *testing.T) {
-			// Create unconfirmed outages for Tide (requires_confirmation: true)
+		t.Run("GET status for component with unconfirmed critical sub-component outage returns Suspected", func(t *testing.T) {
+			// Tide is critical; unconfirmed outage propagates as Suspected rather than Partial
 			tideOutage := createOutage(t, client, "Prow", "Tide")
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
 
 			status := getStatus(t, client, "Prow", "")
 
-			assert.Equal(t, types.StatusPartial, status.Status)
+			assert.Equal(t, types.StatusSuspected, status.Status)
 			assert.Len(t, status.ActiveOutages, 1)
 			assert.False(t, status.ActiveOutages[0].ConfirmedAt.Valid)
 		})
@@ -1198,7 +1198,31 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, string(types.SeverityDegraded), string(prowStatus.ActiveOutages[0].Severity))
 		})
 
-		t.Run("GET status for all components with unconfirmed outages shows Partial", func(t *testing.T) {
+		t.Run("GET status for all components with confirmed critical sub-component outage bypasses Partial", func(t *testing.T) {
+			tideOutage := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
+			// Confirm Tide outage (requires_confirmation: true)
+			updateOutage(t, client, "Prow", "Tide", tideOutage.ID, map[string]interface{}{
+				"confirmed": true,
+			})
+
+			allStatuses := getAllComponentsStatus(t, client)
+
+			assert.Len(t, allStatuses, 6)
+			var prowStatus *types.ComponentStatus
+			for i := range allStatuses {
+				if allStatuses[i].ComponentName == prowComponentName {
+					prowStatus = &allStatuses[i]
+					break
+				}
+			}
+			require.NotNil(t, prowStatus, "Prow component should be present")
+			assert.Equal(t, "Prow", prowStatus.ComponentName)
+			assert.Equal(t, types.StatusDegraded, prowStatus.Status)
+			assert.Len(t, prowStatus.ActiveOutages, 1)
+		})
+
+		t.Run("GET status for all components with unconfirmed critical outage shows Suspected", func(t *testing.T) {
 			// Create unconfirmed outage for Tide (requires_confirmation: true)
 			tideOutage := createOutage(t, client, "Prow", "Tide")
 			defer deleteOutage(t, client, "Prow", "Tide", tideOutage.ID)
@@ -1216,7 +1240,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 			}
 			require.NotNil(t, prowStatus, "Prow component should be present")
 			assert.Equal(t, "Prow", prowStatus.ComponentName)
-			assert.Equal(t, types.StatusPartial, prowStatus.Status)
+			assert.Equal(t, types.StatusSuspected, prowStatus.Status)
 			assert.Len(t, prowStatus.ActiveOutages, 1)
 			assert.False(t, prowStatus.ActiveOutages[0].ConfirmedAt.Valid)
 		})

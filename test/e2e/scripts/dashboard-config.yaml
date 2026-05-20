@@ -6,9 +6,11 @@ components:
       - channel: "#test-channel"
         severity: "Down"
     sub_components:
+      # Critical sub-components (per Chai): Tide
       - name: Tide
         description: Merges PRs
         requires_confirmation: true
+        critical: true
         tags:
           - ci
           - pr-merging
@@ -110,8 +112,10 @@ components:
       - channel: "#trt-alert"
         severity: "Down"
     sub_components:
+      # Critical sub-components (per Chai): Sippy (non-auth)
       - name: Sippy
         description: CI private investigator
+        critical: true
         monitoring:
           frequency: 30s
           component_monitor: "e2e-component-monitor"

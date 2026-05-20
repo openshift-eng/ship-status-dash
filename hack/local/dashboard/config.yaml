@@ -6,12 +6,14 @@ components:
       - channel: "#ops-testplatform"
         severity: "Down"
     sub_components:
+      # Critical sub-components (per Chai): Tide
       - name: "Tide"
         description: "Automated merging of PRs"
         long_description: "Tide is a tool that automates the merging of PRs based on the properly added labels and job statuses."
         documentation_url: "https://docs.prow.k8s.io/docs/components/core/tide/"
         tags: ["pr-merging", "github"]
         requires_confirmation: true
+        critical: true
       - name: "Deck"
         description: "Dashboard for Prow"
         tags: ["frontend"]
@@ -53,9 +55,11 @@ components:
       - channel: "#trt-alert"
         severity: "Down"
     sub_components:
+      # Critical sub-components (per Chai): Sippy (non-auth)
       - name: "Sippy"
         description: "The non-auth variant of Sippy"
         requires_confirmation: false
+        critical: true
       - name: "Sippy-Auth"
         description: "The auth variant of Sippy"
         requires_confirmation: false

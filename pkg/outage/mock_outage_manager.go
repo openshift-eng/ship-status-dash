@@ -24,6 +24,7 @@ type MockOutageManager struct {
 	UpdateOutageFn                   func(*types.Outage, string) error
 	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
+	GetActiveOutagesForComponentFn   func(string) ([]types.Outage, error)
 	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
 
 	LastGetOutagesDuringQueryStart time.Time
@@ -92,8 +93,11 @@ func (m *MockOutageManager) GetActiveOutagesForSubComponent(componentSlug, subCo
 	return nil, nil
 }
 
-// GetActiveOutagesForComponent is not used by ComponentMonitorReportProcessor but included for interface completeness.
+// GetActiveOutagesForComponent returns mock active outages for a component.
 func (m *MockOutageManager) GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	if m.GetActiveOutagesForComponentFn != nil {
+		return m.GetActiveOutagesForComponentFn(componentSlug)
+	}
 	return nil, nil
 }
 
