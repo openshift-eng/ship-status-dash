@@ -9,6 +9,8 @@ from fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_MCP_HTTP_PORT = 8090
+
 from api_client import ShipStatusAPI
 
 mcp = FastMCP("ship-status")
@@ -82,11 +84,19 @@ def main() -> None:
     if transport == "stdio":
         mcp.run()
     else:
-        port = 8090
+        port = _DEFAULT_MCP_HTTP_PORT
         raw = os.environ.get("MCP_HTTP_PORT", "").strip()
         if raw:
             try:
-                port = int(raw)
+                parsed = int(raw)
+                if 1 <= parsed <= 65535:
+                    port = parsed
+                else:
+                    logger.warning(
+                        "MCP_HTTP_PORT %r out of range (1-65535); using default %d",
+                        raw,
+                        port,
+                    )
             except ValueError:
                 logger.warning("Invalid MCP_HTTP_PORT %r; using default %d", raw, port)
         mcp.run(transport=transport, host="0.0.0.0", port=port)
