@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
 
 from api_client import ShipStatusAPI
 
@@ -79,7 +82,13 @@ def main() -> None:
     if transport == "stdio":
         mcp.run()
     else:
-        port = int(os.environ.get("MCP_HTTP_PORT", "8090"))
+        port = 8090
+        raw = os.environ.get("MCP_HTTP_PORT", "").strip()
+        if raw:
+            try:
+                port = int(raw)
+            except ValueError:
+                logger.warning("Invalid MCP_HTTP_PORT %r; using default %d", raw, port)
         mcp.run(transport=transport, host="0.0.0.0", port=port)
 
 

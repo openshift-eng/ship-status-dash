@@ -1,4 +1,4 @@
-.PHONY: build e2e test mcp-test local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
+.PHONY: build e2e test mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
 
 build: build-frontend build-dashboard
 
@@ -9,8 +9,15 @@ test:
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
 
-mcp-test:
-	@cd mcp && (test -x .venv/bin/pytest || (python3.12 -m venv .venv 2>/dev/null || python3 -m venv .venv) && .venv/bin/pip install -q -r requirements-dev.txt) && .venv/bin/pytest test_api_client.py -q
+mcp-test: mcp-test-api mcp-test-dev
+
+mcp-test-api:
+	@test -x mcp/.venv/bin/pytest || (echo "mcp/.venv missing; rebuild devcontainer or: python3.12 -m venv mcp/.venv && mcp/.venv/bin/pip install -r mcp/requirements-dev.txt" >&2; exit 1)
+	@mcp/.venv/bin/pytest mcp/ -q
+
+mcp-test-dev:
+	@test -x ship-status-dev/.venv/bin/pytest || (echo "ship-status-dev/.venv missing; rebuild devcontainer or: python3.12 -m venv ship-status-dev/.venv && ship-status-dev/.venv/bin/pip install -r ship-status-dev/requirements-dev.txt" >&2; exit 1)
+	@ship-status-dev/.venv/bin/pytest ship-status-dev/ -q
 
 lint: npm
 	@./hack/go-lint.sh --timeout 10m run ./...

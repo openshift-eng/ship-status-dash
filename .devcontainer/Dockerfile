@@ -35,6 +35,12 @@ RUN groupadd -g 1000 vscode && \
 ENV GOPATH=/home/vscode/go
 ENV PATH="/home/vscode/.local/bin:${GOPATH}/bin:/usr/local/go/bin:${PATH}"
 
+# uv/uvx for `make apm` — pinned copy from Astral image (no curl|sh installer)
+ARG UV_VERSION=0.7.13
+COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uvx /usr/local/bin/uvx
+RUN uv --version && uvx --version
+
 USER vscode
 
 RUN go install gotest.tools/gotestsum@latest
@@ -55,9 +61,5 @@ RUN sudo cp /usr/bin/base64 /usr/bin/base64.gnu && \
 
 ARG CLAUDE_INSTALLER_VERSION=latest
 RUN curl -fsSL https://claude.ai/install.sh | sh
-
-# uv provides uvx for `make apm` (APM CLI compile/install)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    uv --version && uvx --version
 
 WORKDIR /workspace

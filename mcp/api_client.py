@@ -27,10 +27,7 @@ def _env(name: str, default: str) -> str:
     return val if val else default
 
 
-def _load_bearer_token() -> str | None:
-    path = os.environ.get("SHIP_STATUS_AUTH_TOKEN_FILE", "").strip()
-    if not path:
-        return None
+def _read_bearer_token_file(path: str) -> str | None:
     try:
         return Path(path).read_text(encoding="utf-8").strip()
     except OSError as e:
@@ -64,13 +61,23 @@ class DashboardClient:
         self.timeout = timeout if timeout is not None else float(
             os.environ.get("SHIP_STATUS_REQUEST_TIMEOUT", DEFAULT_TIMEOUT)
         )
-        if auth_token_file:
-            os.environ.setdefault("SHIP_STATUS_AUTH_TOKEN_FILE", auth_token_file)
+        self.auth_token_file = auth_token_file.strip() if auth_token_file else None
+
+    def _auth_token_path(self) -> str | None:
+        if self.auth_token_file:
+            return self.auth_token_file
+        env_path = os.environ.get("SHIP_STATUS_AUTH_TOKEN_FILE", "").strip()
+        return env_path or None
+
+    def _load_bearer_token(self) -> str | None:
+        path = self._auth_token_path()
+        if not path:
+            return None
+        return _read_bearer_token_file(path)
 
     @property
     def writes_enabled(self) -> bool:
-        token = _load_bearer_token()
-        return bool(token)
+        return bool(self._load_bearer_token())
 
     def public_get(self, path: str) -> dict | list | None:
         return self._request("GET", self.public_base_url, path)
@@ -81,7 +88,7 @@ class DashboardClient:
         path: str,
         body: dict | None = None,
     ) -> dict | list | None:
-        token = _load_bearer_token()
+        token = self._load_bearer_token()
         if not token:
             return {
                 "error": (
@@ -375,16 +382,22 @@ class ShipStatusAPI:
         data = self.client.public_get("/components")
         if data is None:
             return {"error": "Failed to retrieve components list."}
+        if isinstance(data, dict) and "error" in data:
+            return data
         return _truncate_json({"components": data})
 
     def list_tags(self) -> dict[str, Any]:
         data = self.client.public_get("/tags")
         if data is None:
             return {"error": "Failed to retrieve tags list."}
+        if isinstance(data, dict) and "error" in data:
+            return data
         return _truncate_json({"tags": data})
 
     def list_sub_components(self) -> dict[str, Any]:
         data = self.client.public_get("/sub-components")
         if data is None:
             return {"error": "Failed to retrieve sub-components list."}
+        if isinstance(data, dict) and "error" in data:
+            return data
         return _truncate_json({"sub_components": data})

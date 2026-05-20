@@ -63,10 +63,16 @@ def test_protected_request_without_token(client: DashboardClient):
     assert "SHIP_STATUS_AUTH_TOKEN_FILE" in result["error"]
 
 
-def test_protected_request_with_bearer(client: DashboardClient, tmp_path):
+def test_protected_request_with_bearer(tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("sa-token-xyz", encoding="utf-8")
-    with patch.dict("os.environ", {"SHIP_STATUS_AUTH_TOKEN_FILE": str(token_file)}):
+    client = DashboardClient(
+        public_base_url="http://test/api",
+        protected_base_url="http://test-protected/api",
+        dashboard_url="http://test/",
+        auth_token_file=str(token_file),
+    )
+    with patch.dict("os.environ", {}, clear=True):
         with patch("api_client.urlopen") as mock_open:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"id": 1}'
@@ -78,6 +84,12 @@ def test_protected_request_with_bearer(client: DashboardClient, tmp_path):
             assert result == {"id": 1}
             call_req = mock_open.call_args[0][0]
             assert call_req.get_header("Authorization") == "Bearer sa-token-xyz"
+
+
+def test_list_components_returns_api_error_at_top_level(api: ShipStatusAPI):
+    with patch.object(api.client, "public_get", return_value={"error": "HTTP 500: boom"}):
+        result = api.list_components()
+    assert result == {"error": "HTTP 500: boom"}
 
 
 def test_get_infrastructure_status(api: ShipStatusAPI):

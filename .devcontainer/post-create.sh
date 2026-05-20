@@ -20,13 +20,14 @@ for mcp_dir in mcp ship-status-dev; do
   rm -rf "${mcp_dir}/.venv"
   python3.12 -m venv "${mcp_dir}/.venv"
   "${mcp_dir}/.venv/bin/pip" install --upgrade pip -q
-  "${mcp_dir}/.venv/bin/pip" install -r "${mcp_dir}/requirements.txt" -q
+  "${mcp_dir}/.venv/bin/pip" install -r "${mcp_dir}/requirements-dev.txt" -q
 done
 
 echo "==> Pinning APM CLI (used by: make apm)..."
 uv tool install apm-cli==0.11.0
 
 echo "==> Running database migrations..."
+SHIP_STATUS_DSN="${SHIP_STATUS_DSN:-postgres://postgres:password@localhost:5433/ship_status?sslmode=disable}"
 go run ./cmd/migrate --dsn "$SHIP_STATUS_DSN"
 
 echo "==> Dev environment ready."
