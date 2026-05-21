@@ -221,6 +221,100 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 		},
 		{
+			name:   "unhealthy status reopens recently-closed outage with matching probe",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "up == 0", Results: "no instances"},
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.RecentlyClosedOutages = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDegraded,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
+					},
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages, "should reopen existing outage, not create new")
+				assert.Len(t, m.UpdatedOutages, 1, "should update the existing outage")
+				assert.False(t, m.UpdatedOutages[0].EndTime.Valid, "end_time should be cleared on reopen")
+				assert.Equal(t, types.SeverityDown, m.UpdatedOutages[0].Severity, "severity should be updated to current incoming severity")
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "unhealthy status creates new outage when recent outage has no matching probe",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "error_rate > 0.1"},
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.RecentlyClosedOutages = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDown,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
+					},
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1, "should create new outage when no probe matches")
+				assert.Empty(t, m.UpdatedOutages)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "recently-closed outage query error returns error",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.RecentlyClosedOutagesError = errors.New("database error")
+			},
+			wantErr: errors.New("database error"),
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
 			name:   "component not found returns error",
 			config: repositories.TestConfig(false, false),
 			request: &types.ComponentMonitorReportRequest{

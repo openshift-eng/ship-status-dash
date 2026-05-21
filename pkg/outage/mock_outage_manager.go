@@ -11,6 +11,8 @@ type MockOutageManager struct {
 	// Mock data for queries
 	ActiveOutagesCreatedBy      []types.Outage
 	ActiveOutagesCreatedByError error
+	RecentlyClosedOutages       []types.Outage
+	RecentlyClosedOutagesError  error
 
 	// Captured data for assertions
 	CreatedOutages []struct {
@@ -20,12 +22,13 @@ type MockOutageManager struct {
 	UpdatedOutages []*types.Outage
 
 	// Mock functions
-	CreateOutageFn                   func(*types.Outage, []types.Reason) error
-	UpdateOutageFn                   func(*types.Outage, string) error
-	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
-	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
-	GetActiveOutagesForComponentFn   func(string) ([]types.Outage, error)
-	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
+	CreateOutageFn                      func(*types.Outage, []types.Reason) error
+	UpdateOutageFn                      func(*types.Outage, string) error
+	GetActiveOutagesCreatedByFn         func(string, string, string) ([]types.Outage, error)
+	GetActiveOutagesDiscoveredFromFn    func(string, string, string) ([]types.Outage, error)
+	GetActiveOutagesForComponentFn      func(string) ([]types.Outage, error)
+	GetRecentlyClosedOutagesCreatedByFn func(string, string, string, time.Time) ([]types.Outage, error)
+	GetOutagesDuringFn                  func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
 
 	LastGetOutagesDuringQueryStart time.Time
 	LastGetOutagesDuringQueryEnd   time.Time
@@ -107,6 +110,17 @@ func (m *MockOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subCom
 		return m.GetActiveOutagesDiscoveredFromFn(componentSlug, subComponentSlug, discoveredFrom)
 	}
 	return []types.Outage{}, nil
+}
+
+// GetRecentlyClosedOutagesCreatedBy returns mock recently-closed outages.
+func (m *MockOutageManager) GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error) {
+	if m.GetRecentlyClosedOutagesCreatedByFn != nil {
+		return m.GetRecentlyClosedOutagesCreatedByFn(componentSlug, subComponentSlug, createdBy, since)
+	}
+	if m.RecentlyClosedOutagesError != nil {
+		return nil, m.RecentlyClosedOutagesError
+	}
+	return m.RecentlyClosedOutages, nil
 }
 
 // GetOutagesDuring records the last call and delegates to GetOutagesDuringFn when set.

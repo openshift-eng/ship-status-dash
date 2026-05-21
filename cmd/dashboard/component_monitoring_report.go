@@ -16,6 +16,10 @@ import (
 
 const (
 	ComponentMonitor = "component-monitor"
+
+	// flapWindow is the lookback period for finding recently-closed outages to reopen.
+	// Outages from the same probe that recur within this window are treated as the same issue.
+	flapWindow = 24 * time.Hour
 )
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
@@ -156,6 +160,28 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
+			// Before creating a new outage, check if a recently-closed outage for the same
+			// probe exists within the flap window. If so, reopen it instead.
+			recentOutage, err := p.findReopenableOutage(status, req.ComponentMonitor, now)
+			if err != nil {
+				statusLogger.WithField("error", err).Error("Failed to query recently-closed outages")
+				return err
+			}
+
+			if recentOutage != nil {
+				recentOutage.EndTime = sql.NullTime{Valid: false}
+				recentOutage.Severity = severity
+				if err := p.outageManager.UpdateOutage(recentOutage, req.ComponentMonitor); err != nil {
+					statusLogger.WithFields(logrus.Fields{
+						"outage_id": recentOutage.ID,
+						"error":     err,
+					}).Error("Failed to reopen outage")
+					continue
+				}
+				statusLogger.WithField("outage_id", recentOutage.ID).Info("Reopened recently-closed outage due to recurring probe failure")
+				continue
+			}
+
 			description := "Component monitor detected outage"
 
 			outage := types.Outage{
@@ -187,4 +213,35 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 	}
 
 	return nil
+}
+
+// findReopenableOutage returns the most recently-closed outage within the flap window that
+// shares at least one probe reason (same Type and Check) with the incoming report status.
+// Returns nil if no matching outage is found.
+func (p *ComponentMonitorReportProcessor) findReopenableOutage(status types.ComponentMonitorReportComponentStatus, componentMonitor string, now time.Time) (*types.Outage, error) {
+	since := now.Add(-flapWindow)
+	recentOutages, err := p.outageManager.GetRecentlyClosedOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range recentOutages {
+		if reasonsOverlap(recentOutages[i].Reasons, status.Reasons) {
+			return &recentOutages[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// reasonsOverlap returns true if any reason in existing shares the same Type and Check
+// as any reason in incoming, indicating the same probe is failing again.
+func reasonsOverlap(existing, incoming []types.Reason) bool {
+	for _, e := range existing {
+		for _, i := range incoming {
+			if e.Type == i.Type && e.Check == i.Check {
+				return true
+			}
+		}
+	}
+	return false
 }

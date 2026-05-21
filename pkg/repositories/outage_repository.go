@@ -28,6 +28,9 @@ type OutageRepository interface {
 	GetAllActiveOutages() ([]types.Outage, error)
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
+	// GetRecentlyClosedOutagesCreatedBy returns closed outages for a sub-component created by the
+	// given creator whose end_time is at or after since. Reasons are preloaded for matching.
+	GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error)
 
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 
@@ -167,6 +170,18 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 			componentSlug, subComponentSlug, discoveredFrom).
 		Find(&activeOutages).Error
 	return activeOutages, err
+}
+
+// GetRecentlyClosedOutagesCreatedBy returns closed outages created by the given creator whose
+// end_time is at or after since. Reasons are preloaded so callers can match on probe identity.
+func (r *gormOutageRepository) GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error) {
+	var outages []types.Outage
+	err := r.db.Preload("Reasons").
+		Where("component_name = ? AND sub_component_name = ? AND created_by = ? AND end_time IS NOT NULL AND end_time >= ?",
+			componentSlug, subComponentSlug, createdBy, since.UTC()).
+		Order("end_time DESC").
+		Find(&outages).Error
+	return outages, err
 }
 
 // GetOutagesDuring returns outages that overlap the query window: start_time <= queryEnd and

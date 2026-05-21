@@ -68,6 +68,10 @@ func (m *MockOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subCompo
 	return m.ActiveOutages, nil
 }
 
+func (m *MockOutageRepository) GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error) {
+	return nil, nil
+}
+
 func (m *MockOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
 	if m.ActiveOutagesError != nil {
 		return nil, m.ActiveOutagesError
