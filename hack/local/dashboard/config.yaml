@@ -6,7 +6,6 @@ components:
       - channel: "#ops-testplatform"
         severity: "Down"
     sub_components:
-      # Critical sub-components (per Chai): Tide
       - name: "Tide"
         description: "Automated merging of PRs"
         long_description: "Tide is a tool that automates the merging of PRs based on the properly added labels and job statuses."
@@ -55,7 +54,6 @@ components:
       - channel: "#trt-alert"
         severity: "Down"
     sub_components:
-      # Critical sub-components (per Chai): Sippy (non-auth)
       - name: "Sippy"
         description: "The non-auth variant of Sippy"
         requires_confirmation: false

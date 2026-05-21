@@ -55,6 +55,7 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 				Name: "Alpha", Slug: "alpha",
 				Subcomponents: []types.SubComponent{
 					{Name: "Critical One", Slug: "critical-one", Critical: true},
+					{Name: "Critical Three", Slug: "critical-three", Critical: true},
 					{Name: "Normal Two", Slug: "normal-two"},
 				},
 			},
@@ -67,6 +68,14 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 			SubComponentName: sub,
 			Severity:         sev,
 			ConfirmedAt:      sql.NullTime{Time: now, Valid: true},
+		}
+	}
+
+	unconfirmedOutage := func(sub string, sev types.Severity) types.Outage {
+		return types.Outage{
+			ComponentName:    "alpha",
+			SubComponentName: sub,
+			Severity:         sev,
 		}
 	}
 
@@ -86,10 +95,24 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 			expectedStatus: types.StatusDegraded,
 		},
 		{
+			name:           "unconfirmed critical sub-component shows Suspected",
+			outages:        []types.Outage{unconfirmedOutage("critical-one", types.SeverityDown)},
+			expectedStatus: types.StatusSuspected,
+		},
+		{
+			name: "multiple critical sub-components: most severe wins",
+			outages: []types.Outage{
+				confirmedOutage("critical-one", types.SeverityDown),
+				confirmedOutage("critical-three", types.SeverityDegraded),
+			},
+			expectedStatus: types.StatusDown,
+		},
+		{
 			name: "all sub-components affected uses most severe status",
 			outages: []types.Outage{
 				confirmedOutage("critical-one", types.SeverityDegraded),
 				confirmedOutage("normal-two", types.SeverityDown),
+				confirmedOutage("critical-three", types.SeverityDegraded),
 			},
 			expectedStatus: types.StatusDown,
 		},
