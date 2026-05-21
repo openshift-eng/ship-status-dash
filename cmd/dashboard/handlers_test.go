@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,102 @@ func minimalDashboardConfig() *types.DashboardConfig {
 				},
 			},
 		},
+	}
+}
+
+func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
+	now := time.Now()
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name: "Alpha", Slug: "alpha",
+				Subcomponents: []types.SubComponent{
+					{Name: "Critical One", Slug: "critical-one", Critical: true},
+					{Name: "Critical Three", Slug: "critical-three", Critical: true},
+					{Name: "Normal Two", Slug: "normal-two"},
+				},
+			},
+		},
+	}
+
+	confirmedOutage := func(sub string, sev types.Severity) types.Outage {
+		return types.Outage{
+			ComponentName:    "alpha",
+			SubComponentName: sub,
+			Severity:         sev,
+			ConfirmedAt:      sql.NullTime{Time: now, Valid: true},
+		}
+	}
+
+	unconfirmedOutage := func(sub string, sev types.Severity) types.Outage {
+		return types.Outage{
+			ComponentName:    "alpha",
+			SubComponentName: sub,
+			Severity:         sev,
+		}
+	}
+
+	tests := []struct {
+		name           string
+		outages        []types.Outage
+		expectedStatus types.Status
+	}{
+		{
+			name:           "critical sub-component down bypasses Partial",
+			outages:        []types.Outage{confirmedOutage("critical-one", types.SeverityDown)},
+			expectedStatus: types.StatusDown,
+		},
+		{
+			name:           "critical sub-component degraded bypasses Partial",
+			outages:        []types.Outage{confirmedOutage("critical-one", types.SeverityDegraded)},
+			expectedStatus: types.StatusDegraded,
+		},
+		{
+			name:           "unconfirmed critical sub-component shows Suspected",
+			outages:        []types.Outage{unconfirmedOutage("critical-one", types.SeverityDown)},
+			expectedStatus: types.StatusSuspected,
+		},
+		{
+			name: "multiple critical sub-components: most severe wins",
+			outages: []types.Outage{
+				confirmedOutage("critical-one", types.SeverityDown),
+				confirmedOutage("critical-three", types.SeverityDegraded),
+			},
+			expectedStatus: types.StatusDown,
+		},
+		{
+			name: "all sub-components affected uses most severe status",
+			outages: []types.Outage{
+				confirmedOutage("critical-one", types.SeverityDegraded),
+				confirmedOutage("normal-two", types.SeverityDown),
+				confirmedOutage("critical-three", types.SeverityDegraded),
+			},
+			expectedStatus: types.StatusDown,
+		},
+		{
+			name:           "non-critical sub-component only shows Partial",
+			outages:        []types.Outage{confirmedOutage("normal-two", types.SeverityDown)},
+			expectedStatus: types.StatusPartial,
+		},
+		{
+			name:           "no outages shows Healthy",
+			outages:        []types.Outage{},
+			expectedStatus: types.StatusHealthy,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockOM := &outage.MockOutageManager{}
+			mockOM.GetActiveOutagesForComponentFn = func(slug string) ([]types.Outage, error) {
+				return tt.outages, nil
+			}
+
+			h := newTestHandlers(t, cfg, mockOM)
+			got, err := h.getComponentStatus(cfg.Components[0], logrus.NewEntry(logrus.New()))
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, got.Status)
+		})
 	}
 }
 

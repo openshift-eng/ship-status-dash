@@ -78,15 +78,18 @@ func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
 
 // SubComponent represents a sub-component that can have outages tracked against it.
 type SubComponent struct {
-	Name                 string                 `json:"name" yaml:"name"`
-	Slug                 string                 `json:"slug"`
-	Description          string                 `json:"description" yaml:"description"`
-	LongDescription      string                 `json:"long_description,omitempty" yaml:"long_description,omitempty"`
-	DocumentationURL     string                 `json:"documentation_url,omitempty" yaml:"documentation_url,omitempty"`
-	Tags                 []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Monitoring           *Monitoring            `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
-	RequiresConfirmation bool                   `json:"requires_confirmation" yaml:"requires_confirmation"`
-	SlackReporting       []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
+	Name                 string      `json:"name" yaml:"name"`
+	Slug                 string      `json:"slug"`
+	Description          string      `json:"description" yaml:"description"`
+	LongDescription      string      `json:"long_description,omitempty" yaml:"long_description,omitempty"`
+	DocumentationURL     string      `json:"documentation_url,omitempty" yaml:"documentation_url,omitempty"`
+	Tags                 []string    `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Monitoring           *Monitoring `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
+	RequiresConfirmation bool        `json:"requires_confirmation" yaml:"requires_confirmation"`
+	// Critical indicates that an outage on this sub-component should propagate its severity
+	// to the parent component status, bypassing the generic "partial" roll-up.
+	Critical       bool                   `json:"critical,omitempty" yaml:"critical,omitempty"`
+	SlackReporting []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
 }
 
 // Monitoring defines how this sub-component is automatically monitored.

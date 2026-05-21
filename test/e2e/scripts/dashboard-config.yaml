@@ -9,6 +9,7 @@ components:
       - name: Tide
         description: Merges PRs
         requires_confirmation: true
+        critical: true
         tags:
           - ci
           - pr-merging
@@ -112,6 +113,7 @@ components:
     sub_components:
       - name: Sippy
         description: CI private investigator
+        critical: true
         monitoring:
           frequency: 30s
           component_monitor: "e2e-component-monitor"

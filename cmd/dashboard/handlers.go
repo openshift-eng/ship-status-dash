@@ -625,10 +625,23 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		subComponentsWithOutages[outage.SubComponentName] = true
 	}
 
+	var criticalOutages []types.Outage
+	for _, outage := range outages {
+		sub := component.GetSubComponentBySlug(outage.SubComponentName)
+		if sub != nil && sub.Critical {
+			criticalOutages = append(criticalOutages, outage)
+		}
+	}
+
+	isPartialOutage := len(subComponentsWithOutages) < len(component.Subcomponents)
+
 	var status types.Status
 	if len(outages) == 0 {
 		status = types.StatusHealthy
-	} else if len(subComponentsWithOutages) < len(component.Subcomponents) {
+	} else if len(criticalOutages) > 0 && isPartialOutage {
+		// Critical sub-component has an outage in a partial scenario: bypass Partial and propagate its severity.
+		status = types.StatusFromOutages(criticalOutages)
+	} else if isPartialOutage {
 		status = types.StatusPartial
 	} else {
 		status = types.StatusFromOutages(outages)

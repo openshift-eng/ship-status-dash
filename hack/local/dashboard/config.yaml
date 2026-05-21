@@ -12,6 +12,7 @@ components:
         documentation_url: "https://docs.prow.k8s.io/docs/components/core/tide/"
         tags: ["pr-merging", "github"]
         requires_confirmation: true
+        critical: true
       - name: "Deck"
         description: "Dashboard for Prow"
         tags: ["frontend"]
@@ -56,6 +57,7 @@ components:
       - name: "Sippy"
         description: "The non-auth variant of Sippy"
         requires_confirmation: false
+        critical: true
       - name: "Sippy-Auth"
         description: "The auth variant of Sippy"
         requires_confirmation: false

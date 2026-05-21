@@ -78,6 +78,7 @@ export interface SubComponent {
   documentation_url?: string
   tags?: string[]
   requires_confirmation: boolean
+  critical?: boolean
   monitoring?: Monitoring
   slack_reporting?: SlackReportingConfig[]
   status?: Status
