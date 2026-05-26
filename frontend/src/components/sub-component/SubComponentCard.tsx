@@ -2,12 +2,15 @@ import { Box, Card, CardContent, Tooltip, Typography, styled } from '@mui/materi
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { CARD_OUTAGE_HISTORY_DAYS } from '../../constants/history'
 import { useTags } from '../../contexts/TagsContext'
+import useOutageHistory from '../../hooks/useOutageHistory'
 import type { SubComponent } from '../../types'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { formatStatusSeverityText } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
+import OutageHistoryBar from '../OutageHistoryBar'
 import { StatusChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
 
@@ -73,6 +76,12 @@ const CardFooter = styled(Box)(({ theme }) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
 }))
 
+const HistoryBarWrapper = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(1.5),
+  paddingTop: theme.spacing(1.5),
+  borderTop: `1px solid ${theme.palette.divider}`,
+}))
+
 const TagsContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexWrap: 'wrap',
@@ -90,6 +99,11 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
+  const { outages: historyOutages, loading: historyLoading } = useOutageHistory(
+    componentName,
+    subComponent.name,
+    CARD_OUTAGE_HISTORY_DAYS,
+  )
 
   useEffect(() => {
     fetch(getSubComponentStatusEndpoint(componentName, subComponent.name))
@@ -150,6 +164,15 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
             ))}
           </TagsContainer>
         </CardFooter>
+        <HistoryBarWrapper>
+          <OutageHistoryBar
+            componentName={componentName}
+            subComponentName={subComponent.name}
+            outages={historyOutages}
+            loading={historyLoading}
+            days={CARD_OUTAGE_HISTORY_DAYS}
+          />
+        </HistoryBarWrapper>
       </StyledCardContent>
     </SubComponentCard>
   )

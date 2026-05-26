@@ -1,0 +1,2 @@
+export const CARD_OUTAGE_HISTORY_DAYS = 30
+export const FULL_OUTAGE_HISTORY_DAYS = 90

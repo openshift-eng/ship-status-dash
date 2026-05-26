@@ -1,4 +1,4 @@
-export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' | 'Unknown'
+export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' | 'Unknown' | 'CapacityExhausted'
 
 export interface ComponentStatus {
   component_name: string

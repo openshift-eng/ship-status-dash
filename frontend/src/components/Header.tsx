@@ -1,4 +1,11 @@
-import { Accessibility, Brightness4, Brightness7, HelpOutline, Insights } from '@mui/icons-material'
+import {
+  Accessibility,
+  Brightness4,
+  Brightness7,
+  HelpOutline,
+  History,
+  Insights,
+} from '@mui/icons-material'
 import { AppBar, Box, IconButton, styled, Toolbar, Tooltip } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 
@@ -82,6 +89,14 @@ const Header = ({
               aria-label="Toggle accessibility mode"
             >
               <Accessibility color={isAccessibilityMode ? 'primary' : 'inherit'} />
+            </HeaderIconButton>
+          </Tooltip>
+          <Tooltip title="Status History">
+            <HeaderIconButton
+              onClick={() => navigate('/status-history')}
+              aria-label="Status History"
+            >
+              <History />
             </HeaderIconButton>
           </Tooltip>
           {spcPage && (

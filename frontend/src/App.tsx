@@ -9,6 +9,7 @@ import ComponentStatusList from './components/ComponentStatusList'
 import ExternalPageViewer from './components/ExternalPageViewer'
 import Header from './components/Header'
 import OutageDetailsPage from './components/outage/OutageDetailsPage'
+import StatusHistoryPage from './components/StatusHistoryPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 import TagPage from './components/tags/TagPage'
 import AppTour from './components/tour/AppTour'
@@ -92,6 +93,7 @@ function App() {
               />
               <Routes>
                 <Route path="/" element={<ComponentStatusList />} />
+                <Route path="/status-history" element={<StatusHistoryPage />} />
                 <Route
                   path={`${EXTERNAL_PAGES_PATH_PREFIX}/:pageSlug`}
                   element={<ExternalPageViewer />}
