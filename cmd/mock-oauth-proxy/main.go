@@ -173,6 +173,7 @@ func basicAuthHandler(
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(upstreamURL)
+			pr.SetXForwarded()
 
 			out := pr.Out
 			if out.Header.Get("Date") == "" {
