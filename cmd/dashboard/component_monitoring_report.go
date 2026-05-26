@@ -19,7 +19,7 @@ const (
 
 	// flapWindow is the lookback period for finding recently-closed outages to reopen.
 	// Outages from the same probe that recur within this window are treated as the same issue.
-	flapWindow = 24 * time.Hour
+	flapWindow = 1 * time.Hour
 )
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
