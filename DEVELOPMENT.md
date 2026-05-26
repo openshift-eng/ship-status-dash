@@ -2,9 +2,43 @@
 
 This document describes how to set up and run the Ship Status Dashboard for local development and testing.
 
-## Prerequisites
+For production layout and authentication, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Before starting the dashboard, you must set up a PostgreSQL database:
+## Dev container (recommended)
+
+The preferred way to develop is the [dev container](.devcontainer/README.md). It provides a consistent environment (Go, Node, tooling, PostgreSQL) and matches the ports used across the project.
+
+**Prerequisites:** Podman v4+ or Docker with Compose, plus the [devcontainer CLI](https://containers.dev/supporting). See [.devcontainer/README.md](.devcontainer/README.md) for platform-specific `devcontainer up` commands (Podman on macOS/Linux, Docker Desktop, and cleanup).
+
+**Quick start:**
+
+1. Open the repository in VS Code or Cursor and **Reopen in Container** (or run `devcontainer up --workspace-folder .` from the repo root).
+2. Copy [`.devcontainer/.env.example`](.devcontainer/.env.example) to `.devcontainer/.env` if you need to override defaults.
+3. On first create, `post-create.sh` installs dependencies and runs migrations against the bundled PostgreSQL service.
+
+**Services** (see the [dev container README](.devcontainer/README.md) for full detail):
+
+| Service | Port | How to start |
+|---------|------|----------------|
+| PostgreSQL | 5433 (host) | Started automatically by `init-services.sh` |
+| Dashboard API | 8180 | `/ship-status-dev-serve` or the `dashboard_serve` MCP tool |
+| Mock OAuth Proxy | 8443 | Started with the dashboard |
+| Vite dev server | 3030 | `/ship-status-dev-frontend` or the `frontend_serve` MCP tool |
+| Prometheus | 9090 | `/ship-status-dev-app` when testing component-monitor |
+
+Default database URL inside the container: `postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable` (`SHIP_STATUS_DSN`).
+
+In Cursor/Claude Code, slash commands such as `/ship-status-dev-setup`, `/ship-status-dev-serve`, and `/ship-status-dev-frontend` wrap the same workflow; see [`.devcontainer/README.md`](.devcontainer/README.md).
+
+---
+
+## Manual setup (optional)
+
+Use this path if you are not using the dev container—for example, running services directly on the host with your own PostgreSQL instance.
+
+### Prerequisites
+
+Before starting the dashboard, set up a PostgreSQL database:
 
 1. Start a PostgreSQL container:
    ```bash
@@ -19,9 +53,10 @@ Before starting the dashboard, you must set up a PostgreSQL database:
    ```bash
    podman exec ship-status-db psql -U postgres -c "CREATE DATABASE ship_status;"
    ```
-## Backend Setup
 
-### Dashboard
+### Backend
+
+#### Dashboard
 
 Start the dashboard server and mock oauth-proxy using the local development script:
 
@@ -41,7 +76,7 @@ This script:
 SLACK_BOT_TOKEN=xoxb-your-token ./hack/local/dashboard/local-dev.sh "postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable"
 ```
 
-### Component Monitor
+#### Component Monitor
 
 Start the component-monitor using the local development script:
 
@@ -96,7 +131,7 @@ Both processes use the same HMAC secret:
 - Stored in temporary file
 - Passed to both dashboard and mock-oauth-proxy via `--hmac-secret-file`
 
-## Frontend Setup
+### Frontend
 
 1. Navigate to the frontend directory:
    ```bash
@@ -108,14 +143,16 @@ Both processes use the same HMAC secret:
    npm ci --ignore-scripts
    ```
 
-3. Set environment variables (or use the .env.development file) and start the development server:
+3. Start the development server. [`frontend/.env.development`](frontend/.env.development) already sets `VITE_PUBLIC_DOMAIN` and `VITE_PROTECTED_DOMAIN` for local URLs; override inline if needed:
    ```bash
-   REACT_APP_PUBLIC_DOMAIN=http://localhost:8180 \
-   REACT_APP_PROTECTED_DOMAIN=http://localhost:8443 \
+   VITE_PUBLIC_DOMAIN=http://localhost:8180 \
+   VITE_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```
 
 The frontend will be available at `http://localhost:3030`.
+
+---
 
 ## End-to-End Tests
 
@@ -150,4 +187,3 @@ The e2e script (`test/e2e/scripts/local-e2e.sh`):
 The test suite includes:
 - **Dashboard tests** (`TestE2E_Dashboard`): Tests API endpoints, outages, component status, and user authentication
 - **Component-monitor tests** (`TestE2E_ComponentMonitor`): Tests component monitoring probes and integration with the dashboard
-
