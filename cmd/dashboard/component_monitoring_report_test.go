@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -243,6 +244,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						SubComponentName: "test-subcomponent",
 						CreatedBy:        "test-monitor",
 						Severity:         types.SeverityDegraded,
+						EndTime:          sql.NullTime{Time: time.Now().Add(-1 * time.Hour), Valid: true},
 						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
 					},
 				}
@@ -280,6 +282,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 						SubComponentName: "test-subcomponent",
 						CreatedBy:        "test-monitor",
 						Severity:         types.SeverityDown,
+						EndTime:          sql.NullTime{Time: time.Now().Add(-1 * time.Hour), Valid: true},
 						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
 					},
 				}

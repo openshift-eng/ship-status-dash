@@ -28,15 +28,18 @@ type MockOutageRepository struct {
 	DeletedOutages []*types.Outage
 	SaveCount      int
 	// Mock data for queries
-	OutagesForComponent       []types.Outage
-	OutagesForSubComponent    []types.Outage
-	OutageByID                *types.Outage
-	OutageByIDFn              func(string, string, uint) (*types.Outage, error)
-	OutageByIDError           error
-	ActiveOutagesForSubComp   []types.Outage
-	ActiveOutagesForComponent []types.Outage
-	AllActiveOutages          []types.Outage
-	OutageAuditLogs           []types.OutageAuditLog
+	OutagesForComponent            []types.Outage
+	OutagesForSubComponent         []types.Outage
+	OutageByID                     *types.Outage
+	OutageByIDFn                   func(string, string, uint) (*types.Outage, error)
+	OutageByIDError                error
+	ActiveOutagesForSubComp        []types.Outage
+	ActiveOutagesForComponent      []types.Outage
+	AllActiveOutages               []types.Outage
+	OutageAuditLogs                []types.OutageAuditLog
+	RecentlyClosedOutages          []types.Outage
+	RecentlyClosedOutagesError     error
+	RecentlyClosedOutagesCreatedBy func(string, string, string, time.Time) ([]types.Outage, error)
 }
 
 func (m *MockOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {
@@ -69,7 +72,13 @@ func (m *MockOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subCompo
 }
 
 func (m *MockOutageRepository) GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error) {
-	return nil, nil
+	if m.RecentlyClosedOutagesCreatedBy != nil {
+		return m.RecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy, since)
+	}
+	if m.RecentlyClosedOutagesError != nil {
+		return nil, m.RecentlyClosedOutagesError
+	}
+	return m.RecentlyClosedOutages, nil
 }
 
 func (m *MockOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
