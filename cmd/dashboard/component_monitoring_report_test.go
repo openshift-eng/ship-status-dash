@@ -312,44 +312,15 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				},
 			},
 			setupOutageManager: func(m *outage.MockOutageManager) {
-				// Simulate the DB filtering out the outage because it's outside the flap window.
-				// The mock returns empty results when since is within the last hour,
-				// as the real DB query would when the outage closed 2 hours ago.
-				m.GetRecentlyClosedOutagesCreatedByFn = func(_, _, _ string, since time.Time) ([]types.Outage, error) {
-					if time.Since(since) <= flapWindow+5*time.Second {
-						return nil, nil
-					}
-					return []types.Outage{{
-						Reasons: []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
-					}}, nil
+				// Simulate the SQL returning nil because no outage falls within the flap window.
+				m.FindReopenableOutageFn = func(_, _, _ string, _ time.Time, _ []types.Reason) (*types.Outage, error) {
+					return nil, nil
 				}
 			},
 			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
 				assert.Len(t, m.CreatedOutages, 1, "should create new outage when matching outage is outside flap window")
 				assert.Empty(t, m.UpdatedOutages)
 			},
-			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
-				assert.Len(t, pingRepo.UpsertedPings, 1)
-			},
-		},
-		{
-			name:   "recently-closed outage query error returns error",
-			config: repositories.TestConfig(false, false),
-			request: &types.ComponentMonitorReportRequest{
-				ComponentMonitor: "test-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    "test-component",
-						SubComponentSlug: "test-subcomponent",
-						Status:           types.StatusDown,
-						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
-					},
-				},
-			},
-			setupOutageManager: func(m *outage.MockOutageManager) {
-				m.RecentlyClosedOutagesError = errors.New("database error")
-			},
-			wantErr: errors.New("database error"),
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
 			},

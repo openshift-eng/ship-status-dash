@@ -28,18 +28,17 @@ type MockOutageRepository struct {
 	DeletedOutages []*types.Outage
 	SaveCount      int
 	// Mock data for queries
-	OutagesForComponent            []types.Outage
-	OutagesForSubComponent         []types.Outage
-	OutageByID                     *types.Outage
-	OutageByIDFn                   func(string, string, uint) (*types.Outage, error)
-	OutageByIDError                error
-	ActiveOutagesForSubComp        []types.Outage
-	ActiveOutagesForComponent      []types.Outage
-	AllActiveOutages               []types.Outage
-	OutageAuditLogs                []types.OutageAuditLog
-	RecentlyClosedOutages          []types.Outage
-	RecentlyClosedOutagesError     error
-	RecentlyClosedOutagesCreatedBy func(string, string, string, time.Time) ([]types.Outage, error)
+	OutagesForComponent       []types.Outage
+	OutagesForSubComponent    []types.Outage
+	OutageByID                *types.Outage
+	OutageByIDFn              func(string, string, uint) (*types.Outage, error)
+	OutageByIDError           error
+	ActiveOutagesForSubComp   []types.Outage
+	ActiveOutagesForComponent []types.Outage
+	AllActiveOutages          []types.Outage
+	OutageAuditLogs           []types.OutageAuditLog
+	RecentlyClosedOutages     []types.Outage
+	FindReopenableOutageFn    func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
 }
 
 func (m *MockOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {
@@ -71,14 +70,20 @@ func (m *MockOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subCompo
 	return m.ActiveOutages, nil
 }
 
-func (m *MockOutageRepository) GetRecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string, since time.Time) ([]types.Outage, error) {
-	if m.RecentlyClosedOutagesCreatedBy != nil {
-		return m.RecentlyClosedOutagesCreatedBy(componentSlug, subComponentSlug, createdBy, since)
+func (m *MockOutageRepository) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
+	if m.FindReopenableOutageFn != nil {
+		return m.FindReopenableOutageFn(componentSlug, subComponentSlug, createdBy, since, reasons)
 	}
-	if m.RecentlyClosedOutagesError != nil {
-		return nil, m.RecentlyClosedOutagesError
+	for i := range m.RecentlyClosedOutages {
+		for _, existing := range m.RecentlyClosedOutages[i].Reasons {
+			for _, incoming := range reasons {
+				if existing.Type == incoming.Type && existing.Check == incoming.Check {
+					return &m.RecentlyClosedOutages[i], nil
+				}
+			}
+		}
 	}
-	return m.RecentlyClosedOutages, nil
+	return nil, nil
 }
 
 func (m *MockOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {

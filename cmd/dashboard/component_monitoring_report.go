@@ -171,14 +171,12 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			if recentOutage != nil {
 				recentOutage.EndTime = sql.NullTime{Valid: false}
 				recentOutage.Severity = severity
+				outageLogger := statusLogger.WithField("outage_id", recentOutage.ID)
 				if err := p.outageManager.UpdateOutage(recentOutage, req.ComponentMonitor); err != nil {
-					statusLogger.WithFields(logrus.Fields{
-						"outage_id": recentOutage.ID,
-						"error":     err,
-					}).Error("Failed to reopen outage")
+					outageLogger.Errorf("Failed to reopen outage: %v", err)
 					continue
 				}
-				statusLogger.WithField("outage_id", recentOutage.ID).Info("Reopened recently-closed outage due to recurring probe failure")
+				outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
 				continue
 			}
 
@@ -220,28 +218,5 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 // Returns nil if no matching outage is found.
 func (p *ComponentMonitorReportProcessor) findReopenableOutage(status types.ComponentMonitorReportComponentStatus, componentMonitor string, now time.Time) (*types.Outage, error) {
 	since := now.Add(-flapWindow)
-	recentOutages, err := p.outageManager.GetRecentlyClosedOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range recentOutages {
-		if reasonsOverlap(recentOutages[i].Reasons, status.Reasons) {
-			return &recentOutages[i], nil
-		}
-	}
-	return nil, nil
-}
-
-// reasonsOverlap returns true if any reason in existing shares the same Type and Check
-// as any reason in incoming, indicating the same probe is failing again.
-func reasonsOverlap(existing, incoming []types.Reason) bool {
-	for _, e := range existing {
-		for _, i := range incoming {
-			if e.Type == i.Type && e.Check == i.Check {
-				return true
-			}
-		}
-	}
-	return false
+	return p.outageManager.FindReopenableOutage(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since, status.Reasons)
 }
