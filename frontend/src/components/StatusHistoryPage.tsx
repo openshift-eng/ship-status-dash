@@ -9,7 +9,7 @@ import {
   useTheme,
 } from '@mui/material'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link as RouterLink } from 'react-router-dom'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
 import useOutageHistory from '../hooks/useOutageHistory'
@@ -103,8 +103,7 @@ const SubComponentHistoryBlock = ({
   componentSlug,
   subComponent,
 }: SubComponentHistoryBlockProps) => {
-  const navigate = useNavigate()
-  const { outages, loading } = useOutageHistory(
+  const { outages, loading, error } = useOutageHistory(
     componentSlug,
     subComponent.slug,
     FULL_OUTAGE_HISTORY_DAYS,
@@ -114,7 +113,8 @@ const SubComponentHistoryBlock = ({
     <SubComponentBlock>
       <SubComponentHeader>
         <SubComponentLink
-          onClick={() => navigate(`/${componentSlug}/${subComponent.slug}`)}
+          component={RouterLink}
+          to={`/${componentSlug}/${subComponent.slug}`}
           title={subComponent.name}
         >
           {subComponent.name}
@@ -128,13 +128,19 @@ const SubComponentHistoryBlock = ({
           />
         )}
       </SubComponentHeader>
-      <OutageHistoryBar
-        componentName={componentSlug}
-        subComponentName={subComponent.slug}
-        outages={outages}
-        loading={loading}
-        days={FULL_OUTAGE_HISTORY_DAYS}
-      />
+      {error ? (
+        <Typography variant="caption" color="text.secondary">
+          Could not load history
+        </Typography>
+      ) : (
+        <OutageHistoryBar
+          componentName={componentSlug}
+          subComponentName={subComponent.slug}
+          outages={outages}
+          loading={loading}
+          days={FULL_OUTAGE_HISTORY_DAYS}
+        />
+      )}
     </SubComponentBlock>
   )
 }
@@ -168,7 +174,11 @@ const StatusHistoryPage = () => {
           for (const outage of cs.active_outages ?? []) {
             const current = subMap.get(outage.sub_component_name)
             const currentIdx = current ? STATUS_PRIORITY.indexOf(current) : -1
-            if (STATUS_PRIORITY.indexOf(outage.severity) > currentIdx) {
+            const severityIdx = STATUS_PRIORITY.indexOf(outage.severity)
+            if (severityIdx === -1) {
+              // Unknown severity: still an active outage — record only if nothing is set yet.
+              if (current === undefined) subMap.set(outage.sub_component_name, outage.severity)
+            } else if (severityIdx > currentIdx) {
               subMap.set(outage.sub_component_name, outage.severity)
             }
           }

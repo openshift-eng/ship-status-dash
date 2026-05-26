@@ -43,6 +43,47 @@ const LabelText = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }))
 
+const TooltipContainer = styled(Box)(() => ({
+  minWidth: 180,
+  maxWidth: 280,
+  padding: 4,
+}))
+
+const TooltipDate = styled(Typography)(() => ({
+  fontWeight: 700,
+  display: 'block',
+  marginBottom: 4,
+}))
+
+const TooltipNoIncidents = styled(Typography)(() => ({
+  color: 'success.light',
+}))
+
+const TooltipDivider = styled(Divider)(() => ({
+  marginBottom: 8,
+  borderColor: 'rgba(255,255,255,0.2)',
+}))
+
+const TooltipOutageRow = styled(Box)(() => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 8,
+}))
+
+const TooltipSeverity = styled(Typography)(() => ({
+  fontWeight: 600,
+}))
+
+const TooltipDuration = styled(Typography)(() => ({
+  opacity: 0.8,
+}))
+
+const TooltipDescription = styled(Typography)(() => ({
+  display: 'block',
+  opacity: 0.75,
+  fontSize: '0.7rem',
+}))
+
 interface DayBucket {
   date: Date
   worstSeverity: string | null
@@ -70,9 +111,17 @@ const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
     let worstSeverity: string | null = null
     for (const outage of dayOutages) {
       const priority = SEVERITY_PRIORITY.indexOf(outage.severity)
-      const currentPriority = worstSeverity ? SEVERITY_PRIORITY.indexOf(worstSeverity) : -1
-      if (priority > currentPriority) {
-        worstSeverity = outage.severity
+      if (priority === -1) {
+        // Unknown severity: still counts as an outage — record at lowest priority if nothing better is set.
+        if (worstSeverity === null) worstSeverity = outage.severity
+      } else {
+        const currentPriority =
+          worstSeverity !== null
+            ? SEVERITY_PRIORITY.indexOf(worstSeverity) === -1
+              ? 0
+              : SEVERITY_PRIORITY.indexOf(worstSeverity)
+            : -1
+        if (priority > currentPriority) worstSeverity = outage.severity
       }
     }
 
@@ -129,40 +178,31 @@ const OutageHistoryBar = ({
       year: 'numeric',
     })
     return (
-      <Box sx={{ minWidth: 180, maxWidth: 280, p: 0.5 }}>
-        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>
-          {dateStr}
-        </Typography>
+      <TooltipContainer>
+        <TooltipDate variant="caption">{dateStr}</TooltipDate>
         {bucket.outages.length === 0 ? (
-          <Typography variant="caption" sx={{ color: 'success.light' }}>
-            No incidents
-          </Typography>
+          <TooltipNoIncidents variant="caption">No incidents</TooltipNoIncidents>
         ) : (
           <>
-            <Divider sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
-            {bucket.outages.map((o) => (
-              <Box key={o.ID} sx={{ mb: bucket.outages.length > 1 ? 1 : 0 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            <TooltipDivider />
+            {bucket.outages.map((o, idx) => (
+              <Box key={o.ID} mb={idx < bucket.outages.length - 1 ? 1 : 0}>
+                <TooltipOutageRow>
+                  <TooltipSeverity variant="caption">
                     {formatStatusSeverityText(o.severity)}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                  </TooltipSeverity>
+                  <TooltipDuration variant="caption">
                     {formatDuration(o.start_time, o.end_time)}
-                  </Typography>
-                </Box>
+                  </TooltipDuration>
+                </TooltipOutageRow>
                 {o.description && (
-                  <Typography
-                    variant="caption"
-                    sx={{ display: 'block', opacity: 0.75, fontSize: '0.7rem' }}
-                  >
-                    {o.description}
-                  </Typography>
+                  <TooltipDescription variant="caption">{o.description}</TooltipDescription>
                 )}
               </Box>
             ))}
           </>
         )}
-      </Box>
+      </TooltipContainer>
     )
   }
 
