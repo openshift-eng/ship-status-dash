@@ -70,6 +70,10 @@ func (m *MockOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subCompo
 	return m.ActiveOutages, nil
 }
 
+func (m *MockOutageRepository) AppendReasons(outageID uint, reasons []types.Reason) error {
+	return nil
+}
+
 func (m *MockOutageRepository) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
 	if m.FindReopenableOutageFn != nil {
 		return m.FindReopenableOutageFn(componentSlug, subComponentSlug, createdBy, since, reasons)

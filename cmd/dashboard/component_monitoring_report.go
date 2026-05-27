@@ -176,6 +176,11 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 					outageLogger.Errorf("Failed to reopen outage: %v", err)
 					continue
 				}
+				if added := newReasons(recentOutage.Reasons, status.Reasons); len(added) > 0 {
+					if err := p.outageManager.AppendReasons(recentOutage.ID, added); err != nil {
+						outageLogger.Errorf("Failed to append new reasons to reopened outage: %v", err)
+					}
+				}
 				outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
 				continue
 			}
@@ -213,10 +218,26 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 	return nil
 }
 
-// findReopenableOutage returns the most recently-closed outage within the flap window that
-// shares at least one probe reason (same Type and Check) with the incoming report status.
-// Returns nil if no matching outage is found.
 func (p *ComponentMonitorReportProcessor) findReopenableOutage(status types.ComponentMonitorReportComponentStatus, componentMonitor string, now time.Time) (*types.Outage, error) {
 	since := now.Add(-flapWindow)
 	return p.outageManager.FindReopenableOutage(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since, status.Reasons)
+}
+
+// newReasons returns reasons from incoming that are not already present in existing,
+// matched by Type and Check.
+func newReasons(existing, incoming []types.Reason) []types.Reason {
+	var result []types.Reason
+	for _, r := range incoming {
+		found := false
+		for _, e := range existing {
+			if e.Type == r.Type && e.Check == r.Check {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, r)
+		}
+	}
+	return result
 }

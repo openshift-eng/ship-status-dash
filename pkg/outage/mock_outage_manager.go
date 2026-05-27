@@ -111,6 +111,10 @@ func (m *MockOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subCom
 	return []types.Outage{}, nil
 }
 
+func (m *MockOutageManager) AppendReasons(outageID uint, reasons []types.Reason) error {
+	return nil
+}
+
 // FindReopenableOutage simulates the SQL join by searching RecentlyClosedOutages for the first
 // outage whose reasons overlap with the incoming reasons.
 func (m *MockOutageManager) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {

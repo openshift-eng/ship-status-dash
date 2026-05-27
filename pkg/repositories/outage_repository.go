@@ -29,6 +29,7 @@ type OutageRepository interface {
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
 	FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error)
+	AppendReasons(outageID uint, reasons []types.Reason) error
 
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 
@@ -168,6 +169,17 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 			componentSlug, subComponentSlug, discoveredFrom).
 		Find(&activeOutages).Error
 	return activeOutages, err
+}
+
+// AppendReasons creates new reason records for an existing outage.
+func (r *gormOutageRepository) AppendReasons(outageID uint, reasons []types.Reason) error {
+	for _, reason := range reasons {
+		reason.OutageID = outageID
+		if err := r.db.Create(&reason).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // FindReopenableOutage returns the most recently-closed outage within the flap window that
