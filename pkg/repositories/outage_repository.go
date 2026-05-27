@@ -173,13 +173,18 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 
 // AppendReasons creates new reason records for an existing outage.
 func (r *gormOutageRepository) AppendReasons(outageID uint, reasons []types.Reason) error {
-	for _, reason := range reasons {
-		reason.OutageID = outageID
-		if err := r.db.Create(&reason).Error; err != nil {
-			return err
-		}
+	if len(reasons) == 0 {
+		return nil
 	}
-	return nil
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, reason := range reasons {
+			reason.OutageID = outageID
+			if err := tx.Create(&reason).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // FindReopenableOutage returns the most recently-closed outage within the flap window that

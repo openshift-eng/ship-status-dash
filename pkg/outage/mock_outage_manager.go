@@ -115,17 +115,25 @@ func (m *MockOutageManager) AppendReasons(outageID uint, reasons []types.Reason)
 	return nil
 }
 
-// FindReopenableOutage simulates the SQL join by searching RecentlyClosedOutages for the first
-// outage whose reasons overlap with the incoming reasons.
+// FindReopenableOutage simulates the SQL join by filtering RecentlyClosedOutages on
+// component, sub-component, creator, flap window, and reason overlap.
 func (m *MockOutageManager) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
 	if m.FindReopenableOutageFn != nil {
 		return m.FindReopenableOutageFn(componentSlug, subComponentSlug, createdBy, since, reasons)
 	}
 	for i := range m.RecentlyClosedOutages {
-		for _, existing := range m.RecentlyClosedOutages[i].Reasons {
+		outage := &m.RecentlyClosedOutages[i]
+		if outage.ComponentName != componentSlug || outage.SubComponentName != subComponentSlug || outage.CreatedBy != createdBy {
+			continue
+		}
+		if !outage.EndTime.Valid || outage.EndTime.Time.Before(since) {
+			continue
+		}
+		for _, existing := range outage.Reasons {
 			for _, incoming := range reasons {
 				if existing.Type == incoming.Type && existing.Check == incoming.Check {
-					return &m.RecentlyClosedOutages[i], nil
+					matched := *outage
+					return &matched, nil
 				}
 			}
 		}
