@@ -658,3 +658,60 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestNewReasons(t *testing.T) {
+	prometheus := types.Reason{Type: types.CheckTypePrometheus, Check: "up == 0"}
+	http := types.Reason{Type: types.CheckTypeHTTP, Check: "status != 200"}
+	systemd := types.Reason{Type: types.CheckTypeSystemd, Check: "service-down"}
+
+	tests := []struct {
+		name     string
+		existing []types.Reason
+		incoming []types.Reason
+		want     []types.Reason
+	}{
+		{
+			name:     "probe has reason not in outage",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{http},
+			want:     []types.Reason{http},
+		},
+		{
+			name:     "probe has same reasons as outage",
+			existing: []types.Reason{prometheus, http},
+			incoming: []types.Reason{prometheus, http},
+			want:     nil,
+		},
+		{
+			name:     "probe has both matching and new reasons",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{prometheus, http},
+			want:     []types.Reason{http},
+		},
+		{
+			name:     "outage has no existing reasons",
+			existing: nil,
+			incoming: []types.Reason{prometheus, http},
+			want:     []types.Reason{prometheus, http},
+		},
+		{
+			name:     "probe has no reasons",
+			existing: []types.Reason{prometheus},
+			incoming: nil,
+			want:     nil,
+		},
+		{
+			name:     "probe has multiple reasons not in outage",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{http, systemd},
+			want:     []types.Reason{http, systemd},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := newReasons(tt.existing, tt.incoming)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
