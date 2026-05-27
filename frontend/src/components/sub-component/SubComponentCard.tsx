@@ -157,13 +157,15 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           </StatusChipBox>
         </CardHeader>
         <SubComponentDescription>{subComponent.description}</SubComponentDescription>
-        <CardFooter data-tour="subcomponent-tags">
-          <TagsContainer>
-            {subComponent.tags?.map((tag) => (
-              <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
-            ))}
-          </TagsContainer>
-        </CardFooter>
+        {subComponent.tags && subComponent.tags.length > 0 && (
+          <CardFooter data-tour="subcomponent-tags">
+            <TagsContainer>
+              {subComponent.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} size="small" color={getTag(tag)?.color} />
+              ))}
+            </TagsContainer>
+          </CardFooter>
+        )}
         <HistoryBarWrapper>
           <OutageHistoryBar
             componentName={componentName}

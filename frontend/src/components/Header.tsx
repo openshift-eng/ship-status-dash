@@ -91,10 +91,10 @@ const Header = ({
               <Accessibility color={isAccessibilityMode ? 'primary' : 'inherit'} />
             </HeaderIconButton>
           </Tooltip>
-          <Tooltip title="Status History">
+          <Tooltip title="Incident History">
             <HeaderIconButton
               onClick={() => navigate('/status-history')}
-              aria-label="Status History"
+              aria-label="Incident History"
             >
               <History />
             </HeaderIconButton>

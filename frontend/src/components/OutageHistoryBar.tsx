@@ -167,8 +167,10 @@ const OutageHistoryBar = ({
     const ms = new Date(endTime.Time).getTime() - new Date(startStr).getTime()
     const hours = Math.floor(ms / 3600000)
     const mins = Math.floor((ms % 3600000) / 60000)
+    const secs = Math.floor((ms % 60000) / 1000)
     if (hours > 0) return `${hours}h ${mins}m`
-    return `${mins}m`
+    if (mins > 0) return `${mins}m`
+    return `${secs}s`
   }
 
   const tooltipNode = (bucket: DayBucket): React.ReactNode => {

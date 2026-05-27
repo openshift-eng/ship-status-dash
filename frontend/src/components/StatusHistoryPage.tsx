@@ -233,7 +233,7 @@ const StatusHistoryPage = () => {
 
   return (
     <PageContainer maxWidth="lg">
-      <PageTitle variant="h4">Status History</PageTitle>
+      <PageTitle variant="h4">Incident History</PageTitle>
       <PageNote>Uptime over the past {FULL_OUTAGE_HISTORY_DAYS} days.</PageNote>
 
       <StatusBanner bannercolor={bannerColor}>
