@@ -11,6 +11,7 @@ type MockOutageManager struct {
 	// Mock data for queries
 	ActiveOutagesCreatedBy      []types.Outage
 	ActiveOutagesCreatedByError error
+	RecentlyClosedOutages       []types.Outage
 
 	// Captured data for assertions
 	CreatedOutages []struct {
@@ -25,6 +26,7 @@ type MockOutageManager struct {
 	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesForComponentFn   func(string) ([]types.Outage, error)
+	FindReopenableOutageFn           func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
 	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
 
 	LastGetOutagesDuringQueryStart time.Time
@@ -107,6 +109,36 @@ func (m *MockOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subCom
 		return m.GetActiveOutagesDiscoveredFromFn(componentSlug, subComponentSlug, discoveredFrom)
 	}
 	return []types.Outage{}, nil
+}
+
+func (m *MockOutageManager) AppendReasons(outageID uint, reasons []types.Reason) error {
+	return nil
+}
+
+// FindReopenableOutage simulates the SQL join by filtering RecentlyClosedOutages on
+// component, sub-component, creator, flap window, and reason overlap.
+func (m *MockOutageManager) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
+	if m.FindReopenableOutageFn != nil {
+		return m.FindReopenableOutageFn(componentSlug, subComponentSlug, createdBy, since, reasons)
+	}
+	for i := range m.RecentlyClosedOutages {
+		outage := &m.RecentlyClosedOutages[i]
+		if outage.ComponentName != componentSlug || outage.SubComponentName != subComponentSlug || outage.CreatedBy != createdBy {
+			continue
+		}
+		if !outage.EndTime.Valid || outage.EndTime.Time.Before(since) {
+			continue
+		}
+		for _, existing := range outage.Reasons {
+			for _, incoming := range reasons {
+				if existing.Type == incoming.Type && existing.Check == incoming.Check {
+					matched := *outage
+					return &matched, nil
+				}
+			}
+		}
+	}
+	return nil, nil
 }
 
 // GetOutagesDuring records the last call and delegates to GetOutagesDuringFn when set.

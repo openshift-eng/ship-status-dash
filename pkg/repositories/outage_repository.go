@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,10 +25,11 @@ type OutageRepository interface {
 	GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error)
 	GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
 	GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error)
-	// GetAllActiveOutages returns active outages across all components (same active definition as GetActiveOutagesForComponent).
 	GetAllActiveOutages() ([]types.Outage, error)
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
+	FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error)
+	AppendReasons(outageID uint, reasons []types.Reason) error
 
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 
@@ -167,6 +169,49 @@ func (r *gormOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, sub
 			componentSlug, subComponentSlug, discoveredFrom).
 		Find(&activeOutages).Error
 	return activeOutages, err
+}
+
+// AppendReasons creates new reason records for an existing outage.
+func (r *gormOutageRepository) AppendReasons(outageID uint, reasons []types.Reason) error {
+	if len(reasons) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, reason := range reasons {
+			reason.OutageID = outageID
+			if err := tx.Create(&reason).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// FindReopenableOutage returns the most recently-closed outage within the flap window that
+// shares at least one probe reason (same Type and Check) with the incoming reasons, or nil if none found.
+func (r *gormOutageRepository) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
+	if len(reasons) == 0 {
+		return nil, nil
+	}
+	reasonConds := make([]string, len(reasons))
+	reasonArgs := make([]interface{}, 0, len(reasons)*2)
+	for i, reason := range reasons {
+		reasonConds[i] = "(r.type = ? AND r.check = ?)"
+		reasonArgs = append(reasonArgs, reason.Type, reason.Check)
+	}
+	var outage types.Outage
+	err := r.db.Preload("Reasons").
+		Joins("JOIN reasons r ON r.outage_id = outages.id AND r.deleted_at IS NULL").
+		Where("outages.component_name = ? AND outages.sub_component_name = ? AND outages.created_by = ? AND outages.end_time IS NOT NULL AND outages.end_time >= ?",
+			componentSlug, subComponentSlug, createdBy, since.UTC()).
+		Where("("+strings.Join(reasonConds, " OR ")+")", reasonArgs...).
+		Order("outages.end_time DESC").
+		Limit(1).
+		First(&outage).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &outage, err
 }
 
 // GetOutagesDuring returns outages that overlap the query window: start_time <= queryEnd and

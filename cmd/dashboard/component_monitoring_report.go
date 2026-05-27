@@ -16,6 +16,10 @@ import (
 
 const (
 	ComponentMonitor = "component-monitor"
+
+	// flapWindow is the lookback period for finding recently-closed outages to reopen.
+	// Outages from the same probe that recur within this window are treated as the same issue.
+	flapWindow = 1 * time.Hour
 )
 
 // ComponentMonitorReportProcessor handles the business logic for processing component monitor reports.
@@ -156,6 +160,31 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				continue
 			}
 
+			// Before creating a new outage, check if a recently-closed outage for the same
+			// probe exists within the flap window. If so, reopen it instead.
+			recentOutage, err := p.findReopenableOutage(status, req.ComponentMonitor, now)
+			if err != nil {
+				statusLogger.WithField("error", err).Error("Failed to query recently-closed outages")
+				return err
+			}
+
+			if recentOutage != nil {
+				recentOutage.EndTime = sql.NullTime{Valid: false}
+				recentOutage.Severity = severity
+				outageLogger := statusLogger.WithField("outage_id", recentOutage.ID)
+				if err := p.outageManager.UpdateOutage(recentOutage, req.ComponentMonitor); err != nil {
+					outageLogger.Errorf("Failed to reopen outage: %v", err)
+					continue
+				}
+				if added := newReasons(recentOutage.Reasons, status.Reasons); len(added) > 0 {
+					if err := p.outageManager.AppendReasons(recentOutage.ID, added); err != nil {
+						outageLogger.Errorf("Failed to append new reasons to reopened outage: %v", err)
+					}
+				}
+				outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
+				continue
+			}
+
 			description := "Component monitor detected outage"
 
 			outage := types.Outage{
@@ -187,4 +216,28 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 	}
 
 	return nil
+}
+
+func (p *ComponentMonitorReportProcessor) findReopenableOutage(status types.ComponentMonitorReportComponentStatus, componentMonitor string, now time.Time) (*types.Outage, error) {
+	since := now.Add(-flapWindow)
+	return p.outageManager.FindReopenableOutage(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since, status.Reasons)
+}
+
+// newReasons returns reasons from incoming that are not already present in existing,
+// matched by Type and Check.
+func newReasons(existing, incoming []types.Reason) []types.Reason {
+	var result []types.Reason
+	for _, r := range incoming {
+		found := false
+		for _, e := range existing {
+			if e.Type == r.Type && e.Check == r.Check {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, r)
+		}
+	}
+	return result
 }

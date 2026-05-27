@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -215,6 +216,110 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
 				assert.Empty(t, m.CreatedOutages, "Should not create new outage")
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "unhealthy status reopens recently-closed outage with matching probe",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "up == 0", Results: "no instances"},
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.RecentlyClosedOutages = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDegraded,
+						EndTime:          sql.NullTime{Time: time.Now().Add(-30 * time.Minute), Valid: true},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
+					},
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages, "should reopen existing outage, not create new")
+				assert.Len(t, m.UpdatedOutages, 1, "should update the existing outage")
+				assert.False(t, m.UpdatedOutages[0].EndTime.Valid, "end_time should be cleared on reopen")
+				assert.Equal(t, types.SeverityDown, m.UpdatedOutages[0].Severity, "severity should be updated to current incoming severity")
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "unhealthy status creates new outage when recent outage has no matching probe",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "error_rate > 0.1"},
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.RecentlyClosedOutages = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDown,
+						EndTime:          sql.NullTime{Time: time.Now().Add(-30 * time.Minute), Valid: true},
+						Reasons:          []types.Reason{{Type: types.CheckTypePrometheus, Check: "up == 0"}},
+					},
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1, "should create new outage when no probe matches")
+				assert.Empty(t, m.UpdatedOutages)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "unhealthy status creates new outage when recent outage is outside flap window",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{Type: types.CheckTypePrometheus, Check: "up == 0"},
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				// Simulate the SQL returning nil because no outage falls within the flap window.
+				m.FindReopenableOutageFn = func(_, _, _ string, _ time.Time, _ []types.Reason) (*types.Outage, error) {
+					return nil, nil
+				}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1, "should create new outage when matching outage is outside flap window")
+				assert.Empty(t, m.UpdatedOutages)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -550,6 +655,63 @@ func TestComponentMonitorReportProcessor_ValidateRequest(t *testing.T) {
 			if diff := cmp.Diff(tt.wantErr, err, testhelper.EquateErrorMessage); diff != "" {
 				t.Errorf("validateRequest() error mismatch (-want +got):\n%s", diff)
 			}
+		})
+	}
+}
+
+func TestNewReasons(t *testing.T) {
+	prometheus := types.Reason{Type: types.CheckTypePrometheus, Check: "up == 0"}
+	http := types.Reason{Type: types.CheckTypeHTTP, Check: "status != 200"}
+	systemd := types.Reason{Type: types.CheckTypeSystemd, Check: "service-down"}
+
+	tests := []struct {
+		name     string
+		existing []types.Reason
+		incoming []types.Reason
+		want     []types.Reason
+	}{
+		{
+			name:     "probe has reason not in outage",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{http},
+			want:     []types.Reason{http},
+		},
+		{
+			name:     "probe has same reasons as outage",
+			existing: []types.Reason{prometheus, http},
+			incoming: []types.Reason{prometheus, http},
+			want:     nil,
+		},
+		{
+			name:     "probe has both matching and new reasons",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{prometheus, http},
+			want:     []types.Reason{http},
+		},
+		{
+			name:     "outage has no existing reasons",
+			existing: nil,
+			incoming: []types.Reason{prometheus, http},
+			want:     []types.Reason{prometheus, http},
+		},
+		{
+			name:     "probe has no reasons",
+			existing: []types.Reason{prometheus},
+			incoming: nil,
+			want:     nil,
+		},
+		{
+			name:     "probe has multiple reasons not in outage",
+			existing: []types.Reason{prometheus},
+			incoming: []types.Reason{http, systemd},
+			want:     []types.Reason{http, systemd},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := newReasons(tt.existing, tt.incoming)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

@@ -24,6 +24,8 @@ type OutageManager interface {
 	GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error)
 	GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error)
+	FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error)
+	AppendReasons(outageID uint, reasons []types.Reason) error
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 	DeleteOutage(outage *types.Outage, user string) error
@@ -159,6 +161,16 @@ func (m *DBOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponentS
 func (m *DBOutageManager) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom)
+}
+
+func (m *DBOutageManager) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.FindReopenableOutage(componentSlug, subComponentSlug, createdBy, since, reasons)
+}
+
+func (m *DBOutageManager) AppendReasons(outageID uint, reasons []types.Reason) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.AppendReasons(outageID, reasons)
 }
 
 func (m *DBOutageManager) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {

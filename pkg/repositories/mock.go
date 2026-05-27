@@ -37,6 +37,8 @@ type MockOutageRepository struct {
 	ActiveOutagesForComponent []types.Outage
 	AllActiveOutages          []types.Outage
 	OutageAuditLogs           []types.OutageAuditLog
+	RecentlyClosedOutages     []types.Outage
+	FindReopenableOutageFn    func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
 }
 
 func (m *MockOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error) {
@@ -66,6 +68,36 @@ func (m *MockOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subCompo
 		return nil, m.ActiveOutagesError
 	}
 	return m.ActiveOutages, nil
+}
+
+func (m *MockOutageRepository) AppendReasons(outageID uint, reasons []types.Reason) error {
+	return nil
+}
+
+// FindReopenableOutage simulates the SQL join by filtering RecentlyClosedOutages on
+// component, sub-component, creator, flap window, and reason overlap.
+func (m *MockOutageRepository) FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error) {
+	if m.FindReopenableOutageFn != nil {
+		return m.FindReopenableOutageFn(componentSlug, subComponentSlug, createdBy, since, reasons)
+	}
+	for i := range m.RecentlyClosedOutages {
+		outage := &m.RecentlyClosedOutages[i]
+		if outage.ComponentName != componentSlug || outage.SubComponentName != subComponentSlug || outage.CreatedBy != createdBy {
+			continue
+		}
+		if !outage.EndTime.Valid || outage.EndTime.Time.Before(since) {
+			continue
+		}
+		for _, existing := range outage.Reasons {
+			for _, incoming := range reasons {
+				if existing.Type == incoming.Type && existing.Check == incoming.Check {
+					matched := *outage
+					return &matched, nil
+				}
+			}
+		}
+	}
+	return nil, nil
 }
 
 func (m *MockOutageRepository) GetActiveOutagesDiscoveredFrom(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
