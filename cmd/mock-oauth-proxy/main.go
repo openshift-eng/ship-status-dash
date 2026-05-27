@@ -170,21 +170,22 @@ func basicAuthHandler(
 	frontendDevURL string,
 ) http.Handler {
 	defaultOrigin := strings.TrimSuffix(frontendDevURL, "/")
-	proxy := httputil.NewSingleHostReverseProxy(upstreamURL)
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(upstreamURL)
+			pr.SetXForwarded()
 
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
+			out := pr.Out
+			if out.Header.Get("Date") == "" {
+				out.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+			}
 
-		if req.Header.Get("Date") == "" {
-			req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-		}
+			if out.ContentLength > 0 {
+				out.Header.Set("Content-Length", fmt.Sprintf("%d", out.ContentLength))
+			}
 
-		if req.ContentLength > 0 {
-			req.Header.Set("Content-Length", fmt.Sprintf("%d", req.ContentLength))
-		}
-
-		hmacAuth.SignRequest(req)
+			hmacAuth.SignRequest(out)
+		},
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
