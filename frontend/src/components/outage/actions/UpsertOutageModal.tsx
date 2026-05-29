@@ -184,7 +184,6 @@ const UpsertOutageModal = ({
       severity: formData.severity,
       description: formData.description.trim(),
       start_time: new Date(formData.start_time).toISOString(),
-      triage_notes: formData.triage_notes || undefined,
       confirmed: formData.confirmed,
     }
 

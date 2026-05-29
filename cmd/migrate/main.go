@@ -79,7 +79,9 @@ func main() {
 		// Drop the table if it is missing required columns or has stale unexpected columns
 		// (e.g. a "name" column from a previous schema iteration).
 		var staleColCount int64
-		db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name NOT IN ('id','created_at','updated_at','deleted_at','outage_id','url','description','added_by')").Scan(&staleColCount)
+		if err = db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name NOT IN ('id','created_at','updated_at','deleted_at','outage_id','url','description','added_by')").Scan(&staleColCount).Error; err != nil {
+			log.WithField("error", err).Fatal("Failed to inspect outage_links columns")
+		}
 		if !db.Migrator().HasColumn(&types.OutageLink{}, "url") || staleColCount > 0 {
 			log.Info("outage_links table has incorrect schema; dropping for recreation")
 			if err = db.Exec("DROP TABLE outage_links").Error; err != nil {
