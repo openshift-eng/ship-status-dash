@@ -29,6 +29,10 @@ type OutageManager interface {
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 	DeleteOutage(outage *types.Outage, user string) error
+
+	AddTriageNote(note *types.TriageNote) error
+	AddOutageLink(link *types.OutageLink) error
+	DeleteOutageLink(outageID, linkID uint) error
 }
 
 // DBOutageManager handles outage creation and updates with Slack reporting using a database.
@@ -186,4 +190,33 @@ func (m *DBOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAudit
 func (m *DBOutageManager) DeleteOutage(outage *types.Outage, user string) error {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.DeleteOutage(outage, user)
+}
+
+// AddTriageNote saves a new triage note and posts it as a Slack thread reply if Slack is configured.
+func (m *DBOutageManager) AddTriageNote(note *types.TriageNote) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	if err := outageRepo.AddTriageNote(note); err != nil {
+		return err
+	}
+
+	if m.slackReporter != nil {
+		if err := m.slackReporter.ReportTriageNote(note); err != nil {
+			m.logger.WithFields(logrus.Fields{
+				"outage_id": note.OutageID,
+				"error":     err,
+			}).Error("Failed to report triage note to Slack, but note was saved")
+		}
+	}
+
+	return nil
+}
+
+func (m *DBOutageManager) AddOutageLink(link *types.OutageLink) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.AddOutageLink(link)
+}
+
+func (m *DBOutageManager) DeleteOutageLink(outageID, linkID uint) error {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.DeleteOutageLink(outageID, linkID)
 }

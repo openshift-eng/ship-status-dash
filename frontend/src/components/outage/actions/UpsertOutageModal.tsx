@@ -23,7 +23,11 @@ import type { ChangeEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Outage } from '../../../types'
-import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
+import {
+  addTriageNoteEndpoint,
+  createOutageEndpoint,
+  modifyOutageEndpoint,
+} from '../../../utils/endpoints'
 import { formatDateForDateTimeLocal, getCurrentLocalTime } from '../../../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
@@ -73,7 +77,7 @@ const UpsertOutageModal = ({
       return {
         severity: outage.severity,
         description: outage.description || '',
-        triage_notes: outage.triage_notes || '',
+        triage_notes: '',
         start_time: formatDateForDateTimeLocal(new Date(outage.start_time)),
         end_time: outage.end_time.Valid
           ? formatDateForDateTimeLocal(new Date(outage.end_time.Time))
@@ -208,6 +212,8 @@ const UpsertOutageModal = ({
 
     const method = isUpdateMode ? 'PATCH' : 'POST'
 
+    const triageNote = !isUpdateMode ? formData.triage_notes.trim() : ''
+
     fetch(url, {
       method,
       headers: {
@@ -224,8 +230,19 @@ const UpsertOutageModal = ({
         }
         return response.json()
       })
-      .then(() => {
-        // Only reset form in create mode, update mode closes the modal
+      .then((createdOutage) => {
+        if (!isUpdateMode && triageNote && createdOutage?.ID) {
+          // Fire-and-forget: post initial triage note; don't block modal close on this
+          fetch(addTriageNoteEndpoint(componentName, subComponentName, createdOutage.ID), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body: triageNote }),
+            credentials: 'include',
+          }).catch(() => {
+            // Swallow: the outage was created successfully; a failed note is non-critical
+          })
+        }
+
         if (!isUpdateMode) {
           setFormData({
             severity: '',
@@ -321,15 +338,18 @@ const UpsertOutageModal = ({
           placeholder="Describe the outage..."
         />
 
-        <StyledTextField
-          fullWidth
-          label="Triage Notes"
-          multiline
-          rows={2}
-          value={formData.triage_notes}
-          onChange={handleInputChange('triage_notes')}
-          placeholder="Initial triage notes..."
-        />
+        {!isUpdateMode && (
+          <StyledTextField
+            fullWidth
+            label="Initial Triage Note (optional)"
+            multiline
+            rows={2}
+            value={formData.triage_notes}
+            onChange={handleInputChange('triage_notes')}
+            placeholder="Add an initial triage note..."
+            helperText="Will be posted as the first triage note on the outage"
+          />
+        )}
 
         <StyledTextField
           fullWidth
