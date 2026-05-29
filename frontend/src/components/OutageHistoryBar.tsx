@@ -8,6 +8,9 @@ import { formatStatusSeverityText, getSeverityColor } from '../utils/helpers'
 // Higher index = higher priority (worse).
 const SEVERITY_PRIORITY = ['Suspected', 'Partial', 'Degraded', 'CapacityExhausted', 'Down']
 
+// Minimum visible fill fraction for short outages so they remain visible at day-bar scale.
+const MIN_VISIBLE_FRACTION = 0.15
+
 const BarContainer = styled(Box)(() => ({
   width: '100%',
 }))
@@ -19,10 +22,10 @@ const SegmentsRow = styled(Box)(() => ({
   alignItems: 'stretch',
 }))
 
-const Segment = styled(Box)<{ segmentcolor: string }>(({ segmentcolor }) => ({
+const Segment = styled(Box)<{ segmentbg: string }>(({ segmentbg }) => ({
   flex: 1,
   height: '28px',
-  backgroundColor: segmentcolor,
+  background: segmentbg,
   borderRadius: '2px',
   cursor: 'default',
   transition: 'opacity 0.15s',
@@ -33,14 +36,21 @@ const Segment = styled(Box)<{ segmentcolor: string }>(({ segmentcolor }) => ({
 
 const LabelsRow = styled(Box)(({ theme }) => ({
   display: 'flex',
-  justifyContent: 'space-between',
   alignItems: 'center',
   marginTop: theme.spacing(0.5),
+  gap: theme.spacing(1),
 }))
 
 const LabelText = styled(Typography)(({ theme }) => ({
   fontSize: '0.7rem',
   color: theme.palette.text.secondary,
+  whiteSpace: 'nowrap',
+}))
+
+const LabelDivider = styled(Box)(({ theme }) => ({
+  flex: 1,
+  height: '1px',
+  backgroundColor: theme.palette.divider,
 }))
 
 const TooltipContainer = styled(Box)(() => ({
@@ -87,6 +97,7 @@ const TooltipDescription = styled(Typography)(() => ({
 interface DayBucket {
   date: Date
   worstSeverity: string | null
+  totalOutageMinutes: number
   outages: Outage[]
 }
 
@@ -109,10 +120,11 @@ const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
     })
 
     let worstSeverity: string | null = null
+    let totalOutageMs = 0
+
     for (const outage of dayOutages) {
       const priority = SEVERITY_PRIORITY.indexOf(outage.severity)
       if (priority === -1) {
-        // Unknown severity: still counts as an outage — record at lowest priority if nothing better is set.
         if (worstSeverity === null) worstSeverity = outage.severity
       } else {
         const currentPriority =
@@ -123,9 +135,20 @@ const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
             : -1
         if (priority > currentPriority) worstSeverity = outage.severity
       }
+
+      // Clip the outage to the day boundary to count only time within this day.
+      const clippedStart = Math.max(new Date(outage.start_time).getTime(), dayStart.getTime())
+      const outageEnd = outage.end_time?.Valid ? new Date(outage.end_time.Time) : now
+      const clippedEnd = Math.min(outageEnd.getTime(), dayEnd.getTime())
+      totalOutageMs += Math.max(0, clippedEnd - clippedStart)
     }
 
-    buckets.push({ date: dayStart, worstSeverity, outages: dayOutages })
+    buckets.push({
+      date: dayStart,
+      worstSeverity,
+      totalOutageMinutes: totalOutageMs / 60000,
+      outages: dayOutages,
+    })
   }
 
   return buckets
@@ -158,8 +181,17 @@ const OutageHistoryBar = ({
   const buckets = useMemo(() => buildDayBuckets(outages, days), [outages, days])
   const uptimePercent = useMemo(() => computeUptimePercent(buckets), [buckets])
 
-  const segmentColor = (severity: string | null): string => {
-    return getSeverityColor(theme, severity ?? 'Healthy')
+  const healthyColor = getSeverityColor(theme, 'Healthy')
+
+  const segmentBackground = (bucket: DayBucket): string => {
+    if (bucket.worstSeverity === null) {
+      return healthyColor
+    }
+    const rawFraction = bucket.totalOutageMinutes / (24 * 60)
+    const displayFraction = Math.max(MIN_VISIBLE_FRACTION, Math.min(1, rawFraction))
+    const severityColor = getSeverityColor(theme, bucket.worstSeverity)
+    // Severity color rises from the bottom, healthy fills the rest.
+    return `linear-gradient(to top, ${severityColor} ${displayFraction * 100}%, ${healthyColor} ${displayFraction * 100}%)`
   }
 
   const formatDuration = (startStr: string, endTime: Outage['end_time']): string => {
@@ -173,12 +205,22 @@ const OutageHistoryBar = ({
     return `${secs}s`
   }
 
+  const formatMinutes = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60)
+    const mins = Math.floor(minutes % 60)
+    const secs = Math.floor((minutes % 1) * 60)
+    if (hours > 0) return `${hours}h ${mins}m`
+    if (mins > 0) return `${mins}m`
+    return `${secs}s`
+  }
+
   const tooltipNode = (bucket: DayBucket): React.ReactNode => {
     const dateStr = bucket.date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     })
+    const single = bucket.outages.length === 1
     return (
       <TooltipContainer>
         <TooltipDate variant="caption">{dateStr}</TooltipDate>
@@ -187,21 +229,37 @@ const OutageHistoryBar = ({
         ) : (
           <>
             <TooltipDivider />
-            {bucket.outages.map((o, idx) => (
-              <Box key={o.ID} mb={idx < bucket.outages.length - 1 ? 1 : 0}>
+            {single ? (
+              <Box>
                 <TooltipOutageRow>
                   <TooltipSeverity variant="caption">
-                    {formatStatusSeverityText(o.severity)}
+                    {formatStatusSeverityText(bucket.outages[0].severity)}
                   </TooltipSeverity>
                   <TooltipDuration variant="caption">
-                    {formatDuration(o.start_time, o.end_time)}
+                    {formatDuration(bucket.outages[0].start_time, bucket.outages[0].end_time)}
                   </TooltipDuration>
                 </TooltipOutageRow>
-                {o.description && (
-                  <TooltipDescription variant="caption">{o.description}</TooltipDescription>
+                {bucket.outages[0].description && (
+                  <TooltipDescription variant="caption">
+                    {bucket.outages[0].description}
+                  </TooltipDescription>
                 )}
               </Box>
-            ))}
+            ) : (
+              <Box>
+                <TooltipOutageRow>
+                  <TooltipSeverity variant="caption">
+                    {bucket.outages.length} incidents
+                  </TooltipSeverity>
+                  <TooltipDuration variant="caption">
+                    {formatMinutes(bucket.totalOutageMinutes)} total
+                  </TooltipDuration>
+                </TooltipOutageRow>
+                <TooltipDescription variant="caption">
+                  Worst: {formatStatusSeverityText(bucket.worstSeverity ?? '')}
+                </TooltipDescription>
+              </Box>
+            )}
           </>
         )}
       </TooltipContainer>
@@ -216,6 +274,7 @@ const OutageHistoryBar = ({
         <Skeleton variant="rectangular" width="100%" height={28} sx={{ borderRadius: '2px' }} />
         <LabelsRow>
           <LabelText>{startLabel}</LabelText>
+          <LabelDivider />
           <LabelText>Today</LabelText>
         </LabelsRow>
       </BarContainer>
@@ -230,13 +289,15 @@ const OutageHistoryBar = ({
       <SegmentsRow>
         {buckets.map((bucket, i) => (
           <Tooltip key={i} title={tooltipNode(bucket)} arrow placement="top" enterDelay={200}>
-            <Segment segmentcolor={segmentColor(bucket.worstSeverity)} />
+            <Segment segmentbg={segmentBackground(bucket)} />
           </Tooltip>
         ))}
       </SegmentsRow>
       <LabelsRow>
         <LabelText>{startLabel}</LabelText>
+        <LabelDivider />
         <LabelText>{uptimePercent}% uptime</LabelText>
+        <LabelDivider />
         <LabelText>Today</LabelText>
       </LabelsRow>
     </BarContainer>
