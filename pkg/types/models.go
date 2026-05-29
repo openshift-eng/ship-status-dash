@@ -86,14 +86,14 @@ type Outage struct {
 	DiscoveredFrom string       `json:"discovered_from" gorm:"column:discovered_from;not null"`
 	CreatedBy      string       `json:"created_by" gorm:"column:created_by;not null"`
 	ConfirmedAt    sql.NullTime `json:"confirmed_at" gorm:"column:confirmed_at"`
-	TriageNotes    *string      `json:"triage_notes,omitempty" gorm:"column:triage_notes;type:text"`
 	// Reasons are the Reason records that describe the reason for the outage
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
 	// SlackThreads are the Slack threads associated with the outage
 	SlackThreads []SlackThread    `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
 	AuditLogs    []OutageAuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:OutageID"`
-	//TODO: Add optional link to jira card, and incident slack thread link for outage
+	TriageNotes  []TriageNote     `json:"triage_notes,omitempty" gorm:"foreignKey:OutageID"`
+	Links        []OutageLink     `json:"links,omitempty" gorm:"foreignKey:OutageID"`
 }
 
 // Validate validates the outage and returns an error message and whether it's valid.
@@ -164,7 +164,7 @@ func (o *Outage) before(db *gorm.DB) error {
 	}
 
 	var old Outage
-	if err := db.Preload("Reasons").Preload("SlackThreads").First(&old, o.ID).Error; err != nil {
+	if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&old, o.ID).Error; err != nil {
 		return err
 	}
 
@@ -203,7 +203,7 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 	var newTriageJSON []byte
 	if operation != Delete {
 		var fresh Outage
-		if err := db.Preload("Reasons").Preload("SlackThreads").First(&fresh, o.ID).Error; err != nil {
+		if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&fresh, o.ID).Error; err != nil {
 			return fmt.Errorf("failed to reload outage for audit: %w", err)
 		}
 		normalizeOutageTimesUTC(&fresh)
@@ -279,4 +279,21 @@ type OutageAuditLog struct {
 	Operation string `json:"operation" gorm:"column:operation;not null"`
 	Old       []byte `json:"old,omitempty" gorm:"column:old;type:jsonb"`
 	New       []byte `json:"new,omitempty" gorm:"column:new;type:jsonb"`
+}
+
+// TriageNote represents a single note added to an outage during triage.
+type TriageNote struct {
+	gorm.Model
+	OutageID uint   `json:"outage_id" gorm:"column:outage_id;not null;index"`
+	Body     string `json:"body" gorm:"column:body;type:text;not null"`
+	Author   string `json:"author" gorm:"column:author;not null"`
+}
+
+// OutageLink represents a user-curated URL associated with an outage (e.g. Jira, runbook, incident channel).
+type OutageLink struct {
+	gorm.Model
+	OutageID    uint   `json:"outage_id" gorm:"column:outage_id;not null;index"`
+	URL         string `json:"url" gorm:"column:url;not null"`
+	Description string `json:"description" gorm:"column:description;type:text"`
+	AddedBy     string `json:"added_by" gorm:"column:added_by;not null"`
 }

@@ -165,11 +165,6 @@ func (r *SlackReporter) formatOutageMessage(outage *types.Outage, component *typ
 		parts = append(parts, "Description:")
 		parts = append(parts, formatQuoteBlock(description))
 	}
-	if triageNotes := getStringValue(outage.TriageNotes); triageNotes != "" {
-		truncatedNotes := truncateString(triageNotes)
-		parts = append(parts, "Triage notes:")
-		parts = append(parts, formatQuoteBlock(truncatedNotes))
-	}
 	parts = append(parts, fmt.Sprintf("Started: `%s`", outage.StartTime.Format(time.RFC3339)))
 	parts = append(parts, fmt.Sprintf("Created by: `%s`", outage.CreatedBy))
 	parts = append(parts, fmt.Sprintf("Discovered from: `%s`", outage.DiscoveredFrom))
@@ -233,12 +228,6 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 		changes = append(changes, formatQuoteBlock(description))
 	}
 
-	if getStringValue(oldOutage.TriageNotes) != getStringValue(outage.TriageNotes) {
-		triageNotes := truncateString(getStringValue(outage.TriageNotes))
-		changes = append(changes, "Triage notes updated:")
-		changes = append(changes, formatQuoteBlock(triageNotes))
-	}
-
 	if len(changes) == 0 {
 		changes = append(changes, "Outage updated")
 	}
@@ -248,13 +237,6 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 	parts = append(parts, fmt.Sprintf("<%s|View Outage>", r.buildOutageLink(outage)))
 
 	return strings.Join(parts, "\n")
-}
-
-func getStringValue(ptr *string) string {
-	if ptr == nil {
-		return ""
-	}
-	return *ptr
 }
 
 const maxTruncateLength = 240
@@ -326,6 +308,25 @@ func (r *SlackReporter) postToSlackChannels(outage *types.Outage, channels []str
 	}
 
 	return lastErr
+}
+
+// ReportTriageNote posts a triage note as a thread reply in all Slack channels tracking the outage.
+func (r *SlackReporter) ReportTriageNote(note *types.TriageNote) error {
+	threads, err := r.slackThreadRepo.GetThreadsForOutage(note.OutageID)
+	if err != nil {
+		r.logger.WithFields(logrus.Fields{
+			"outage_id": note.OutageID,
+			"error":     err,
+		}).Warn("Failed to get Slack threads for triage note")
+		return err
+	}
+	if len(threads) == 0 {
+		return nil
+	}
+	message := fmt.Sprintf("📋 Triage note from `%s`:\n%s", note.Author, formatQuoteBlock(truncateString(note.Body)))
+	dummyOutage := &types.Outage{}
+	dummyOutage.ID = note.OutageID
+	return r.replyToSlackThreads(dummyOutage, threads, message)
 }
 
 func (r *SlackReporter) replyToSlackThreads(outage *types.Outage, threads []types.SlackThread, message string) error {

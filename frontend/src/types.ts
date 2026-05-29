@@ -36,6 +36,23 @@ export interface SlackThread {
   thread_url: string
 }
 
+export interface TriageNote {
+  ID: number
+  CreatedAt: string
+  outage_id: number
+  body: string
+  author: string
+}
+
+export interface OutageLink {
+  ID: number
+  CreatedAt: string
+  outage_id: number
+  url: string
+  description?: string
+  added_by: string
+}
+
 export interface OutageAuditLog {
   ID: number
   CreatedAt: string
@@ -69,7 +86,8 @@ export interface Outage {
     Time: string
     Valid: boolean
   }
-  triage_notes?: string
+  triage_notes?: TriageNote[]
+  links?: OutageLink[]
   reasons?: Reason[]
   slack_threads?: SlackThread[]
 }

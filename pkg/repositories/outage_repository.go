@@ -35,6 +35,10 @@ type OutageRepository interface {
 
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 
+	AddTriageNote(note *types.TriageNote) error
+	AddOutageLink(link *types.OutageLink) error
+	DeleteOutageLink(outageID, linkID uint) error
+
 	DeleteOutage(outage *types.Outage, user string) error
 }
 
@@ -87,7 +91,7 @@ func (r *gormOutageRepository) SaveOutage(outage *types.Outage, user string) err
 // Returns gorm.ErrRecordNotFound if the outage is not found.
 func (r *gormOutageRepository) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
 	var outage types.Outage
-	err := r.db.Preload("Reasons").Preload("SlackThreads").
+	err := r.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").
 		Where("id = ? AND component_name = ? AND sub_component_name = ?", outageID, componentSlug, subComponentSlug).
 		First(&outage).Error
 	return &outage, err
@@ -243,6 +247,29 @@ func (r *gormOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.Outage
 	var outageAuditLogs []types.OutageAuditLog
 	err := r.db.Where("outage_id = ?", outageID).Order("created_at DESC").Find(&outageAuditLogs).Error
 	return outageAuditLogs, err
+}
+
+// AddTriageNote creates a new triage note for an outage.
+func (r *gormOutageRepository) AddTriageNote(note *types.TriageNote) error {
+	return r.db.Create(note).Error
+}
+
+// AddOutageLink creates a new link associated with an outage.
+func (r *gormOutageRepository) AddOutageLink(link *types.OutageLink) error {
+	return r.db.Create(link).Error
+}
+
+// DeleteOutageLink removes a link by ID, scoped to the given outage.
+// Returns gorm.ErrRecordNotFound if no matching link exists.
+func (r *gormOutageRepository) DeleteOutageLink(outageID, linkID uint) error {
+	result := r.db.Where("id = ? AND outage_id = ?", linkID, outageID).Delete(&types.OutageLink{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // DeleteOutage deletes an outage from the database.

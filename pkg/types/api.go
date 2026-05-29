@@ -13,7 +13,17 @@ type UpsertOutageRequest struct {
 	Description    *string       `json:"description,omitempty"`
 	DiscoveredFrom *string       `json:"discovered_from,omitempty"`
 	Confirmed      *bool         `json:"confirmed,omitempty"`
-	TriageNotes    *string       `json:"triage_notes,omitempty"`
+}
+
+// AddTriageNoteRequest represents the body of a request to add a triage note to an outage.
+type AddTriageNoteRequest struct {
+	Body string `json:"body"`
+}
+
+// AddOutageLinkRequest represents the body of a request to add a link to an outage.
+type AddOutageLinkRequest struct {
+	URL         string `json:"url"`
+	Description string `json:"description,omitempty"`
 }
 
 // ComponentMonitorReportRequest represents a report from a component monitor.

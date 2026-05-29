@@ -161,3 +161,15 @@ func (m *MockOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAud
 func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) error {
 	return nil
 }
+
+func (m *MockOutageManager) AddTriageNote(note *types.TriageNote) error {
+	return nil
+}
+
+func (m *MockOutageManager) AddOutageLink(link *types.OutageLink) error {
+	return nil
+}
+
+func (m *MockOutageManager) DeleteOutageLink(outageID, linkID uint) error {
+	return nil
+}
