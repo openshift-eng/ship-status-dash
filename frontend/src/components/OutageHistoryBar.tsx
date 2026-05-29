@@ -101,6 +101,26 @@ interface DayBucket {
   outages: Outage[]
 }
 
+// Merges overlapping intervals so concurrent outages don't double-count duration.
+const mergedDurationMs = (intervals: Array<[number, number]>): number => {
+  if (intervals.length === 0) return 0
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0])
+  let totalMs = 0
+  let [curStart, curEnd] = sorted[0]
+  for (let i = 1; i < sorted.length; i++) {
+    const [start, end] = sorted[i]
+    if (start <= curEnd) {
+      curEnd = Math.max(curEnd, end)
+    } else {
+      totalMs += curEnd - curStart
+      curStart = start
+      curEnd = end
+    }
+  }
+  totalMs += curEnd - curStart
+  return totalMs
+}
+
 const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
   const now = new Date()
   const buckets: DayBucket[] = []
@@ -120,7 +140,7 @@ const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
     })
 
     let worstSeverity: string | null = null
-    let totalOutageMs = 0
+    const intervals: Array<[number, number]> = []
 
     for (const outage of dayOutages) {
       const priority = SEVERITY_PRIORITY.indexOf(outage.severity)
@@ -136,17 +156,18 @@ const buildDayBuckets = (outages: Outage[], days: number): DayBucket[] => {
         if (priority > currentPriority) worstSeverity = outage.severity
       }
 
-      // Clip the outage to the day boundary to count only time within this day.
       const clippedStart = Math.max(new Date(outage.start_time).getTime(), dayStart.getTime())
       const outageEnd = outage.end_time?.Valid ? new Date(outage.end_time.Time) : now
       const clippedEnd = Math.min(outageEnd.getTime(), dayEnd.getTime())
-      totalOutageMs += Math.max(0, clippedEnd - clippedStart)
+      if (clippedEnd > clippedStart) {
+        intervals.push([clippedStart, clippedEnd])
+      }
     }
 
     buckets.push({
       date: dayStart,
       worstSeverity,
-      totalOutageMinutes: totalOutageMs / 60000,
+      totalOutageMinutes: mergedDurationMs(intervals) / 60000,
       outages: dayOutages,
     })
   }
