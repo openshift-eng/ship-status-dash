@@ -45,16 +45,6 @@ export const getSeverityColor = (theme: Theme, severity: string) => {
   return theme.palette.info.main
 }
 
-// Severity levels in ascending priority order (higher index = worse).
-export const SEVERITY_PRIORITY = [
-  'Unknown',
-  'Suspected',
-  'Partial',
-  'Degraded',
-  'CapacityExhausted',
-  'Down',
-]
-
 // Helper function to format status or severity for display
 export const formatStatusSeverityText = (text: string): string => {
   switch (text) {

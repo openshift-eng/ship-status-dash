@@ -16,7 +16,7 @@ func TestMergedDuration(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		intervals [][2]time.Time
+		intervals []timeInterval
 		want      time.Duration
 	}{
 		{
@@ -26,12 +26,12 @@ func TestMergedDuration(t *testing.T) {
 		},
 		{
 			name:      "single interval",
-			intervals: [][2]time.Time{{t0, t0.Add(30 * time.Minute)}},
+			intervals: []timeInterval{{t0, t0.Add(30 * time.Minute)}},
 			want:      30 * time.Minute,
 		},
 		{
 			name: "non-overlapping",
-			intervals: [][2]time.Time{
+			intervals: []timeInterval{
 				{t0, t0.Add(10 * time.Minute)},
 				{t0.Add(20 * time.Minute), t0.Add(30 * time.Minute)},
 			},
@@ -39,7 +39,7 @@ func TestMergedDuration(t *testing.T) {
 		},
 		{
 			name: "overlapping",
-			intervals: [][2]time.Time{
+			intervals: []timeInterval{
 				{t0, t0.Add(30 * time.Minute)},
 				{t0.Add(15 * time.Minute), t0.Add(45 * time.Minute)},
 			},
@@ -47,7 +47,7 @@ func TestMergedDuration(t *testing.T) {
 		},
 		{
 			name: "contained",
-			intervals: [][2]time.Time{
+			intervals: []timeInterval{
 				{t0, t0.Add(60 * time.Minute)},
 				{t0.Add(10 * time.Minute), t0.Add(20 * time.Minute)},
 			},
@@ -55,7 +55,7 @@ func TestMergedDuration(t *testing.T) {
 		},
 		{
 			name: "adjacent",
-			intervals: [][2]time.Time{
+			intervals: []timeInterval{
 				{t0, t0.Add(10 * time.Minute)},
 				{t0.Add(10 * time.Minute), t0.Add(20 * time.Minute)},
 			},

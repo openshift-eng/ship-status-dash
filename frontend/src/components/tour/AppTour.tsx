@@ -330,16 +330,6 @@ function getStepsForRoute(pathname: string): TourStep[] {
         },
       },
       {
-        element: '[data-tour="status-history-banner"]',
-        popover: {
-          title: 'Current status',
-          description:
-            'The banner reflects the overall system health right now, showing the number of services currently experiencing issues.',
-          side: 'bottom',
-          align: 'center',
-        },
-      },
-      {
         element: '[data-tour="status-history-bar"]',
         popover: {
           title: 'History bar',

@@ -700,15 +700,16 @@ func (h *Handlers) GetSubComponentHistoryJSON(w http.ResponseWriter, r *http.Req
 
 	days := 90
 	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
-		n, err := strconv.Atoi(daysStr)
-		if err != nil || n <= 0 {
+		providedDays, err := strconv.Atoi(daysStr)
+		if err != nil || providedDays <= 0 {
 			respondWithError(w, http.StatusBadRequest, "days must be a positive integer")
 			return
 		}
-		if n > 365 {
-			n = 365
+		if providedDays > 365 {
+			respondWithError(w, http.StatusBadRequest, "days must not exceed 365")
+			return
 		}
-		days = n
+		days = providedDays
 	}
 
 	now := time.Now().UTC()

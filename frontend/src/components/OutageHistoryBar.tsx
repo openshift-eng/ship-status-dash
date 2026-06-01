@@ -45,7 +45,7 @@ const LabelText = styled(Typography)(({ theme }) => ({
 const LabelDivider = styled(Box)(({ theme }) => ({
   flex: 1,
   height: '1px',
-  backgroundColor: theme.palette.divider,
+  borderTop: `1px dashed ${theme.palette.divider}`,
 }))
 
 const TooltipContainer = styled(Box)(() => ({

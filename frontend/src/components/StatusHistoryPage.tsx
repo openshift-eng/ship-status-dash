@@ -1,24 +1,13 @@
-import {
-  Box,
-  CircularProgress,
-  Container,
-  Divider,
-  Link,
-  styled,
-  Typography,
-  useTheme,
-} from '@mui/material'
+import { Box, CircularProgress, Container, Divider, Link, styled, Typography } from '@mui/material'
 import { useEffect, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
 import useOutageHistory from '../hooks/useOutageHistory'
-import type { Component, ComponentStatus, SubComponent } from '../types'
-import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
-import { formatStatusSeverityText, getStatusChipColor, SEVERITY_PRIORITY } from '../utils/helpers'
+import type { Component } from '../types'
+import { getComponentsEndpoint } from '../utils/endpoints'
 
 import OutageHistoryBar from './OutageHistoryBar'
-import { StatusChip } from './StatusColors'
 
 const PageContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
@@ -34,17 +23,6 @@ const PageNote = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: '0.8rem',
   marginBottom: theme.spacing(2),
-}))
-
-const StatusBanner = styled(Box)<{ bannercolor: string }>(({ theme, bannercolor }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: theme.spacing(1.5, 2),
-  marginBottom: theme.spacing(4),
-  borderRadius: theme.spacing(1),
-  backgroundColor: bannercolor,
-  color: theme.palette.getContrastText(bannercolor),
 }))
 
 const ComponentSection = styled(Box)(({ theme }) => ({
@@ -96,16 +74,18 @@ const LoadingBox = styled(Box)(() => ({
 
 interface SubComponentHistoryBlockProps {
   componentSlug: string
-  subComponent: SubComponent
+  subComponentSlug: string
+  subComponentName: string
 }
 
 const SubComponentHistoryBlock = ({
   componentSlug,
-  subComponent,
+  subComponentSlug,
+  subComponentName,
 }: SubComponentHistoryBlockProps) => {
   const { buckets, loading, error } = useOutageHistory(
     componentSlug,
-    subComponent.slug,
+    subComponentSlug,
     FULL_OUTAGE_HISTORY_DAYS,
   )
 
@@ -114,19 +94,11 @@ const SubComponentHistoryBlock = ({
       <SubComponentHeader>
         <SubComponentLink
           component={RouterLink}
-          to={`/${componentSlug}/${subComponent.slug}`}
-          title={subComponent.name}
+          to={`/${componentSlug}/${subComponentSlug}`}
+          title={subComponentName}
         >
-          {subComponent.name}
+          {subComponentName}
         </SubComponentLink>
-        {subComponent.status && (
-          <StatusChip
-            label={formatStatusSeverityText(subComponent.status)}
-            status={subComponent.status}
-            size="small"
-            variant="filled"
-          />
-        )}
       </SubComponentHeader>
       {error ? (
         <Typography variant="caption" color="text.secondary">
@@ -135,7 +107,7 @@ const SubComponentHistoryBlock = ({
       ) : (
         <OutageHistoryBar
           componentName={componentSlug}
-          subComponentName={subComponent.slug}
+          subComponentName={subComponentSlug}
           buckets={buckets}
           loading={loading}
           days={FULL_OUTAGE_HISTORY_DAYS}
@@ -145,39 +117,16 @@ const SubComponentHistoryBlock = ({
   )
 }
 
-const HEALTHY_STATUSES = new Set(['Healthy', 'Unknown'])
-
 const StatusHistoryPage = () => {
-  const theme = useTheme()
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      fetch(getComponentsEndpoint()).then((res) => {
+    fetch(getComponentsEndpoint())
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<Component[]>
-      }),
-      fetch(getOverallStatusEndpoint()).then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<ComponentStatus[]>
-      }),
-    ])
-      .then(([componentsData, statusData]) => {
-        // Index sub_component_statuses by component display name for fast lookup.
-        const subStatusMap = new Map<string, Record<string, string>>()
-        for (const cs of statusData) {
-          subStatusMap.set(cs.component_name, cs.sub_component_statuses ?? {})
-        }
-
-        return componentsData.map((c) => ({
-          ...c,
-          sub_components: c.sub_components.map((s) => ({
-            ...s,
-            status: (subStatusMap.get(c.name)?.[s.slug] ?? 'Healthy') as SubComponent['status'],
-          })),
-        }))
       })
       .then((data) => setComponents(data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load components'))
@@ -202,34 +151,12 @@ const StatusHistoryPage = () => {
     )
   }
 
-  const affectedSubs = components.flatMap((c) =>
-    c.sub_components.filter((s) => s.status && !HEALTHY_STATUSES.has(s.status)),
-  )
-  const affectedCount = affectedSubs.length
-  const allHealthy = affectedCount === 0
-
-  const worstStatus = affectedSubs.reduce((worst, s) => {
-    if (!s.status) return worst
-    const currentIndex = SEVERITY_PRIORITY.indexOf(s.status)
-    const worstIndex = SEVERITY_PRIORITY.indexOf(worst)
-    return currentIndex > worstIndex ? s.status : worst
-  }, 'Healthy')
-  const bannerColor = getStatusChipColor(theme, worstStatus)
-
   return (
     <PageContainer maxWidth="lg">
       <PageTitle variant="h4" data-tour="status-history-heading">
         Incident History
       </PageTitle>
       <PageNote>Uptime over the past {FULL_OUTAGE_HISTORY_DAYS} days.</PageNote>
-
-      <StatusBanner bannercolor={bannerColor} data-tour="status-history-banner">
-        <Typography variant="body1" fontWeight={600}>
-          {allHealthy
-            ? 'All Systems Operational'
-            : `${affectedCount} ${affectedCount === 1 ? 'service' : 'services'} experiencing issues`}
-        </Typography>
-      </StatusBanner>
 
       {components.map((component, i) => (
         <ComponentSection key={component.slug}>
@@ -238,7 +165,8 @@ const StatusHistoryPage = () => {
             <SubComponentHistoryBlock
               key={sub.slug}
               componentSlug={component.slug}
-              subComponent={sub}
+              subComponentSlug={sub.slug}
+              subComponentName={sub.name}
             />
           ))}
           {i < components.length - 1 && <Divider sx={{ mt: 3, mb: 3 }} />}
