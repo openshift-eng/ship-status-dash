@@ -653,12 +653,77 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		logger.WithField("error", err).Warn("Failed to query component report pings")
 	}
 
+	// Pre-compute per-sub-component status so clients don't have to iterate active_outages.
+	subOutages := make(map[string][]types.Outage, len(component.Subcomponents))
+	for _, o := range outages {
+		subOutages[o.SubComponentName] = append(subOutages[o.SubComponentName], o)
+	}
+	subComponentStatuses := make(map[string]types.Status, len(component.Subcomponents))
+	for _, sub := range component.Subcomponents {
+		if subs, ok := subOutages[sub.Slug]; ok {
+			subComponentStatuses[sub.Slug] = types.StatusFromOutages(subs)
+		} else {
+			subComponentStatuses[sub.Slug] = types.StatusHealthy
+		}
+	}
+
 	return types.ComponentStatus{
-		ComponentName: component.Name,
-		Status:        status,
-		ActiveOutages: outages,
-		LastPingTime:  lastPingTime,
+		ComponentName:        component.Name,
+		Status:               status,
+		ActiveOutages:        outages,
+		LastPingTime:         lastPingTime,
+		SubComponentStatuses: subComponentStatuses,
 	}, nil
+}
+
+// GetSubComponentHistoryJSON returns day-bucketed outage history for a sub-component.
+// Query param: days (int, default 90, max 365).
+func (h *Handlers) GetSubComponentHistoryJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentSlug := vars["componentName"]
+	subComponentSlug := vars["subComponentName"]
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentSlug,
+		"sub_component": subComponentSlug,
+	})
+
+	component := h.config().GetComponentBySlug(componentSlug)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+	if component.GetSubComponentBySlug(subComponentSlug) == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-component not found")
+		return
+	}
+
+	days := 90
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		providedDays, err := strconv.Atoi(daysStr)
+		if err != nil || providedDays <= 0 {
+			respondWithError(w, http.StatusBadRequest, "days must be a positive integer")
+			return
+		}
+		if providedDays > 365 {
+			respondWithError(w, http.StatusBadRequest, "days must not exceed 365")
+			return
+		}
+		days = providedDays
+	}
+
+	now := time.Now().UTC()
+	queryStart := now.AddDate(0, 0, -days)
+	refs := []types.SubComponentRef{{ComponentSlug: componentSlug, SubSlug: subComponentSlug}}
+
+	outages, err := h.outageManager.GetOutagesDuring(queryStart, now, refs)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query outage history from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get history")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, buildHistoryBuckets(outages, days, now))
 }
 
 // ListTagsJSON returns the list of configured tags.

@@ -69,6 +69,27 @@ export const getOutageAuditLogsEndpoint = (
 ) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/audit-logs`
 
+export const getOutagesDuringEndpoint = (
+  componentName: string,
+  subComponentName?: string,
+  start?: Date,
+  end?: Date,
+) => {
+  const params = new URLSearchParams()
+  params.set('componentName', slugify(componentName))
+  if (subComponentName) params.set('subComponentName', slugify(subComponentName))
+  if (start) params.set('start', start.toISOString())
+  if (end) params.set('end', end.toISOString())
+  return `${getPublicDomain()}/api/outages/during?${params.toString()}`
+}
+
+export const getSubComponentHistoryEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  days: number,
+) =>
+  `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outage-history?days=${days}`
+
 export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
 
 export const getExternalPageEndpoint = (slug: string) =>
