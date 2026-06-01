@@ -245,6 +245,10 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 
 	outage.CreatedBy = activeUser
 
+	if outageReq.EndTime != nil {
+		outage.EndTime = *outageReq.EndTime
+	}
+
 	confirmed := (outageReq.Confirmed != nil && *outageReq.Confirmed)
 	if confirmed || !subComponent.RequiresConfirmation {
 		outage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
