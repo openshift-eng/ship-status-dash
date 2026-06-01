@@ -15,11 +15,13 @@ const ROUTE_TYPES_WITH_TOURS = [
   'subcomponent-detail',
   'outage-detail',
   'external-page',
+  'status-history',
 ] as const
 type TourRouteType = (typeof ROUTE_TYPES_WITH_TOURS)[number]
 
 function getRouteType(pathname: string): TourRouteType | null {
   if (pathname === '/') return 'home'
+  if (pathname === '/status-history') return 'status-history'
   if (pathname.startsWith(`${EXTERNAL_PAGES_PATH_PREFIX}/`)) return 'external-page'
   if (pathname.includes('/outages/')) return 'outage-detail'
   const segments = pathname.split('/').filter(Boolean)
@@ -310,6 +312,40 @@ function getStepsForRoute(pathname: string): TourStep[] {
           title: 'Update and resolve',
           description: 'Use the Actions button on a row to update an outage or resolve it.',
           side: 'left',
+          align: 'center',
+        },
+      },
+    ]
+  }
+  if (pathname === '/status-history') {
+    return [
+      {
+        element: '[data-tour="status-history-heading"]',
+        popover: {
+          title: 'Incident History',
+          description:
+            'This page shows uptime history for every sub-component over the past 90 days.',
+          side: 'bottom',
+          align: 'center',
+        },
+      },
+      {
+        element: '[data-tour="status-history-banner"]',
+        popover: {
+          title: 'Current status',
+          description:
+            'The banner reflects the overall system health right now, showing the number of services currently experiencing issues.',
+          side: 'bottom',
+          align: 'center',
+        },
+      },
+      {
+        element: '[data-tour="status-history-bar"]',
+        popover: {
+          title: 'History bar',
+          description:
+            'Each bar represents one day. The fill height shows how much of the day was affected; the color reflects the highest severity recorded. Hover over a bar to see a summary.',
+          side: 'top',
           align: 'center',
         },
       },

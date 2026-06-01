@@ -45,6 +45,16 @@ export const getSeverityColor = (theme: Theme, severity: string) => {
   return theme.palette.info.main
 }
 
+// Severity levels in ascending priority order (higher index = worse).
+export const SEVERITY_PRIORITY = [
+  'Unknown',
+  'Suspected',
+  'Partial',
+  'Degraded',
+  'CapacityExhausted',
+  'Down',
+]
+
 // Helper function to format status or severity for display
 export const formatStatusSeverityText = (text: string): string => {
   switch (text) {
@@ -116,6 +126,32 @@ export const formatDuration = (
   const durationSeconds = Math.floor((end.getTime() - start.getTime()) / 1000)
   const duration = relativeDuration(durationSeconds)
   return `${Math.round(Number(duration.value))} ${duration.units}`
+}
+
+// formatPreciseDuration formats an outage duration as an exact h/m/s string.
+// Returns "Ongoing" if the end time is not set.
+export const formatPreciseDuration = (
+  startStr: string,
+  endTime: { Time: string; Valid: boolean },
+): string => {
+  if (!endTime.Valid) return 'Ongoing'
+  const ms = new Date(endTime.Time).getTime() - new Date(startStr).getTime()
+  const hours = Math.floor(ms / 3600000)
+  const mins = Math.floor((ms % 3600000) / 60000)
+  const secs = Math.floor((ms % 60000) / 1000)
+  if (hours > 0) return `${hours}h ${mins}m`
+  if (mins > 0) return `${mins}m`
+  return `${secs}s`
+}
+
+// formatMinutes converts a duration in minutes to an exact h/m/s string.
+export const formatMinutes = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60)
+  const mins = Math.floor(minutes % 60)
+  const secs = Math.floor((minutes % 1) * 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  if (mins > 0) return `${mins}m`
+  return `${secs}s`
 }
 
 // Helper function to get current local time in datetime-local format
