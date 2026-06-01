@@ -187,6 +187,18 @@ func (m *MockOutageRepository) DeleteOutage(outage *types.Outage, user string) e
 	return m.DeleteOutageError
 }
 
+func (m *MockOutageRepository) AddTriageNote(note *types.TriageNote) error {
+	return nil
+}
+
+func (m *MockOutageRepository) AddOutageLink(link *types.OutageLink) error {
+	return nil
+}
+
+func (m *MockOutageRepository) DeleteOutageLink(outageID, linkID uint) error {
+	return nil
+}
+
 func (m *MockComponentPingRepository) UpsertComponentReportPing(componentSlug, subComponentSlug string, timestamp time.Time) error {
 	m.UpsertedPings = append(m.UpsertedPings, struct {
 		ComponentSlug    string

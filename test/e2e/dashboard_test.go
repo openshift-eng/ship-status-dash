@@ -419,9 +419,8 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 
 		// Now update the outage
 		updatePayload := map[string]interface{}{
-			"severity":     string(types.SeverityDegraded),
-			"description":  "Updated description",
-			"triage_notes": "Updated triage notes",
+			"severity":    string(types.SeverityDegraded),
+			"description": "Updated description",
 		}
 
 		updateBytes, err := json.Marshal(updatePayload)
@@ -449,8 +448,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, createdOutage.ID, updatedOutage.ID)
 		assert.Equal(t, string(types.SeverityDegraded), string(updatedOutage.Severity))
 		assert.Equal(t, "Updated description", updatedOutage.Description)
-		assert.NotNil(t, updatedOutage.TriageNotes)
-		assert.Equal(t, "Updated triage notes", *updatedOutage.TriageNotes)
 		assert.WithinDuration(t, createdOutage.StartTime.UTC(), updatedOutage.StartTime.UTC(), time.Second) // Should remain unchanged
 		assert.Equal(t, createdOutage.CreatedBy, updatedOutage.CreatedBy)                                   // Should remain unchanged
 
@@ -559,8 +556,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 
 			updatePayload := map[string]interface{}{
-				"description":  "Updated description by editor",
-				"triage_notes": "Updated triage notes by editor",
+				"description": "Updated description by editor",
 			}
 			updateBytes, err := json.Marshal(updatePayload)
 			require.NoError(t, err)

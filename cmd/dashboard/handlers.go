@@ -3,8 +3,10 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -240,7 +242,6 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		Description:      description,
 		StartTime:        *outageReq.StartTime,
 		DiscoveredFrom:   discoveredFrom,
-		TriageNotes:      outageReq.TriageNotes,
 	}
 
 	outage.CreatedBy = activeUser
@@ -358,10 +359,6 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 			outage.ConfirmedAt = sql.NullTime{Valid: false}
 		}
 	}
-	if updateReq.TriageNotes != nil {
-		outage.TriageNotes = updateReq.TriageNotes
-	}
-
 	if message, valid := outage.Validate(); !valid {
 		respondWithError(w, http.StatusBadRequest, message)
 		return
@@ -486,6 +483,253 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info("Successfully deleted outage")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddTriageNoteJSON adds a triage note to an outage and posts it as a Slack thread reply.
+func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageID,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	subComponent := component.GetSubComponentBySlug(subComponentName)
+	if subComponent == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to add triage note")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	var req types.AddTriageNoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.Body) == "" {
+		respondWithError(w, http.StatusBadRequest, "Body is required")
+		return
+	}
+
+	note := &types.TriageNote{
+		OutageID: uint(outageID),
+		Body:     strings.TrimSpace(req.Body),
+		Author:   activeUser,
+	}
+
+	if err := h.outageManager.AddTriageNote(note); err != nil {
+		logger.WithField("error", err).Error("Failed to add triage note")
+		respondWithError(w, http.StatusInternalServerError, "Failed to add triage note")
+		return
+	}
+
+	logger.Info("Successfully added triage note")
+	respondWithJSON(w, http.StatusCreated, note)
+}
+
+// AddOutageLinkJSON adds a URL link to an outage.
+func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageID,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	subComponent := component.GetSubComponentBySlug(subComponentName)
+	if subComponent == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to add outage link")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	var req types.AddOutageLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	rawURL := strings.TrimSpace(req.URL)
+	if rawURL == "" {
+		respondWithError(w, http.StatusBadRequest, "URL is required")
+		return
+	}
+	if parsed, err := url.Parse(rawURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		respondWithError(w, http.StatusBadRequest, "URL must use http or https")
+		return
+	}
+
+	link := &types.OutageLink{
+		OutageID:    uint(outageID),
+		URL:         rawURL,
+		Description: strings.TrimSpace(req.Description),
+		AddedBy:     activeUser,
+	}
+
+	if err := h.outageManager.AddOutageLink(link); err != nil {
+		logger.WithField("error", err).Error("Failed to add outage link")
+		respondWithError(w, http.StatusInternalServerError, "Failed to add outage link")
+		return
+	}
+
+	logger.Info("Successfully added outage link")
+	respondWithJSON(w, http.StatusCreated, link)
+}
+
+// DeleteOutageLinkJSON removes a link from an outage.
+func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+	linkIDStr := vars["linkId"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	linkID, err := strconv.ParseUint(linkIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid link ID")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageID,
+		"link_id":       linkID,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	subComponent := component.GetSubComponentBySlug(subComponentName)
+	if subComponent == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to delete outage link")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	if err := h.outageManager.DeleteOutageLink(uint(outageID), uint(linkID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Link not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to delete outage link")
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete outage link")
+		return
+	}
+
+	logger.Info("Successfully deleted outage link")
 	w.WriteHeader(http.StatusNoContent)
 }
 
