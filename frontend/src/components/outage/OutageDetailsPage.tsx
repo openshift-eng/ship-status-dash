@@ -584,7 +584,7 @@ const OutageDetailsPage = () => {
                 </LinkIconBox>
                 <LinkContent>
                   <Link
-                    href={link.url}
+                    href={/^https?:\/\//i.test(link.url) ? link.url : '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     underline="hover"
