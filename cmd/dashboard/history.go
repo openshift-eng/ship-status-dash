@@ -51,7 +51,7 @@ func buildHistoryBuckets(outages []types.Outage, days int, now time.Time) []type
 
 	for i := days - 1; i >= 0; i-- {
 		dayStart := time.Date(y, m, d-i, 0, 0, 0, 0, loc)
-		dayEnd := time.Date(y, m, d-i, 23, 59, 59, 999999999, loc)
+		nextDayStart := dayStart.AddDate(0, 0, 1)
 
 		var intervals [][2]time.Time
 		highestPriority := -1
@@ -68,7 +68,7 @@ func buildHistoryBuckets(outages []types.Outage, days int, now time.Time) []type
 			}
 
 			// Skip outages that don't overlap this day.
-			if start.After(dayEnd) || !end.After(dayStart) {
+			if !start.Before(nextDayStart) || !end.After(dayStart) {
 				continue
 			}
 
@@ -85,15 +85,15 @@ func buildHistoryBuckets(outages []types.Outage, days int, now time.Time) []type
 				highestSeverity = &s
 			}
 
-			// Clip interval to day bounds.
-			clippedStart := start
-			if clippedStart.Before(dayStart) {
-				clippedStart = dayStart
-			}
-			clippedEnd := end
-			if clippedEnd.After(dayEnd) {
-				clippedEnd = dayEnd
-			}
+		// Clip interval to [dayStart, nextDayStart).
+		clippedStart := start
+		if clippedStart.Before(dayStart) {
+			clippedStart = dayStart
+		}
+		clippedEnd := end
+		if clippedEnd.After(nextDayStart) {
+			clippedEnd = nextDayStart
+		}
 			if clippedEnd.After(clippedStart) {
 				intervals = append(intervals, [2]time.Time{clippedStart, clippedEnd})
 			}

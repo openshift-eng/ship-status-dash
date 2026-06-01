@@ -20,6 +20,10 @@ const useOutageHistory = (
 
   useEffect(() => {
     const controller = new AbortController()
+    // Reset before each fetch so stale data isn't shown as settled while the new request is in flight.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true)
+    setError(null)
 
     fetch(getSubComponentHistoryEndpoint(componentName, subComponentName, days), {
       signal: controller.signal,
@@ -37,7 +41,9 @@ const useOutageHistory = (
         setBuckets([])
       })
       .finally(() => {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       })
 
     return () => controller.abort()

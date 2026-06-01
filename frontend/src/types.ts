@@ -12,12 +12,12 @@ export interface ComponentStatus {
   status: Status
   active_outages: Outage[]
   last_ping_time?: string
-  sub_component_statuses?: Record<string, string>
+  sub_component_statuses?: Record<string, Status>
 }
 
 export interface OutageDayBucket {
   date: string // YYYY-MM-DD
-  highest_severity: string | null
+  highest_severity: Status | null
   total_outage_minutes: number
   outage_count: number
 }

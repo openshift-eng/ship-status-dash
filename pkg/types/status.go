@@ -34,7 +34,7 @@ type ComponentStatus struct {
 	Status               Status            `json:"status"`
 	ActiveOutages        []Outage          `json:"active_outages"`
 	LastPingTime         *time.Time        `json:"last_ping_time,omitempty"`
-	SubComponentStatuses map[string]string `json:"sub_component_statuses,omitempty"`
+	SubComponentStatuses map[string]Status `json:"sub_component_statuses,omitempty"`
 }
 
 // StatusFromOutages returns the roll-up status from active outages when the caller has already

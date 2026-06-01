@@ -159,8 +159,10 @@ const Header = ({
               disabled={!hasTour}
               data-tour="page-tour-button"
               onClick={() => {
-                window.dispatchEvent(new CustomEvent(TOUR_RESTART_EVENT))
                 handleMenuClose()
+                queueMicrotask(() => {
+                  window.dispatchEvent(new CustomEvent(TOUR_RESTART_EVENT))
+                })
               }}
             >
               <ListItemIcon>

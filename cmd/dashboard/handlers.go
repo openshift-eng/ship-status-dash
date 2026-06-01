@@ -658,12 +658,12 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	for _, o := range outages {
 		subOutages[o.SubComponentName] = append(subOutages[o.SubComponentName], o)
 	}
-	subComponentStatuses := make(map[string]string, len(component.Subcomponents))
+	subComponentStatuses := make(map[string]types.Status, len(component.Subcomponents))
 	for _, sub := range component.Subcomponents {
 		if subs, ok := subOutages[sub.Slug]; ok {
-			subComponentStatuses[sub.Slug] = string(types.StatusFromOutages(subs))
+			subComponentStatuses[sub.Slug] = types.StatusFromOutages(subs)
 		} else {
-			subComponentStatuses[sub.Slug] = string(types.StatusHealthy)
+			subComponentStatuses[sub.Slug] = types.StatusHealthy
 		}
 	}
 
@@ -700,12 +700,15 @@ func (h *Handlers) GetSubComponentHistoryJSON(w http.ResponseWriter, r *http.Req
 
 	days := 90
 	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
-		if n, err := strconv.Atoi(daysStr); err == nil && n > 0 {
-			if n > 365 {
-				n = 365
-			}
-			days = n
+		n, err := strconv.Atoi(daysStr)
+		if err != nil || n <= 0 {
+			respondWithError(w, http.StatusBadRequest, "days must be a positive integer")
+			return
 		}
+		if n > 365 {
+			n = 365
+		}
+		days = n
 	}
 
 	now := time.Now().UTC()

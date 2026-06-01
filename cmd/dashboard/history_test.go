@@ -129,6 +129,32 @@ func TestBuildHistoryBuckets(t *testing.T) {
 		assert.InDelta(t, 30.0, last.TotalOutageMinutes, 0.01)
 	})
 
+	t.Run("outage spanning midnight is split across two buckets", func(t *testing.T) {
+		// Starts 1h before midnight Jan 8→9, ends 2h into Jan 9: 1h in Jan 8, 2h in Jan 9.
+		start := time.Date(2024, 1, 8, 23, 0, 0, 0, time.UTC)
+		end := time.Date(2024, 1, 9, 2, 0, 0, 0, time.UTC)
+		outages := []types.Outage{
+			{
+				Severity:  types.SeverityDown,
+				StartTime: start,
+				EndTime:   sql.NullTime{Time: end, Valid: true},
+			},
+		}
+
+		buckets := buildHistoryBuckets(outages, days, now)
+		require.Len(t, buckets, days)
+
+		jan8 := buckets[0]
+		assert.Equal(t, "2024-01-08", jan8.Date)
+		assert.Equal(t, 1, jan8.OutageCount)
+		assert.InDelta(t, 60.0, jan8.TotalOutageMinutes, 0.01)
+
+		jan9 := buckets[1]
+		assert.Equal(t, "2024-01-09", jan9.Date)
+		assert.Equal(t, 1, jan9.OutageCount)
+		assert.InDelta(t, 120.0, jan9.TotalOutageMinutes, 0.01)
+	})
+
 	t.Run("overlapping outages on same day are merged", func(t *testing.T) {
 		// Two outages: 00:00-01:00 and 00:30-02:00 → merged = 2h = 120 min.
 		day := time.Date(2024, 1, 9, 0, 0, 0, 0, time.UTC)
