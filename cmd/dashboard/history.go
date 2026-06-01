@@ -85,15 +85,15 @@ func buildHistoryBuckets(outages []types.Outage, days int, now time.Time) []type
 				highestSeverity = &s
 			}
 
-		// Clip interval to [dayStart, nextDayStart).
-		clippedStart := start
-		if clippedStart.Before(dayStart) {
-			clippedStart = dayStart
-		}
-		clippedEnd := end
-		if clippedEnd.After(nextDayStart) {
-			clippedEnd = nextDayStart
-		}
+			// Clip interval to [dayStart, nextDayStart).
+			clippedStart := start
+			if clippedStart.Before(dayStart) {
+				clippedStart = dayStart
+			}
+			clippedEnd := end
+			if clippedEnd.After(nextDayStart) {
+				clippedEnd = nextDayStart
+			}
 			if clippedEnd.After(clippedStart) {
 				intervals = append(intervals, [2]time.Time{clippedStart, clippedEnd})
 			}
