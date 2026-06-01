@@ -99,7 +99,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
   const [loading, setLoading] = useState(true)
-  const { outages: historyOutages, loading: historyLoading } = useOutageHistory(
+  const { buckets: historyBuckets, loading: historyLoading } = useOutageHistory(
     componentName,
     subComponent.name,
     CARD_OUTAGE_HISTORY_DAYS,
@@ -170,7 +170,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           <OutageHistoryBar
             componentName={componentName}
             subComponentName={subComponent.name}
-            outages={historyOutages}
+            buckets={historyBuckets}
             loading={historyLoading}
             days={CARD_OUTAGE_HISTORY_DAYS}
           />

@@ -83,6 +83,13 @@ export const getOutagesDuringEndpoint = (
   return `${getPublicDomain()}/api/outages/during?${params.toString()}`
 }
 
+export const getSubComponentHistoryEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  days: number,
+) =>
+  `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/history?days=${days}`
+
 export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
 
 export const getExternalPageEndpoint = (slug: string) =>

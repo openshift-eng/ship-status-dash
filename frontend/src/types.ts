@@ -1,10 +1,25 @@
-export type Status = 'Healthy' | 'Degraded' | 'Down' | 'Suspected' | 'Partial' | 'Unknown' | 'CapacityExhausted'
+export type Status =
+  | 'Healthy'
+  | 'Degraded'
+  | 'Down'
+  | 'Suspected'
+  | 'Partial'
+  | 'Unknown'
+  | 'CapacityExhausted'
 
 export interface ComponentStatus {
   component_name: string
   status: Status
   active_outages: Outage[]
   last_ping_time?: string
+  sub_component_statuses?: Record<string, string>
+}
+
+export interface OutageDayBucket {
+  date: string // YYYY-MM-DD
+  highest_severity: string | null
+  total_outage_minutes: number
+  outage_count: number
 }
 
 export interface Reason {

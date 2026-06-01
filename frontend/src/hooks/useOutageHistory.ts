@@ -1,44 +1,40 @@
 import { useEffect, useState } from 'react'
 
-import type { Outage } from '../types'
-import { getOutagesDuringEndpoint } from '../utils/endpoints'
+import type { OutageDayBucket } from '../types'
+import { getSubComponentHistoryEndpoint } from '../utils/endpoints'
 
 interface UseOutageHistoryResult {
-  outages: Outage[]
+  buckets: OutageDayBucket[]
   loading: boolean
   error: string | null
 }
 
 const useOutageHistory = (
   componentName: string,
-  subComponentName?: string,
+  subComponentName: string,
   days: number = 90,
 ): UseOutageHistoryResult => {
-  const [outages, setOutages] = useState<Outage[]>([])
+  const [buckets, setBuckets] = useState<OutageDayBucket[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
 
-    const end = new Date()
-    const start = new Date(end)
-    start.setDate(start.getDate() - days)
-
-    fetch(getOutagesDuringEndpoint(componentName, subComponentName, start, end), {
+    fetch(getSubComponentHistoryEndpoint(componentName, subComponentName, days), {
       signal: controller.signal,
     })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
-      .then((data: Outage[]) => {
-        setOutages(data ?? [])
+      .then((data: OutageDayBucket[]) => {
+        setBuckets(data ?? [])
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : 'Failed to fetch outage history')
-        setOutages([])
+        setBuckets([])
       })
       .finally(() => {
         setLoading(false)
@@ -47,7 +43,7 @@ const useOutageHistory = (
     return () => controller.abort()
   }, [componentName, subComponentName, days])
 
-  return { outages, loading, error }
+  return { buckets, loading, error }
 }
 
 export default useOutageHistory

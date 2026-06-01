@@ -35,3 +35,11 @@ type SubComponentListItem struct {
 	ComponentName string `json:"component_name"`
 	SubComponent
 }
+
+// OutageDayBucket holds aggregated outage data for a single calendar day.
+type OutageDayBucket struct {
+	Date               string  `json:"date"`                 // YYYY-MM-DD
+	HighestSeverity    *string `json:"highest_severity"`     // null when no outages that day
+	TotalOutageMinutes float64 `json:"total_outage_minutes"` // merged, non-overlapping minutes
+	OutageCount        int     `json:"outage_count"`
+}

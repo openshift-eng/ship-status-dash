@@ -15,7 +15,7 @@ import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
 import useOutageHistory from '../hooks/useOutageHistory'
 import type { Component, ComponentStatus, SubComponent } from '../types'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
-import { formatStatusSeverityText, getStatusChipColor } from '../utils/helpers'
+import { formatStatusSeverityText, getStatusChipColor, SEVERITY_PRIORITY } from '../utils/helpers'
 
 import OutageHistoryBar from './OutageHistoryBar'
 import { StatusChip } from './StatusColors'
@@ -103,14 +103,14 @@ const SubComponentHistoryBlock = ({
   componentSlug,
   subComponent,
 }: SubComponentHistoryBlockProps) => {
-  const { outages, loading, error } = useOutageHistory(
+  const { buckets, loading, error } = useOutageHistory(
     componentSlug,
     subComponent.slug,
     FULL_OUTAGE_HISTORY_DAYS,
   )
 
   return (
-    <SubComponentBlock>
+    <SubComponentBlock data-tour="status-history-bar">
       <SubComponentHeader>
         <SubComponentLink
           component={RouterLink}
@@ -136,7 +136,7 @@ const SubComponentHistoryBlock = ({
         <OutageHistoryBar
           componentName={componentSlug}
           subComponentName={subComponent.slug}
-          outages={outages}
+          buckets={buckets}
           loading={loading}
           days={FULL_OUTAGE_HISTORY_DAYS}
         />
@@ -145,7 +145,6 @@ const SubComponentHistoryBlock = ({
   )
 }
 
-const STATUS_PRIORITY = ['Unknown', 'Suspected', 'Partial', 'Degraded', 'CapacityExhausted', 'Down']
 const HEALTHY_STATUSES = new Set(['Healthy', 'Unknown'])
 
 const StatusHistoryPage = () => {
@@ -166,31 +165,17 @@ const StatusHistoryPage = () => {
       }),
     ])
       .then(([componentsData, statusData]) => {
-        // Build a map of componentName -> subComponentSlug -> worst active outage severity.
-        // ComponentStatus uses display names and sub_component_name is the slug.
-        const subStatusMap = new Map<string, Map<string, string>>()
+        // Index sub_component_statuses by component display name for fast lookup.
+        const subStatusMap = new Map<string, Record<string, string>>()
         for (const cs of statusData) {
-          const subMap = new Map<string, string>()
-          for (const outage of cs.active_outages ?? []) {
-            const current = subMap.get(outage.sub_component_name)
-            const currentIdx = current ? STATUS_PRIORITY.indexOf(current) : -1
-            const severityIdx = STATUS_PRIORITY.indexOf(outage.severity)
-            if (severityIdx === -1) {
-              // Unknown severity: still an active outage — record only if nothing is set yet.
-              if (current === undefined) subMap.set(outage.sub_component_name, outage.severity)
-            } else if (severityIdx > currentIdx) {
-              subMap.set(outage.sub_component_name, outage.severity)
-            }
-          }
-          subStatusMap.set(cs.component_name, subMap)
+          subStatusMap.set(cs.component_name, cs.sub_component_statuses ?? {})
         }
 
-        // Merge derived sub-component statuses. Default to Healthy when no active outage.
         return componentsData.map((c) => ({
           ...c,
           sub_components: c.sub_components.map((s) => ({
             ...s,
-            status: (subStatusMap.get(c.name)?.get(s.slug) ?? 'Healthy') as SubComponent['status'],
+            status: (subStatusMap.get(c.name)?.[s.slug] ?? 'Healthy') as SubComponent['status'],
           })),
         }))
       })
@@ -225,18 +210,20 @@ const StatusHistoryPage = () => {
 
   const worstStatus = affectedSubs.reduce((worst, s) => {
     if (!s.status) return worst
-    const currentIndex = STATUS_PRIORITY.indexOf(s.status)
-    const worstIndex = STATUS_PRIORITY.indexOf(worst)
+    const currentIndex = SEVERITY_PRIORITY.indexOf(s.status)
+    const worstIndex = SEVERITY_PRIORITY.indexOf(worst)
     return currentIndex > worstIndex ? s.status : worst
   }, 'Healthy')
   const bannerColor = getStatusChipColor(theme, worstStatus)
 
   return (
     <PageContainer maxWidth="lg">
-      <PageTitle variant="h4">Incident History</PageTitle>
+      <PageTitle variant="h4" data-tour="status-history-heading">
+        Incident History
+      </PageTitle>
       <PageNote>Uptime over the past {FULL_OUTAGE_HISTORY_DAYS} days.</PageNote>
 
-      <StatusBanner bannercolor={bannerColor}>
+      <StatusBanner bannercolor={bannerColor} data-tour="status-history-banner">
         <Typography variant="body1" fontWeight={600}>
           {allHealthy
             ? 'All Systems Operational'

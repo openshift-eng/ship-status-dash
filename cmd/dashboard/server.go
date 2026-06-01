@@ -111,6 +111,12 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: false,
 		},
 		{
+			path:      "/api/components/{componentName}/{subComponentName}/history",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetSubComponentHistoryJSON,
+			protected: false,
+		},
+		{
 			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
 			method:    http.MethodGet,
 			handler:   s.handlers.GetOutageJSON,
