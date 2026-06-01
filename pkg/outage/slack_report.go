@@ -323,10 +323,10 @@ func (r *SlackReporter) ReportTriageNote(note *types.TriageNote) error {
 	if len(threads) == 0 {
 		return nil
 	}
-	message := fmt.Sprintf("📋 Triage note from `%s`:\n%s", note.Author, formatQuoteBlock(truncateString(note.Body)))
-	dummyOutage := &types.Outage{}
-	dummyOutage.ID = note.OutageID
-	return r.replyToSlackThreads(dummyOutage, threads, message)
+	message := fmt.Sprintf("Triage note from `%s`:\n%s", note.Author, formatQuoteBlock(truncateString(note.Body)))
+	outage := &types.Outage{}
+	outage.ID = note.OutageID
+	return r.replyToSlackThreads(outage, threads, message)
 }
 
 func (r *SlackReporter) replyToSlackThreads(outage *types.Outage, threads []types.SlackThread, message string) error {

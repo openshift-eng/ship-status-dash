@@ -99,7 +99,6 @@ func main() {
 	}
 
 	// Drop the old scalar triage_notes column from outages (replaced by the triage_notes table).
-	// This is a no-op if the column does not exist.
 	if db.Migrator().HasColumn(&types.Outage{}, "triage_notes") {
 		if err = db.Migrator().DropColumn(&types.Outage{}, "triage_notes"); err != nil {
 			log.WithField("error", err).Fatal("Failed to drop triage_notes column from outages table")

@@ -57,10 +57,10 @@ const ComposeArea = styled(Box)(({ theme }) => ({
   marginTop: theme.spacing(2),
 }))
 
-const ComposeActions = styled(Box)(() => ({
+const ComposeActions = styled(Box)(({ theme }) => ({
   display: 'flex',
   justifyContent: 'flex-end',
-  marginTop: 8,
+  marginTop: theme.spacing(1),
 }))
 
 const EmptyNotice = styled(Typography)(({ theme }) => ({
@@ -143,7 +143,7 @@ const TriageNotesThread = ({
               <NoteHeader>
                 <NoteAuthor variant="body2">{note.author}</NoteAuthor>
                 <NoteTimestamp variant="caption">
-                  {relativeTime(new Date(note.CreatedAt), new Date())} ago
+                  {relativeTime(new Date(note.CreatedAt), new Date())}
                 </NoteTimestamp>
               </NoteHeader>
               <NoteBody variant="body2">{note.body}</NoteBody>

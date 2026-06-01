@@ -3,8 +3,10 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -524,9 +526,9 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify outage belongs to this component/subcomponent
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
 	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
 		}
@@ -606,9 +608,9 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify outage belongs to this component/subcomponent
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
 	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
 		}
@@ -623,14 +625,19 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.URL) == "" {
+	rawURL := strings.TrimSpace(req.URL)
+	if rawURL == "" {
 		respondWithError(w, http.StatusBadRequest, "URL is required")
+		return
+	}
+	if parsed, err := url.Parse(rawURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		respondWithError(w, http.StatusBadRequest, "URL must use http or https")
 		return
 	}
 
 	link := &types.OutageLink{
 		OutageID:    uint(outageID),
-		URL:         strings.TrimSpace(req.URL),
+		URL:         rawURL,
 		Description: strings.TrimSpace(req.Description),
 		AddedBy:     activeUser,
 	}
@@ -697,9 +704,9 @@ func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Verify outage belongs to this component/subcomponent
+	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
 	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
 		}
@@ -709,7 +716,7 @@ func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.outageManager.DeleteOutageLink(uint(outageID), uint(linkID)); err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Link not found")
 			return
 		}

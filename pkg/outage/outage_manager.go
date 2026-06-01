@@ -211,11 +211,13 @@ func (m *DBOutageManager) AddTriageNote(note *types.TriageNote) error {
 	return nil
 }
 
+// AddOutageLink saves a new user-curated link associated with an outage.
 func (m *DBOutageManager) AddOutageLink(link *types.OutageLink) error {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.AddOutageLink(link)
 }
 
+// DeleteOutageLink removes a link from an outage by ID.
 func (m *DBOutageManager) DeleteOutageLink(outageID, linkID uint) error {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.DeleteOutageLink(outageID, linkID)
