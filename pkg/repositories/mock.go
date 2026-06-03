@@ -191,8 +191,20 @@ func (m *MockOutageRepository) AddTriageNote(note *types.TriageNote) error {
 	return nil
 }
 
+func (m *MockOutageRepository) UpdateTriageNote(noteID, outageID uint, body string) (*types.TriageNote, error) {
+	return nil, nil
+}
+
+func (m *MockOutageRepository) DeleteTriageNote(noteID, outageID uint) error {
+	return nil
+}
+
 func (m *MockOutageRepository) AddOutageLink(link *types.OutageLink) error {
 	return nil
+}
+
+func (m *MockOutageRepository) UpdateOutageLink(linkID, outageID uint, url string, linkType types.LinkType, description string) (*types.OutageLink, error) {
+	return nil, nil
 }
 
 func (m *MockOutageRepository) DeleteOutageLink(outageID, linkID uint) error {

@@ -289,11 +289,30 @@ type TriageNote struct {
 	Author   string `json:"author" gorm:"column:author;not null"`
 }
 
+// LinkType represents the category of an outage link.
+type LinkType string
+
+const (
+	LinkTypeIncidentChannel LinkType = "incident_channel"
+	LinkTypeRCA             LinkType = "rca"
+	LinkTypeOther           LinkType = "other"
+)
+
+func IsValidLinkType(lt string) bool {
+	switch LinkType(lt) {
+	case LinkTypeIncidentChannel, LinkTypeRCA, LinkTypeOther:
+		return true
+	default:
+		return false
+	}
+}
+
 // OutageLink represents a user-curated URL associated with an outage (e.g. Jira, runbook, incident channel).
 type OutageLink struct {
 	gorm.Model
-	OutageID    uint   `json:"outage_id" gorm:"column:outage_id;not null;index"`
-	URL         string `json:"url" gorm:"column:url;not null"`
-	Description string `json:"description" gorm:"column:description;type:text"`
-	AddedBy     string `json:"added_by" gorm:"column:added_by;not null"`
+	OutageID    uint     `json:"outage_id" gorm:"column:outage_id;not null;index"`
+	URL         string   `json:"url" gorm:"column:url;not null"`
+	LinkType    LinkType `json:"link_type" gorm:"column:link_type;not null;default:'other'"`
+	Description string   `json:"description" gorm:"column:description;type:text"`
+	AddedBy     string   `json:"added_by" gorm:"column:added_by;not null"`
 }

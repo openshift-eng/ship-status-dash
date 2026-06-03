@@ -49,6 +49,7 @@ export interface OutageLink {
   CreatedAt: string
   outage_id: number
   url: string
+  link_type: 'incident_channel' | 'rca' | 'other'
   description?: string
   added_by: string
 }

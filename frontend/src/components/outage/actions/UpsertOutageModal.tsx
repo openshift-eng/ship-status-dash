@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Outage } from '../../../types'
 import {
-  addTriageNoteEndpoint,
+  triageNotesEndpoint,
   createOutageEndpoint,
   modifyOutageEndpoint,
 } from '../../../utils/endpoints'
@@ -232,7 +232,7 @@ const UpsertOutageModal = ({
       .then((createdOutage) => {
         if (!isUpdateMode && triageNote && createdOutage?.ID) {
           // Fire-and-forget: post initial triage note; don't block modal close on this
-          fetch(addTriageNoteEndpoint(componentName, subComponentName, createdOutage.ID), {
+          fetch(triageNotesEndpoint(componentName, subComponentName, createdOutage.ID), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ body: triageNote }),

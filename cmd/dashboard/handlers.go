@@ -541,7 +541,7 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req types.AddTriageNoteRequest
+	var req types.TriageNoteBodyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -566,6 +566,141 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Successfully added triage note")
 	respondWithJSON(w, http.StatusCreated, note)
+}
+
+// resolveTriageNote is shared setup for triage note mutation handlers.
+// It writes the appropriate error response and returns ok=false on any failure.
+func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (note *types.TriageNote, outageID, noteID uint, activeUser string, logger *logrus.Entry, ok bool) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+
+	var authOK bool
+	activeUser, authOK = GetUserFromContext(r.Context())
+	if !authOK {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	rawOutageID, err := strconv.ParseUint(vars["outageId"], 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	rawNoteID, err := strconv.ParseUint(vars["noteId"], 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid note ID")
+		return
+	}
+
+	outageID = uint(rawOutageID)
+	noteID = uint(rawNoteID)
+
+	logger = h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageID,
+		"note_id":       noteID,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	if component.GetSubComponentBySlug(subComponentName) == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	outageRecord, err := h.outageManager.GetOutageByID(componentName, subComponentName, outageID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	for i := range outageRecord.TriageNotes {
+		if outageRecord.TriageNotes[i].ID == noteID {
+			note = &outageRecord.TriageNotes[i]
+			break
+		}
+	}
+	if note == nil {
+		respondWithError(w, http.StatusNotFound, "Triage note not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) && note.Author != activeUser {
+		logger.Warn("User not authorized to modify triage note")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action")
+		return
+	}
+
+	ok = true
+	return
+}
+
+// UpdateTriageNoteJSON updates the body of a triage note. Allowed for component admins and the note author.
+func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
+	_, outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
+	if !ok {
+		return
+	}
+
+	var req types.TriageNoteBodyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	body := strings.TrimSpace(req.Body)
+	if body == "" {
+		respondWithError(w, http.StatusBadRequest, "Body is required")
+		return
+	}
+
+	updated, err := h.outageManager.UpdateTriageNote(noteID, outageID, body, activeUser)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Triage note not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to update triage note")
+		respondWithError(w, http.StatusInternalServerError, "Failed to update triage note")
+		return
+	}
+
+	logger.Info("Successfully updated triage note")
+	respondWithJSON(w, http.StatusOK, updated)
+}
+
+// DeleteTriageNoteJSON removes a triage note. Allowed for component admins and the note author.
+func (h *Handlers) DeleteTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
+	_, outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.outageManager.DeleteTriageNote(noteID, outageID, activeUser); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Triage note not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to delete triage note")
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete triage note")
+		return
+	}
+
+	logger.Info("Successfully deleted triage note")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // AddOutageLinkJSON adds a URL link to an outage.
@@ -623,7 +758,7 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req types.AddOutageLinkRequest
+	var req types.OutageLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -639,10 +774,25 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	linkType := types.LinkType(req.LinkType)
+	if linkType == "" {
+		linkType = types.LinkTypeOther
+	} else if !types.IsValidLinkType(req.LinkType) {
+		respondWithError(w, http.StatusBadRequest, "Invalid link type")
+		return
+	}
+
+	// Description is only meaningful for the "other" type.
+	description := ""
+	if linkType == types.LinkTypeOther {
+		description = strings.TrimSpace(req.Description)
+	}
+
 	link := &types.OutageLink{
 		OutageID:    uint(outageID),
 		URL:         rawURL,
-		Description: strings.TrimSpace(req.Description),
+		LinkType:    linkType,
+		Description: description,
 		AddedBy:     activeUser,
 	}
 
@@ -656,37 +806,37 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, link)
 }
 
-// DeleteOutageLinkJSON removes a link from an outage.
-func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
+// resolveOutageLink is shared setup for outage link mutation handlers.
+// It writes the appropriate error response and returns ok=false on any failure.
+func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (outageID, linkID uint, activeUser string, logger *logrus.Entry, ok bool) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
-	outageIDStr := vars["outageId"]
-	linkIDStr := vars["linkId"]
 
-	activeUser, ok := GetUserFromContext(r.Context())
-	if !ok {
+	var authOk bool
+	activeUser, authOk = GetUserFromContext(r.Context())
+	if !authOk {
 		respondWithError(w, http.StatusUnauthorized, "no active user found")
 		return
 	}
 
-	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	parsedOutageID, err := strconv.ParseUint(vars["outageId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
 		return
 	}
 
-	linkID, err := strconv.ParseUint(linkIDStr, 10, 32)
+	parsedLinkID, err := strconv.ParseUint(vars["linkId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid link ID")
 		return
 	}
 
-	logger := h.logger.WithFields(logrus.Fields{
+	logger = h.logger.WithFields(logrus.Fields{
 		"component":     componentName,
 		"sub_component": subComponentName,
-		"outage_id":     outageID,
-		"link_id":       linkID,
+		"outage_id":     parsedOutageID,
+		"link_id":       parsedLinkID,
 		"active_user":   activeUser,
 	})
 
@@ -696,20 +846,19 @@ func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	subComponent := component.GetSubComponentBySlug(subComponentName)
-	if subComponent == nil {
+	if component.GetSubComponentBySlug(subComponentName) == nil {
 		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
 		return
 	}
 
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
-		logger.Warn("User not authorized to delete outage link")
+		logger.Warn("User not authorized to modify outage link")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
 	}
 
 	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
-	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(parsedOutageID)); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -719,7 +868,71 @@ func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.outageManager.DeleteOutageLink(uint(outageID), uint(linkID)); err != nil {
+	outageID = uint(parsedOutageID)
+	linkID = uint(parsedLinkID)
+	ok = true
+	return
+}
+
+// UpdateOutageLinkJSON updates an existing outage link's URL, type, and description.
+func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
+	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
+	if !ok {
+		return
+	}
+
+	var req types.OutageLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	rawURL := strings.TrimSpace(req.URL)
+	if rawURL == "" {
+		respondWithError(w, http.StatusBadRequest, "URL is required")
+		return
+	}
+	if parsed, err := url.Parse(rawURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		respondWithError(w, http.StatusBadRequest, "URL must use http or https")
+		return
+	}
+
+	linkType := types.LinkType(req.LinkType)
+	if linkType == "" {
+		linkType = types.LinkTypeOther
+	} else if !types.IsValidLinkType(req.LinkType) {
+		respondWithError(w, http.StatusBadRequest, "Invalid link type")
+		return
+	}
+
+	description := ""
+	if linkType == types.LinkTypeOther {
+		description = strings.TrimSpace(req.Description)
+	}
+
+	link, err := h.outageManager.UpdateOutageLink(linkID, outageID, rawURL, linkType, description, activeUser)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Link not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to update outage link")
+		respondWithError(w, http.StatusInternalServerError, "Failed to update outage link")
+		return
+	}
+
+	logger.Info("Successfully updated outage link")
+	respondWithJSON(w, http.StatusOK, link)
+}
+
+// DeleteOutageLinkJSON removes a link from an outage.
+func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
+	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.outageManager.DeleteOutageLink(outageID, linkID, activeUser); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Link not found")
 			return

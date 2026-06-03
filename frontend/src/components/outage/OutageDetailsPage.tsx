@@ -1,16 +1,12 @@
 import {
   AccessTime,
-  Add,
   ArrowBack,
   Assignment,
   BugReport,
-  Delete,
   Forum,
   History,
   Info,
-  Link as LinkIcon,
   Notes,
-  OpenInNew,
   Settings,
 } from '@mui/icons-material'
 import {
@@ -20,12 +16,8 @@ import {
   Chip,
   CircularProgress,
   Container,
-  Divider,
-  IconButton,
-  Link,
   Paper,
-  TextField,
-  Tooltip,
+  Snackbar,
   Typography,
   styled,
 } from '@mui/material'
@@ -35,11 +27,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import type { OutageLink, TriageNote } from '../../types'
 import type { Outage } from '../../types'
-import {
-  addOutageLinkEndpoint,
-  deleteOutageLinkEndpoint,
-  getOutageEndpoint,
-} from '../../utils/endpoints'
+import { getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
@@ -49,7 +37,8 @@ import OutageActions from './actions/OutageActions'
 import AuditLogModal from './AuditLogModal'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
 import Section from './OutageDetailsSection'
-import TriageNotesThread from './TriageNotesThread'
+import OutageLinksSection from './OutageLinksSection'
+import TriageNotesSection from './TriageNotesSection'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
@@ -213,35 +202,6 @@ const ResultItem = styled(Typography)(({ theme }) => ({
   },
 }))
 
-const LinkRow = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: theme.spacing(1),
-  padding: theme.spacing(1, 0),
-  '&:not(:last-child)': {
-    borderBottom: `1px solid ${theme.palette.divider}`,
-  },
-}))
-
-const LinkIconBox = styled(Box)(({ theme }) => ({
-  color: theme.palette.text.secondary,
-  display: 'flex',
-  alignItems: 'center',
-  flexShrink: 0,
-}))
-
-const LinkContent = styled(Box)(() => ({
-  flex: 1,
-  minWidth: 0,
-}))
-
-const AddLinkRow = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: theme.spacing(1),
-  marginTop: theme.spacing(2),
-}))
-
 const OutageDetailsPage = () => {
   const navigate = useNavigate()
   const { componentSlug, subComponentSlug, outageId } = useParams<{
@@ -254,14 +214,11 @@ const OutageDetailsPage = () => {
   const [outage, setOutage] = useState<Outage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [auditLogModalOpen, setAuditLogModalOpen] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
 
-  const { isComponentAdmin } = useAuth()
+  const { user, isComponentAdmin } = useAuth()
   const isAdmin = outage ? isComponentAdmin(outage.component_name) : false
-
-  const [newLinkURL, setNewLinkURL] = useState('')
-  const [newLinkDesc, setNewLinkDesc] = useState('')
-  const [linkLoading, setLinkLoading] = useState(false)
-  const [linkError, setLinkError] = useState<string | null>(null)
+  const currentUser = user?.username ?? ''
 
   const validationError =
     !componentName || !subComponentName || !outageId
@@ -327,63 +284,42 @@ const OutageDetailsPage = () => {
     })
   }
 
-  const handleAddLink = () => {
-    if (!outage || !newLinkURL.trim()) return
-
-    setLinkLoading(true)
-    setLinkError(null)
-
-    fetch(addOutageLinkEndpoint(componentName, subComponentName, outage.ID), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: newLinkURL.trim(), description: newLinkDesc.trim() }),
-      credentials: 'include',
+  const handleNoteUpdated = (note: TriageNote) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        triage_notes: (prev.triage_notes ?? []).map((n) => (n.ID === note.ID ? note : n)),
+      }
     })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((data) => {
-            throw new Error(data.error || `HTTP ${response.status}`)
-          })
-        }
-        return response.json()
-      })
-      .then((link: OutageLink) => {
-        setNewLinkURL('')
-        setNewLinkDesc('')
-        setOutage((prev) => {
-          if (!prev) return prev
-          return { ...prev, links: [...(prev.links ?? []), link] }
-        })
-      })
-      .catch((err) => {
-        setLinkError(err instanceof Error ? err.message : 'Failed to add link')
-      })
-      .finally(() => {
-        setLinkLoading(false)
-      })
   }
 
-  const handleDeleteLink = (linkId: number) => {
-    if (!outage) return
-
-    fetch(deleteOutageLinkEndpoint(componentName, subComponentName, outage.ID, linkId), {
-      method: 'DELETE',
-      credentials: 'include',
+  const handleNoteDeleted = (noteId: number) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, triage_notes: (prev.triage_notes ?? []).filter((n) => n.ID !== noteId) }
     })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((data) => {
-            throw new Error(data.error || `HTTP ${response.status}`)
-          })
-        }
-        setOutage((prev) => {
-          if (!prev) return prev
-          return { ...prev, links: (prev.links ?? []).filter((l) => l.ID !== linkId) }
-        })
-      })
-      .catch((err) => {
-        setLinkError(err instanceof Error ? err.message : 'Failed to delete link')
-      })
+  }
+
+  const handleLinkAdded = (link: OutageLink) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: [...(prev.links ?? []), link] }
+    })
+  }
+
+  const handleLinkUpdated = (link: OutageLink) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: (prev.links ?? []).map((l) => (l.ID === link.ID ? link : l)) }
+    })
+  }
+
+  const handleLinkDeleted = (linkId: number) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: (prev.links ?? []).filter((l) => l.ID !== linkId) }
+    })
   }
 
   const formatDateTime = (dateString: string) => {
@@ -558,115 +494,33 @@ const OutageDetailsPage = () => {
 
         <FullWidthGridItem>
           <Section icon={<Notes />} title="Triage Notes">
-            <TriageNotesThread
+            <TriageNotesSection
               notes={outage.triage_notes ?? []}
               isAdmin={isAdmin}
+              currentUser={currentUser}
               componentName={componentName}
               subComponentName={subComponentName}
               outageId={outage.ID}
               onNoteAdded={handleNoteAdded}
+              onNoteUpdated={handleNoteUpdated}
+              onNoteDeleted={handleNoteDeleted}
+              onDeleteSuccess={setSnackbarMessage}
             />
           </Section>
         </FullWidthGridItem>
 
         <FullWidthGridItem>
-          <Section icon={<LinkIcon />} title="Links">
-            {(outage.links ?? []).length === 0 && !isAdmin && (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                No links yet.
-              </Typography>
-            )}
-
-            {(outage.links ?? []).map((link) => (
-              <LinkRow key={link.ID}>
-                <LinkIconBox>
-                  <OpenInNew fontSize="small" />
-                </LinkIconBox>
-                <LinkContent>
-                  <Link
-                    href={/^https?:\/\//i.test(link.url) ? link.url : '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    underline="hover"
-                    variant="body2"
-                    fontWeight={500}
-                    sx={{ wordBreak: 'break-all' }}
-                  >
-                    {link.description || link.url}
-                  </Link>
-                  {link.description && (
-                    <Typography
-                      variant="caption"
-                      display="block"
-                      color="text.secondary"
-                      sx={{ wordBreak: 'break-all' }}
-                    >
-                      {link.url}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary">
-                    Added by {link.added_by}
-                  </Typography>
-                </LinkContent>
-                {isAdmin && (
-                  <Tooltip title="Remove link">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeleteLink(link.ID)}
-                      aria-label="remove link"
-                    >
-                      <Delete fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </LinkRow>
-            ))}
-
-            {isAdmin && (
-              <>
-                {(outage.links ?? []).length > 0 && <Divider sx={{ my: 1.5 }} />}
-                {linkError && (
-                  <Alert severity="error" sx={{ mb: 1.5 }}>
-                    {linkError}
-                  </Alert>
-                )}
-                <AddLinkRow>
-                  <TextField
-                    size="small"
-                    label="URL"
-                    value={newLinkURL}
-                    onChange={(e) => setNewLinkURL(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newLinkURL.trim()) handleAddLink()
-                    }}
-                    disabled={linkLoading}
-                    sx={{ flex: 2 }}
-                    placeholder="https://..."
-                  />
-                  <TextField
-                    size="small"
-                    label="Description (optional)"
-                    value={newLinkDesc}
-                    onChange={(e) => setNewLinkDesc(e.target.value)}
-                    disabled={linkLoading}
-                    sx={{ flex: 1.5 }}
-                  />
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={
-                      linkLoading ? <CircularProgress size={14} color="inherit" /> : <Add />
-                    }
-                    onClick={handleAddLink}
-                    disabled={linkLoading || !newLinkURL.trim()}
-                    sx={{ height: 40, whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {linkLoading ? 'Adding...' : 'Add Link'}
-                  </Button>
-                </AddLinkRow>
-              </>
-            )}
-          </Section>
+          <OutageLinksSection
+            links={outage.links ?? []}
+            isAdmin={isAdmin}
+            componentName={componentName}
+            subComponentName={subComponentName}
+            outageId={outage.ID}
+            onLinkAdded={handleLinkAdded}
+            onLinkUpdated={handleLinkUpdated}
+            onLinkDeleted={handleLinkDeleted}
+            onDeleteSuccess={setSnackbarMessage}
+          />
         </FullWidthGridItem>
 
         {outage.reasons && outage.reasons.length > 0 && (
@@ -745,6 +599,17 @@ const OutageDetailsPage = () => {
           outageId={outage.ID}
         />
       )}
+
+      <Snackbar
+        open={snackbarMessage !== null}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="success" onClose={() => setSnackbarMessage(null)} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </StyledContainer>
   )
 }

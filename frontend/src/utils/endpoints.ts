@@ -90,21 +90,29 @@ export const getSubComponentHistoryEndpoint = (
 ) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outage-history?days=${days}`
 
-export const addTriageNoteEndpoint = (
+export const triageNotesEndpoint = (
   componentName: string,
   subComponentName: string,
   outageId: number,
 ) =>
   `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/triage-notes`
 
-export const addOutageLinkEndpoint = (
+export const triageNoteEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+  noteId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/triage-notes/${noteId}`
+
+export const outageLinksEndpoint = (
   componentName: string,
   subComponentName: string,
   outageId: number,
 ) =>
   `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/links`
 
-export const deleteOutageLinkEndpoint = (
+export const outageLinkEndpoint = (
   componentName: string,
   subComponentName: string,
   outageId: number,

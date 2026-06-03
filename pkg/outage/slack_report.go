@@ -310,25 +310,6 @@ func (r *SlackReporter) postToSlackChannels(outage *types.Outage, channels []str
 	return lastErr
 }
 
-// ReportTriageNote posts a triage note as a thread reply in all Slack channels tracking the outage.
-func (r *SlackReporter) ReportTriageNote(note *types.TriageNote) error {
-	threads, err := r.slackThreadRepo.GetThreadsForOutage(note.OutageID)
-	if err != nil {
-		r.logger.WithFields(logrus.Fields{
-			"outage_id": note.OutageID,
-			"error":     err,
-		}).Warn("Failed to get Slack threads for triage note")
-		return err
-	}
-	if len(threads) == 0 {
-		return nil
-	}
-	message := fmt.Sprintf("Triage note from `%s`:\n%s", note.Author, formatQuoteBlock(truncateString(note.Body)))
-	outage := &types.Outage{}
-	outage.ID = note.OutageID
-	return r.replyToSlackThreads(outage, threads, message)
-}
-
 func (r *SlackReporter) replyToSlackThreads(outage *types.Outage, threads []types.SlackThread, message string) error {
 	var lastErr error
 	for _, thread := range threads {

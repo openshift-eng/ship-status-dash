@@ -15,14 +15,15 @@ type UpsertOutageRequest struct {
 	Confirmed      *bool         `json:"confirmed,omitempty"`
 }
 
-// AddTriageNoteRequest represents the body of a request to add a triage note to an outage.
-type AddTriageNoteRequest struct {
+// TriageNoteBodyRequest represents the body of a request to add or update a triage note.
+type TriageNoteBodyRequest struct {
 	Body string `json:"body"`
 }
 
-// AddOutageLinkRequest represents the body of a request to add a link to an outage.
-type AddOutageLinkRequest struct {
+// OutageLinkRequest represents the body of a request to add or update an outage link.
+type OutageLinkRequest struct {
 	URL         string `json:"url"`
+	LinkType    string `json:"link_type,omitempty"`
 	Description string `json:"description,omitempty"`
 }
 

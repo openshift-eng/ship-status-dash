@@ -166,10 +166,22 @@ func (m *MockOutageManager) AddTriageNote(note *types.TriageNote) error {
 	return nil
 }
 
+func (m *MockOutageManager) UpdateTriageNote(noteID, outageID uint, body, user string) (*types.TriageNote, error) {
+	return nil, nil
+}
+
+func (m *MockOutageManager) DeleteTriageNote(noteID, outageID uint, user string) error {
+	return nil
+}
+
 func (m *MockOutageManager) AddOutageLink(link *types.OutageLink) error {
 	return nil
 }
 
-func (m *MockOutageManager) DeleteOutageLink(outageID, linkID uint) error {
+func (m *MockOutageManager) UpdateOutageLink(linkID, outageID uint, url string, linkType types.LinkType, description, user string) (*types.OutageLink, error) {
+	return nil, nil
+}
+
+func (m *MockOutageManager) DeleteOutageLink(outageID, linkID uint, user string) error {
 	return nil
 }
