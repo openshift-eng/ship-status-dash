@@ -118,6 +118,32 @@ export const formatDuration = (
   return `${Math.round(Number(duration.value))} ${duration.units}`
 }
 
+// formatPreciseDuration formats an outage duration as an exact h/m/s string.
+// Returns "Ongoing" if the end time is not set.
+export const formatPreciseDuration = (
+  startStr: string,
+  endTime: { Time: string; Valid: boolean },
+): string => {
+  if (!endTime.Valid) return 'Ongoing'
+  const ms = new Date(endTime.Time).getTime() - new Date(startStr).getTime()
+  const hours = Math.floor(ms / 3600000)
+  const mins = Math.floor((ms % 3600000) / 60000)
+  const secs = Math.floor((ms % 60000) / 1000)
+  if (hours > 0) return `${hours}h ${mins}m`
+  if (mins > 0) return `${mins}m`
+  return `${secs}s`
+}
+
+// formatMinutes converts a duration in minutes to an exact h/m/s string.
+export const formatMinutes = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60)
+  const mins = Math.floor(minutes % 60)
+  const secs = Math.floor((minutes % 1) * 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  if (mins > 0) return `${mins}m`
+  return `${secs}s`
+}
+
 // Helper function to get current local time in datetime-local format
 export const getCurrentLocalTime = () => {
   return formatDateForDateTimeLocal(new Date())

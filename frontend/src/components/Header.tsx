@@ -1,5 +1,26 @@
-import { Accessibility, Brightness4, Brightness7, HelpOutline, Insights } from '@mui/icons-material'
-import { AppBar, Box, IconButton, styled, Toolbar, Tooltip } from '@mui/material'
+import {
+  Accessibility,
+  Brightness4,
+  Brightness7,
+  Dashboard,
+  HelpOutline,
+  History,
+  Insights,
+  Menu as MenuIcon,
+} from '@mui/icons-material'
+import {
+  AppBar,
+  Box,
+  Divider,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  styled,
+  Toolbar,
+} from '@mui/material'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../constants/externalPages'
@@ -31,10 +52,10 @@ const Header = ({
   const navigate = useNavigate()
   const hasTour = useHasTour()
   const spcPage = externalPages.find((p) => p.slug === 'spc-dashboard')
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null)
 
-  const handleLogoClick = () => {
-    navigate('/')
-  }
+  const handleMenuOpen = (e: React.MouseEvent<HTMLElement>) => setMenuAnchor(e.currentTarget)
+  const handleMenuClose = () => setMenuAnchor(null)
 
   return (
     <AppBar
@@ -50,7 +71,7 @@ const Header = ({
           component="img"
           src={isDarkMode ? '/logo-dark.svg' : '/logo.svg'}
           alt="Logo"
-          onClick={handleLogoClick}
+          onClick={() => navigate('/')}
           sx={{
             height: 40,
             width: 'auto',
@@ -63,47 +84,93 @@ const Header = ({
         />
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Tooltip title={hasTour ? 'Page tour' : 'Page tour unavailable'}>
-            <span style={{ display: 'inline-flex' }} data-tour="page-tour-button">
-              <HeaderIconButton
-                disabled={!hasTour}
-                onClick={() => window.dispatchEvent(new CustomEvent(TOUR_RESTART_EVENT))}
-                aria-label="Page tour"
-              >
-                <HelpOutline />
-              </HeaderIconButton>
-            </span>
-          </Tooltip>
-          <Tooltip
-            title={isAccessibilityMode ? 'Disable accessibility mode' : 'Enable accessibility mode'}
-          >
-            <HeaderIconButton
-              onClick={onToggleAccessibility}
-              aria-label="Toggle accessibility mode"
-            >
-              <Accessibility color={isAccessibilityMode ? 'primary' : 'inherit'} />
-            </HeaderIconButton>
-          </Tooltip>
-          {spcPage && (
-            <Tooltip title={spcPage.description || spcPage.label}>
-              <HeaderIconButton
-                onClick={() => navigate(`${EXTERNAL_PAGES_PATH_PREFIX}/${spcPage.slug}`)}
-                aria-label={spcPage.description || spcPage.label}
-                data-tour="spc-dashboard-button"
-              >
-                <Insights />
-              </HeaderIconButton>
-            </Tooltip>
-          )}
-          <Tooltip title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
-            <HeaderIconButton
-              onClick={onToggleTheme}
-              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDarkMode ? <Brightness7 /> : <Brightness4 />}
-            </HeaderIconButton>
-          </Tooltip>
           <Auth />
+          <HeaderIconButton onClick={handleMenuOpen} aria-label="Open menu">
+            <MenuIcon />
+          </HeaderIconButton>
+          <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
+            <MenuItem
+              onClick={() => {
+                navigate('/')
+                handleMenuClose()
+              }}
+            >
+              <ListItemIcon>
+                <Dashboard fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Component Status</ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                navigate('/status-history')
+                handleMenuClose()
+              }}
+            >
+              <ListItemIcon>
+                <History fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Incident History</ListItemText>
+            </MenuItem>
+            {spcPage && (
+              <MenuItem
+                onClick={() => {
+                  navigate(`${EXTERNAL_PAGES_PATH_PREFIX}/${spcPage.slug}`)
+                  handleMenuClose()
+                }}
+              >
+                <ListItemIcon>
+                  <Insights fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>{spcPage.label}</ListItemText>
+              </MenuItem>
+            )}
+            <Divider />
+            <MenuItem
+              onClick={() => {
+                onToggleAccessibility()
+                handleMenuClose()
+              }}
+            >
+              <ListItemIcon>
+                <Accessibility
+                  fontSize="small"
+                  color={isAccessibilityMode ? 'primary' : 'inherit'}
+                />
+              </ListItemIcon>
+              <ListItemText>
+                {isAccessibilityMode ? 'Disable accessibility mode' : 'Enable accessibility mode'}
+              </ListItemText>
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                onToggleTheme()
+                handleMenuClose()
+              }}
+            >
+              <ListItemIcon>
+                {isDarkMode ? <Brightness7 fontSize="small" /> : <Brightness4 fontSize="small" />}
+              </ListItemIcon>
+              <ListItemText>
+                {isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              </ListItemText>
+            </MenuItem>
+            <Divider />
+            <MenuItem
+              disabled={!hasTour}
+              data-tour="page-tour-button"
+              onClick={() => {
+                handleMenuClose()
+                queueMicrotask(() => {
+                  window.dispatchEvent(new CustomEvent(TOUR_RESTART_EVENT))
+                })
+              }}
+            >
+              <ListItemIcon>
+                <HelpOutline fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Page tour</ListItemText>
+            </MenuItem>
+          </Menu>
         </Box>
       </Toolbar>
     </AppBar>
