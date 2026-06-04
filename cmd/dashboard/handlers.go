@@ -570,7 +570,7 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 
 // resolveTriageNote is shared setup for triage note mutation handlers.
 // It writes the appropriate error response and returns ok=false on any failure.
-func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (note *types.TriageNote, outageID, noteID uint, activeUser string, logger *logrus.Entry, ok bool) {
+func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (outageID, noteID uint, activeUser string, logger *logrus.Entry, ok bool) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
@@ -579,19 +579,19 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (no
 	activeUser, authOK = GetUserFromContext(r.Context())
 	if !authOK {
 		respondWithError(w, http.StatusUnauthorized, "no active user found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	rawOutageID, err := strconv.ParseUint(vars["outageId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	rawNoteID, err := strconv.ParseUint(vars["noteId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid note ID")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	outageID = uint(rawOutageID)
@@ -608,25 +608,26 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (no
 	component := h.config().GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	if component.GetSubComponentBySlug(subComponentName) == nil {
 		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	outageRecord, err := h.outageManager.GetOutageByID(componentName, subComponentName, outageID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
-			return
+			return 0, 0, "", nil, false
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
-		return
+		return 0, 0, "", nil, false
 	}
 
+	var note *types.TriageNote
 	for i := range outageRecord.TriageNotes {
 		if outageRecord.TriageNotes[i].ID == noteID {
 			note = &outageRecord.TriageNotes[i]
@@ -635,22 +636,21 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (no
 	}
 	if note == nil {
 		respondWithError(w, http.StatusNotFound, "Triage note not found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	if !h.IsUserAuthorizedForComponent(activeUser, component) && note.Author != activeUser {
 		logger.Warn("User not authorized to modify triage note")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action")
-		return
+		return 0, 0, "", nil, false
 	}
 
-	ok = true
-	return
+	return outageID, noteID, activeUser, logger, true
 }
 
 // UpdateTriageNoteJSON updates the body of a triage note. Allowed for component admins and the note author.
 func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
-	_, outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
+	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
 	if !ok {
 		return
 	}
@@ -684,7 +684,7 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 
 // DeleteTriageNoteJSON removes a triage note. Allowed for component admins and the note author.
 func (h *Handlers) DeleteTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
-	_, outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
+	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
 	if !ok {
 		return
 	}
@@ -817,19 +817,19 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (ou
 	activeUser, authOk = GetUserFromContext(r.Context())
 	if !authOk {
 		respondWithError(w, http.StatusUnauthorized, "no active user found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	parsedOutageID, err := strconv.ParseUint(vars["outageId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	parsedLinkID, err := strconv.ParseUint(vars["linkId"], 10, 32)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid link ID")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	logger = h.logger.WithFields(logrus.Fields{
@@ -843,35 +843,32 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (ou
 	component := h.config().GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	if component.GetSubComponentBySlug(subComponentName) == nil {
 		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to modify outage link")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
-		return
+		return 0, 0, "", nil, false
 	}
 
 	// Scope the outage lookup to this component/sub-component to prevent cross-component access via guessed IDs.
 	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(parsedOutageID)); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
-			return
+			return 0, 0, "", nil, false
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
-		return
+		return 0, 0, "", nil, false
 	}
 
-	outageID = uint(parsedOutageID)
-	linkID = uint(parsedLinkID)
-	ok = true
-	return
+	return uint(parsedOutageID), uint(parsedLinkID), activeUser, logger, true
 }
 
 // UpdateOutageLinkJSON updates an existing outage link's URL, type, and description.
