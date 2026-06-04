@@ -9,6 +9,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Container,
   Paper,
@@ -21,7 +22,7 @@ import {
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTags } from '../../contexts/TagsContext'
@@ -181,7 +182,8 @@ const ErrorAlert = styled(Alert)(({ theme }) => ({
 
 const OutageFilterToolbar = styled(Box)(({ theme }) => ({
   display: 'flex',
-  justifyContent: 'flex-end',
+  alignItems: 'center',
+  gap: theme.spacing(2),
   marginBottom: theme.spacing(2),
 }))
 
@@ -192,6 +194,7 @@ const DataGridContainer = styled(Box)({
 
 const SubComponentDetails = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { componentSlug, subComponentSlug } = useParams<{
     componentSlug: string
     subComponentSlug: string
@@ -204,6 +207,9 @@ const SubComponentDetails = () => {
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
+
+  const dateStart = searchParams.get('start')
+  const dateEnd = searchParams.get('end')
 
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
@@ -432,8 +438,17 @@ const SubComponentDetails = () => {
       : []),
   ]
 
-  // Filter outages based on selected filter
-  const filteredOutages = outages.filter((outage) => {
+  // Filter by date range from URL params (overlap: outage was active during the filtered period)
+  const dateFilteredOutages = outages.filter((outage) => {
+    if (!dateStart || !dateEnd) return true
+    const outageStart = new Date(outage.start_time).getTime()
+    const outageEnd = outage.end_time.Valid ? new Date(outage.end_time.Time).getTime() : Infinity
+    const filterStart = new Date(dateStart + 'T00:00:00Z').getTime()
+    const filterEnd = new Date(dateEnd + 'T00:00:00Z').getTime()
+    return outageStart < filterEnd && outageEnd > filterStart
+  })
+
+  const filteredOutages = dateFilteredOutages.filter((outage) => {
     if (statusFilter === 'ongoing') {
       return !outage.end_time.Valid
     }
@@ -462,6 +477,18 @@ const SubComponentDetails = () => {
       setStatusFilter(newFilter)
     }
   }
+
+  const clearDateFilter = () => {
+    setSearchParams({})
+  }
+
+  const dateFilterLabel = dateStart
+    ? new Date(dateStart + 'T12:00:00Z').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null
 
   if (!componentName || !subComponentName) {
     return (
@@ -573,12 +600,22 @@ const SubComponentDetails = () => {
         {!loading && !validationError && !error && (
           <Box>
             <OutageFilterToolbar data-tour="subcomponent-detail-filter">
+              {dateFilterLabel && (
+                <Chip
+                  label={`Showing: ${dateFilterLabel}`}
+                  onDelete={clearDateFilter}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              )}
               <ToggleButtonGroup
                 value={statusFilter}
                 exclusive
                 onChange={handleFilterChange}
                 aria-label="outage status filter"
                 size="small"
+                sx={{ marginLeft: 'auto' }}
               >
                 <ToggleButton value="all" aria-label="all outages">
                   All

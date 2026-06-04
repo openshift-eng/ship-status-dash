@@ -1,7 +1,9 @@
 import { Box, Divider, Skeleton, Tooltip, Typography, styled, useTheme } from '@mui/material'
+import { Link } from 'react-router-dom'
 
 import type { OutageDayBucket } from '../types'
 import { formatMinutes, formatStatusSeverityText, getSeverityColor } from '../utils/helpers'
+import { slugify } from '../utils/slugify'
 
 // Minimum visible fill fraction for short outages so they remain visible at day-bar scale.
 const MIN_VISIBLE_FRACTION = 0.15
@@ -17,17 +19,19 @@ const SegmentsRow = styled(Box)(() => ({
   alignItems: 'stretch',
 }))
 
-const Segment = styled(Box)<{ segmentbg: string }>(({ segmentbg }) => ({
-  flex: 1,
-  height: '28px',
-  background: segmentbg,
-  borderRadius: '2px',
-  cursor: 'default',
-  transition: 'opacity 0.15s',
-  '&:hover': {
-    opacity: 0.75,
-  },
-}))
+const Segment = styled(Box)<{ segmentbg: string; hasoutages?: string }>(
+  ({ segmentbg, hasoutages }) => ({
+    flex: 1,
+    height: '28px',
+    background: segmentbg,
+    borderRadius: '2px',
+    cursor: hasoutages === 'true' ? 'pointer' : 'default',
+    transition: 'opacity 0.15s',
+    '&:hover': {
+      opacity: 0.75,
+    },
+  }),
+)
 
 const LabelsRow = styled(Box)(({ theme }) => ({
   display: 'flex',
@@ -88,6 +92,23 @@ const TooltipDescription = styled(Typography)(() => ({
   opacity: 0.75,
   fontSize: '0.7rem',
 }))
+
+const TooltipLink = styled(Link)(({ theme }) => ({
+  display: 'block',
+  marginTop: 6,
+  fontSize: '0.75rem',
+  color: theme.palette.primary.light,
+  textDecoration: 'none',
+  '&:hover': {
+    textDecoration: 'underline',
+  },
+}))
+
+const getNextDay = (dateStr: string): string => {
+  const d = new Date(dateStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().split('T')[0]
+}
 
 const computeUptimePercent = (buckets: OutageDayBucket[]): number => {
   if (buckets.length === 0) return 100
@@ -153,6 +174,11 @@ const OutageHistoryBar = ({
             <TooltipDescription variant="caption">
               Highest Severity: {formatStatusSeverityText(bucket.highest_severity ?? '')}
             </TooltipDescription>
+            <TooltipLink
+              to={`/${slugify(componentName)}/${slugify(subComponentName)}?start=${bucket.date}&end=${getNextDay(bucket.date)}`}
+            >
+              View outages
+            </TooltipLink>
           </>
         )}
       </TooltipContainer>
@@ -182,7 +208,10 @@ const OutageHistoryBar = ({
       <SegmentsRow>
         {buckets.map((bucket, i) => (
           <Tooltip key={i} title={tooltipNode(bucket)} arrow placement="top" enterDelay={200}>
-            <Segment segmentbg={segmentBackground(bucket)} />
+            <Segment
+              segmentbg={segmentBackground(bucket)}
+              hasoutages={bucket.outage_count > 0 ? 'true' : undefined}
+            />
           </Tooltip>
         ))}
       </SegmentsRow>
