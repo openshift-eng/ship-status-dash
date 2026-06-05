@@ -1,5 +1,6 @@
 import {
   CheckCircle,
+  Clear,
   Error as ErrorIcon,
   OpenInNew,
   ReportProblem,
@@ -9,11 +10,12 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Container,
+  IconButton,
   Paper,
   styled,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -478,17 +480,19 @@ const SubComponentDetails = () => {
     }
   }
 
+  const handleDateChange = (field: 'start' | 'end', value: string) => {
+    const params = new URLSearchParams(searchParams)
+    if (value) {
+      params.set(field, value)
+    } else {
+      params.delete(field)
+    }
+    setSearchParams(params)
+  }
+
   const clearDateFilter = () => {
     setSearchParams({})
   }
-
-  const dateFilterLabel = dateStart
-    ? new Date(dateStart + 'T12:00:00Z').toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : null
 
   if (!componentName || !subComponentName) {
     return (
@@ -600,14 +604,30 @@ const SubComponentDetails = () => {
         {!loading && !validationError && !error && (
           <Box>
             <OutageFilterToolbar data-tour="subcomponent-detail-filter">
-              {dateFilterLabel && (
-                <Chip
-                  label={`Showing: ${dateFilterLabel}`}
-                  onDelete={clearDateFilter}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
+              <TextField
+                type="date"
+                label="From"
+                size="small"
+                value={dateStart || ''}
+                onChange={(e) => handleDateChange('start', e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: 160 }}
+              />
+              <TextField
+                type="date"
+                label="To"
+                size="small"
+                value={dateEnd || ''}
+                onChange={(e) => handleDateChange('end', e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ width: 160 }}
+              />
+              {(dateStart || dateEnd) && (
+                <Tooltip title="Clear date filter">
+                  <IconButton size="small" onClick={clearDateFilter}>
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               )}
               <ToggleButtonGroup
                 value={statusFilter}
