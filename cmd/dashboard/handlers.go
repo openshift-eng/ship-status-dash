@@ -29,18 +29,22 @@ type Handlers struct {
 	configManager          *config.Manager[types.DashboardConfig]
 	outageManager          outage.OutageManager
 	pingRepo               repositories.ComponentPingRepository
+	triageNoteRepo         repositories.TriageNoteRepository
+	outageLinkRepo         repositories.OutageLinkRepository
 	groupCache             *auth.GroupMembershipCache
 	monitorReportProcessor *ComponentMonitorReportProcessor
 	externalPageCaches     map[string]*ExternalPageCache
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache *auth.GroupMembershipCache) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		configManager:          configManager,
 		outageManager:          outageManager,
 		pingRepo:               pingRepo,
+		triageNoteRepo:         triageNoteRepo,
+		outageLinkRepo:         outageLinkRepo,
 		groupCache:             groupCache,
 		monitorReportProcessor: NewComponentMonitorReportProcessor(outageManager, pingRepo, configManager, logger),
 		externalPageCaches: map[string]*ExternalPageCache{
@@ -616,8 +620,10 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (ou
 		return 0, 0, "", nil, false
 	}
 
-	outageRecord, err := h.outageManager.GetOutageByID(componentName, subComponentName, outageID)
-	if err != nil {
+	isAdmin := h.IsUserAuthorizedForComponent(activeUser, component)
+
+	// Verify the outage belongs to this component/sub-component to prevent cross-component access.
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, outageID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return 0, 0, "", nil, false
@@ -627,19 +633,18 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (ou
 		return 0, 0, "", nil, false
 	}
 
-	var note *types.TriageNote
-	for i := range outageRecord.TriageNotes {
-		if outageRecord.TriageNotes[i].ID == noteID {
-			note = &outageRecord.TriageNotes[i]
-			break
+	note, err := h.triageNoteRepo.GetTriageNote(outageID, noteID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Triage note not found")
+			return 0, 0, "", nil, false
 		}
-	}
-	if note == nil {
-		respondWithError(w, http.StatusNotFound, "Triage note not found")
+		logger.WithField("error", err).Error("Failed to query triage note from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get triage note")
 		return 0, 0, "", nil, false
 	}
 
-	if !h.IsUserAuthorizedForComponent(activeUser, component) && note.Author != activeUser {
+	if !isAdmin && note.Author != activeUser {
 		logger.Warn("User not authorized to modify triage note")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action")
 		return 0, 0, "", nil, false
@@ -667,7 +672,7 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	updated, err := h.outageManager.UpdateTriageNote(noteID, outageID, body, activeUser)
+	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, body, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
@@ -689,7 +694,7 @@ func (h *Handlers) DeleteTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.outageManager.DeleteTriageNote(noteID, outageID, activeUser); err != nil {
+	if err := h.outageManager.DeleteTriageNote(outageID, noteID, activeUser); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
 			return
@@ -793,10 +798,9 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		URL:         rawURL,
 		LinkType:    linkType,
 		Description: description,
-		AddedBy:     activeUser,
 	}
 
-	if err := h.outageManager.AddOutageLink(link); err != nil {
+	if err := h.outageManager.AddOutageLink(link, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to add outage link")
 		respondWithError(w, http.StatusInternalServerError, "Failed to add outage link")
 		return
@@ -907,7 +911,7 @@ func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		description = strings.TrimSpace(req.Description)
 	}
 
-	link, err := h.outageManager.UpdateOutageLink(linkID, outageID, rawURL, linkType, description, activeUser)
+	link, err := h.outageManager.UpdateOutageLink(outageID, linkID, rawURL, linkType, description, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Link not found")

@@ -63,7 +63,7 @@ const AddLinkRow = styled(Box)(({ theme }) => ({
 }))
 
 const LINK_TYPE_OPTIONS = [
-  { value: 'incident_channel', label: 'Incident Channel/Thread' },
+  { value: 'incident_channel_thread', label: 'Incident Channel/Thread' },
   { value: 'rca', label: 'RCA' },
   { value: 'other', label: 'Other' },
 ] as const
@@ -86,14 +86,14 @@ const OutageLinksSection = ({
   onDeleteSuccess,
 }: OutageLinksSectionProps) => {
   const [newLinkURL, setNewLinkURL] = useState('')
-  const [newLinkType, setNewLinkType] = useState('incident_channel')
+  const [newLinkType, setNewLinkType] = useState('incident_channel_thread')
   const [newLinkDesc, setNewLinkDesc] = useState('')
   const [linkLoading, setLinkLoading] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
 
   const [editingLinkId, setEditingLinkId] = useState<number | null>(null)
   const [editLinkURL, setEditLinkURL] = useState('')
-  const [editLinkType, setEditLinkType] = useState('incident_channel')
+  const [editLinkType, setEditLinkType] = useState('incident_channel_thread')
   const [editLinkDesc, setEditLinkDesc] = useState('')
   const [editLinkLoading, setEditLinkLoading] = useState(false)
   const [editLinkError, setEditLinkError] = useState<string | null>(null)
@@ -123,7 +123,7 @@ const OutageLinksSection = ({
       })
       .then((link: OutageLink) => {
         setNewLinkURL('')
-        setNewLinkType('incident_channel')
+        setNewLinkType('incident_channel_thread')
         setNewLinkDesc('')
         onLinkAdded(link)
       })
@@ -298,9 +298,6 @@ const OutageLinksSection = ({
                     {link.url}
                   </Typography>
                 )}
-                <Typography variant="caption" color="text.secondary">
-                  Added by {link.added_by}
-                </Typography>
               </LinkContent>
             )}
             {isAdmin && !isEditing && (

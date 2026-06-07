@@ -228,6 +228,32 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 		changes = append(changes, formatQuoteBlock(description))
 	}
 
+	if len(outage.TriageNotes) > len(oldOutage.TriageNotes) {
+		newNote := outage.TriageNotes[len(outage.TriageNotes)-1]
+		changes = append(changes, fmt.Sprintf("Triage note from `%s`:", newNote.Author))
+		changes = append(changes, formatQuoteBlock(truncateString(newNote.Body)))
+	}
+
+	if len(outage.Links) > len(oldOutage.Links) {
+		newLink := outage.Links[len(outage.Links)-1]
+		label := newLink.URL
+		if newLink.Description != "" {
+			label = newLink.Description
+		}
+		changes = append(changes, fmt.Sprintf("Link added: <%s|%s>", newLink.URL, label))
+	} else if len(outage.Links) == len(oldOutage.Links) && len(outage.Links) > 0 {
+		for i := range outage.Links {
+			if i < len(oldOutage.Links) && outage.Links[i].URL != oldOutage.Links[i].URL {
+				label := outage.Links[i].URL
+				if outage.Links[i].Description != "" {
+					label = outage.Links[i].Description
+				}
+				changes = append(changes, fmt.Sprintf("Link updated: <%s|%s>", outage.Links[i].URL, label))
+				break
+			}
+		}
+	}
+
 	if len(changes) == 0 {
 		changes = append(changes, "Outage updated")
 	}

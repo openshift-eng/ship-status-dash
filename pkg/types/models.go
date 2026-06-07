@@ -293,14 +293,14 @@ type TriageNote struct {
 type LinkType string
 
 const (
-	LinkTypeIncidentChannel LinkType = "incident_channel"
-	LinkTypeRCA             LinkType = "rca"
-	LinkTypeOther           LinkType = "other"
+	LinkTypeIncidentChannelThread LinkType = "incident_channel_thread"
+	LinkTypeRCA                   LinkType = "rca"
+	LinkTypeOther                 LinkType = "other"
 )
 
 func IsValidLinkType(lt string) bool {
 	switch LinkType(lt) {
-	case LinkTypeIncidentChannel, LinkTypeRCA, LinkTypeOther:
+	case LinkTypeIncidentChannelThread, LinkTypeRCA, LinkTypeOther:
 		return true
 	default:
 		return false
@@ -314,5 +314,4 @@ type OutageLink struct {
 	URL         string   `json:"url" gorm:"column:url;not null"`
 	LinkType    LinkType `json:"link_type" gorm:"column:link_type;not null;default:'other'"`
 	Description string   `json:"description" gorm:"column:description;type:text"`
-	AddedBy     string   `json:"added_by" gorm:"column:added_by;not null"`
 }

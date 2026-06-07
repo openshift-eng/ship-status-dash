@@ -35,13 +35,6 @@ type OutageRepository interface {
 
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 
-	AddTriageNote(note *types.TriageNote) error
-	UpdateTriageNote(noteID, outageID uint, body string) (*types.TriageNote, error)
-	DeleteTriageNote(noteID, outageID uint) error
-	AddOutageLink(link *types.OutageLink) error
-	UpdateOutageLink(linkID, outageID uint, url string, linkType types.LinkType, description string) (*types.OutageLink, error)
-	DeleteOutageLink(outageID, linkID uint) error
-
 	DeleteOutage(outage *types.Outage, user string) error
 }
 
@@ -250,82 +243,6 @@ func (r *gormOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.Outage
 	var outageAuditLogs []types.OutageAuditLog
 	err := r.db.Where("outage_id = ?", outageID).Order("created_at DESC").Find(&outageAuditLogs).Error
 	return outageAuditLogs, err
-}
-
-// AddTriageNote creates a new triage note for an outage.
-func (r *gormOutageRepository) AddTriageNote(note *types.TriageNote) error {
-	return r.db.Create(note).Error
-}
-
-// UpdateTriageNote updates the body of a triage note scoped to the given outage.
-// Returns gorm.ErrRecordNotFound if no note with that ID exists within this outage.
-func (r *gormOutageRepository) UpdateTriageNote(noteID, outageID uint, body string) (*types.TriageNote, error) {
-	result := r.db.Model(&types.TriageNote{}).Where("id = ? AND outage_id = ?", noteID, outageID).Update("body", body)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected == 0 {
-		return nil, gorm.ErrRecordNotFound
-	}
-	var note types.TriageNote
-	if err := r.db.First(&note, noteID).Error; err != nil {
-		return nil, err
-	}
-	return &note, nil
-}
-
-// DeleteTriageNote removes a triage note by ID, scoped to the given outage.
-// Returns gorm.ErrRecordNotFound if no note with that ID exists within this outage.
-func (r *gormOutageRepository) DeleteTriageNote(noteID, outageID uint) error {
-	result := r.db.Where("id = ? AND outage_id = ?", noteID, outageID).Delete(&types.TriageNote{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-// AddOutageLink creates a new link associated with an outage.
-func (r *gormOutageRepository) AddOutageLink(link *types.OutageLink) error {
-	return r.db.Create(link).Error
-}
-
-// UpdateOutageLink updates a link's fields, scoped to the given outage.
-// Returns gorm.ErrRecordNotFound if no link with that ID exists within this outage.
-func (r *gormOutageRepository) UpdateOutageLink(linkID, outageID uint, url string, linkType types.LinkType, description string) (*types.OutageLink, error) {
-	result := r.db.Model(&types.OutageLink{}).
-		Where("id = ? AND outage_id = ?", linkID, outageID).
-		Updates(map[string]interface{}{
-			"url":         url,
-			"link_type":   linkType,
-			"description": description,
-		})
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	if result.RowsAffected == 0 {
-		return nil, gorm.ErrRecordNotFound
-	}
-	var link types.OutageLink
-	if err := r.db.First(&link, "id = ? AND outage_id = ?", linkID, outageID).Error; err != nil {
-		return nil, err
-	}
-	return &link, nil
-}
-
-// DeleteOutageLink removes a link by ID, scoped to the given outage.
-// Returns gorm.ErrRecordNotFound if no link with that ID exists within this outage.
-func (r *gormOutageRepository) DeleteOutageLink(outageID, linkID uint) error {
-	result := r.db.Where("id = ? AND outage_id = ?", linkID, outageID).Delete(&types.OutageLink{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
 }
 
 // DeleteOutage deletes an outage from the database.

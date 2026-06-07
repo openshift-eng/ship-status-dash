@@ -79,7 +79,7 @@ func main() {
 		// Drop the table if it is missing required columns or has stale unexpected columns
 		// (e.g. a "name" column from a previous schema iteration).
 		var staleColCount int64
-		if err = db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name NOT IN ('id','created_at','updated_at','deleted_at','outage_id','url','description','added_by')").Scan(&staleColCount).Error; err != nil {
+		if err = db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name NOT IN ('id','created_at','updated_at','deleted_at','outage_id','url','link_type','description','added_by')").Scan(&staleColCount).Error; err != nil {
 			log.WithField("error", err).Fatal("Failed to inspect outage_links columns")
 		}
 		if !db.Migrator().HasColumn(&types.OutageLink{}, "url") || staleColCount > 0 {
@@ -104,6 +104,25 @@ func main() {
 			log.WithField("error", err).Fatal("Failed to drop triage_notes column from outages table")
 		}
 		log.Info("Dropped legacy triage_notes column from outages table")
+	}
+
+	// Drop the added_by column from outage_links (now tracked via audit logs).
+	if db.Migrator().HasTable("outage_links") {
+		var addedByExists int64
+		db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name = 'added_by'").Scan(&addedByExists)
+		if addedByExists > 0 {
+			if err = db.Exec("ALTER TABLE outage_links DROP COLUMN added_by").Error; err != nil {
+				log.WithField("error", err).Fatal("Failed to drop added_by column from outage_links")
+			}
+			log.Info("Dropped added_by column from outage_links table")
+		}
+	}
+
+	// Rename old link_type value from "incident_channel" to "incident_channel_thread".
+	if db.Migrator().HasTable("outage_links") {
+		if err = db.Exec("UPDATE outage_links SET link_type = 'incident_channel_thread' WHERE link_type = 'incident_channel'").Error; err != nil {
+			log.WithField("error", err).Warn("Failed to rename incident_channel link type values")
+		}
 	}
 
 	log.Info("Migration completed successfully")
