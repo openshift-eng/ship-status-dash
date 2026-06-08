@@ -15,7 +15,7 @@ import type { ChangeEvent, KeyboardEvent } from 'react'
 import { useState } from 'react'
 
 import type { TriageNote } from '../../types'
-import { triageNoteEndpoint, triageNotesEndpoint } from '../../utils/endpoints'
+import { getTriageNoteEndpoint, getTriageNotesEndpoint } from '../../utils/endpoints'
 import { relativeTime } from '../../utils/helpers'
 
 const NoteList = styled(Box)(({ theme }) => ({
@@ -125,7 +125,7 @@ const TriageNotesSection = ({
     setLoading(true)
     setError(null)
 
-    fetch(triageNotesEndpoint(componentName, subComponentName, outageId), {
+    fetch(getTriageNotesEndpoint(componentName, subComponentName, outageId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: body.trim() }),
@@ -176,7 +176,7 @@ const TriageNotesSection = ({
     setEditLoading(true)
     setEditError(null)
 
-    fetch(triageNoteEndpoint(componentName, subComponentName, outageId, noteId), {
+    fetch(getTriageNoteEndpoint(componentName, subComponentName, outageId, noteId), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: editBody.trim() }),
@@ -204,7 +204,7 @@ const TriageNotesSection = ({
   }
 
   const handleDelete = (noteId: number) => {
-    fetch(triageNoteEndpoint(componentName, subComponentName, outageId, noteId), {
+    fetch(getTriageNoteEndpoint(componentName, subComponentName, outageId, noteId), {
       method: 'DELETE',
       credentials: 'include',
     })

@@ -16,7 +16,7 @@ import (
 
 // OutageManager is the service-layer interface for outage lifecycle operations, including triage notes and links.
 type OutageManager interface {
-	CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error
+	CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error
 	UpdateOutage(outage *types.Outage, user string) error
 	GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error)
 	GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
@@ -69,7 +69,7 @@ func NewDBOutageManager(
 	}
 }
 
-func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
+func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error {
 	if msg, ok := outage.Validate(); !ok {
 		return fmt.Errorf("validation failed: %s", msg)
 	}
@@ -83,6 +83,18 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 		for _, reason := range reasons {
 			reason.OutageID = outage.ID
 			if err := outageRepo.CreateReason(&reason); err != nil {
+				return err
+			}
+		}
+
+		if initialTriageNote != "" {
+			noteRepo := repositories.NewGORMTriageNoteRepository(tx)
+			note := &types.TriageNote{
+				OutageID: outage.ID,
+				Body:     initialTriageNote,
+				Author:   user,
+			}
+			if err := noteRepo.AddTriageNote(note); err != nil {
 				return err
 			}
 		}

@@ -264,7 +264,12 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.CreateOutage(&outage, nil, activeUser); err != nil {
+	var initialTriageNote string
+	if outageReq.InitialTriageNote != nil {
+		initialTriageNote = strings.TrimSpace(*outageReq.InitialTriageNote)
+	}
+
+	if err := h.outageManager.CreateOutage(&outage, nil, activeUser, initialTriageNote); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return

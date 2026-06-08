@@ -170,7 +170,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			if err := a.outageManager.CreateOutage(&outage, nil, AbsentReportCreator); err != nil {
+			if err := a.outageManager.CreateOutage(&outage, nil, AbsentReportCreator, ""); err != nil {
 				componentLogger.WithField("error", err).Error("Failed to create absent-report outage")
 				continue
 			}

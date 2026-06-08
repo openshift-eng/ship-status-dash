@@ -23,11 +23,7 @@ import type { ChangeEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Outage } from '../../../types'
-import {
-  triageNotesEndpoint,
-  createOutageEndpoint,
-  modifyOutageEndpoint,
-} from '../../../utils/endpoints'
+import { createOutageEndpoint, modifyOutageEndpoint } from '../../../utils/endpoints'
 import { formatDateForDateTimeLocal, getCurrentLocalTime } from '../../../utils/helpers'
 
 const StyledDialog = styled(Dialog)(({ theme }) => ({
@@ -201,8 +197,10 @@ const UpsertOutageModal = ({
 
     if (!isUpdateMode) {
       requestData.discovered_from = 'frontend'
-      // Don't require confirmation for new outages added from the frontend
       requestData.confirmed = true
+      if (formData.triage_notes.trim()) {
+        requestData.initial_triage_note = formData.triage_notes.trim()
+      }
     }
 
     const url = isUpdateMode
@@ -210,8 +208,6 @@ const UpsertOutageModal = ({
       : createOutageEndpoint(componentName, subComponentName)
 
     const method = isUpdateMode ? 'PATCH' : 'POST'
-
-    const triageNote = !isUpdateMode ? formData.triage_notes.trim() : ''
 
     fetch(url, {
       method,
@@ -229,19 +225,7 @@ const UpsertOutageModal = ({
         }
         return response.json()
       })
-      .then((createdOutage) => {
-        if (!isUpdateMode && triageNote && createdOutage?.ID) {
-          // Fire-and-forget: post initial triage note; don't block modal close on this
-          fetch(triageNotesEndpoint(componentName, subComponentName, createdOutage.ID), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body: triageNote }),
-            credentials: 'include',
-          }).catch(() => {
-            // Swallow: the outage was created successfully; a failed note is non-critical
-          })
-        }
-
+      .then(() => {
         if (!isUpdateMode) {
           setFormData({
             severity: '',

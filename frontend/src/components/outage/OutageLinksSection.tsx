@@ -17,7 +17,7 @@ import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 
 import type { OutageLink } from '../../types'
-import { outageLinksEndpoint, outageLinkEndpoint } from '../../utils/endpoints'
+import { getOutageLinksEndpoint, getOutageLinkEndpoint } from '../../utils/endpoints'
 
 import Section from './OutageDetailsSection'
 
@@ -103,7 +103,7 @@ const OutageLinksSection = ({
     setLinkLoading(true)
     setLinkError(null)
 
-    fetch(outageLinksEndpoint(componentName, subComponentName, outageId), {
+    fetch(getOutageLinksEndpoint(componentName, subComponentName, outageId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -152,7 +152,7 @@ const OutageLinksSection = ({
     setEditLinkLoading(true)
     setEditLinkError(null)
 
-    fetch(outageLinkEndpoint(componentName, subComponentName, outageId, linkId), {
+    fetch(getOutageLinkEndpoint(componentName, subComponentName, outageId, linkId), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -183,7 +183,7 @@ const OutageLinksSection = ({
   }
 
   const handleDeleteLink = (linkId: number) => {
-    fetch(outageLinkEndpoint(componentName, subComponentName, outageId, linkId), {
+    fetch(getOutageLinkEndpoint(componentName, subComponentName, outageId, linkId), {
       method: 'DELETE',
       credentials: 'include',
     })
