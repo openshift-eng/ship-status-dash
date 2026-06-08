@@ -79,10 +79,10 @@ export const darkTheme = createTheme(baseDarkTheme, {
     },
     status: {
       healthy: {
-        main: baseDarkTheme.palette.success.main,
-        light: baseDarkTheme.palette.success.light,
-        dark: baseDarkTheme.palette.success.dark,
-        background: baseDarkTheme.palette.success.light,
+        main: '#4a8c4f',
+        light: '#6aad6f',
+        dark: '#2e7d32',
+        background: '#4a8c4f',
       },
       degraded: {
         main: baseDarkTheme.palette.warning.main,
@@ -97,9 +97,9 @@ export const darkTheme = createTheme(baseDarkTheme, {
         background: baseDarkTheme.palette.error.light,
       },
       capacityExhausted: {
-        main: '#d68910',
+        main: '#f57c00',
         light: '#ffb74d',
-        dark: '#b8620b',
+        dark: '#d68910',
         background: '#ffb74d',
       },
       suspected: {

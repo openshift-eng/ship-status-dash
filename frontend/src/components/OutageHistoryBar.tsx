@@ -98,10 +98,8 @@ const TooltipLink = styled(Link)(({ theme }) => ({
   marginTop: 6,
   fontSize: '0.75rem',
   color: theme.palette.primary.light,
-  textDecoration: 'none',
-  '&:hover': {
-    textDecoration: 'underline',
-  },
+  textDecoration: 'underline',
+  textUnderlineOffset: '2px',
 }))
 
 const getNextDay = (dateStr: string): string => {
