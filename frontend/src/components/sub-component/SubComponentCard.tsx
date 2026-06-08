@@ -16,6 +16,7 @@ import TagChip from '../tags/TagChip'
 
 const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1.5),
+  ...(theme.palette.mode === 'dark' && { backgroundColor: theme.palette.grey[900] }),
   borderRadius: theme.spacing(1.5),
   cursor: 'pointer',
   transition: 'all 0.2s ease-in-out',

@@ -14,17 +14,20 @@ const BackButton = styled(Button)(({ theme }) => ({
   marginBottom: theme.spacing(3),
 }))
 
-const TagHeader = styled(Paper)<{ tagColor?: string }>(({ theme, tagColor }) => ({
-  padding: theme.spacing(4),
-  marginBottom: theme.spacing(4),
-  borderRadius: theme.spacing(2),
-  backgroundColor: tagColor
-    ? `${tagColor}15`
-    : theme.palette.mode === 'dark'
-      ? theme.palette.grey[800]
-      : theme.palette.grey[100],
-  border: tagColor ? `2px solid ${tagColor}40` : undefined,
-}))
+const TagHeader = styled(Paper)<{ tagColor?: string }>(({ theme, tagColor }) => {
+  const isDark = theme.palette.mode === 'dark'
+  return {
+    padding: theme.spacing(4),
+    marginBottom: theme.spacing(4),
+    borderRadius: theme.spacing(2),
+    backgroundColor: tagColor
+      ? `${tagColor}${isDark ? '25' : '15'}`
+      : isDark
+        ? theme.palette.grey[800]
+        : theme.palette.grey[100],
+    border: tagColor ? `2px solid ${tagColor}40` : undefined,
+  }
+})
 
 const TagTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
