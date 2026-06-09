@@ -2,6 +2,7 @@ package outage
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{})
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{}, &types.OutageReport{})
 	if err != nil {
 		t.Fatalf("Failed to migrate test database: %v", err)
 	}
@@ -492,4 +493,144 @@ func TestOutageManager_DeleteOutage(t *testing.T) {
 	assert.Equal(t, "test-user", logs[0].User)
 	assert.Equal(t, "CREATE", logs[1].Operation)
 	assert.Equal(t, "test-user", logs[1].User)
+}
+
+func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				SlackReporting: []types.SlackReportingConfig{
+					{Channel: "#test-channel"},
+				},
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+
+	t.Run("first report creates a suspected outage", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		result, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "things seem broken", "user1", 3)
+		require.NoError(t, err)
+
+		assert.True(t, result.Created)
+		assert.Equal(t, int64(1), result.ReportCount)
+		assert.Equal(t, types.SeveritySuspected, result.Outage.Severity)
+		assert.Equal(t, "things seem broken", result.Outage.Description)
+		assert.Equal(t, "community", result.Outage.DiscoveredFrom)
+		assert.Equal(t, "user1", result.Outage.CreatedBy)
+		assert.False(t, result.Outage.ConfirmedAt.Valid)
+		assert.False(t, result.Outage.EndTime.Valid)
+
+		// Verify the report is persisted
+		var reports []types.OutageReport
+		require.NoError(t, tm.db.Where("outage_id = ?", result.Outage.ID).Find(&reports).Error)
+		require.Len(t, reports, 1)
+		assert.Equal(t, "user1", reports[0].User)
+
+		// Slack should NOT fire for a suspected outage
+		assertSlackMessages(t, tm.mockServer, nil)
+	})
+
+	t.Run("subsequent reports +1 the same outage", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		first, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "broken", "user1", 3)
+		require.NoError(t, err)
+
+		second, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user2", 3)
+		require.NoError(t, err)
+
+		// Core invariant: same outage, not a new one
+		assert.Equal(t, first.Outage.ID, second.Outage.ID)
+		assert.False(t, second.Created)
+		assert.Equal(t, int64(2), second.ReportCount)
+		// Severity remains Suspected below threshold
+		assert.Equal(t, types.SeveritySuspected, second.Outage.Severity)
+		assert.False(t, second.Outage.ConfirmedAt.Valid)
+	})
+
+	t.Run("same user cannot report twice", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "broken", "user1", 3)
+		require.NoError(t, err)
+
+		_, err = tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user1", 3)
+		assert.ErrorIs(t, err, ErrAlreadyReported)
+	})
+
+	t.Run("threshold triggers upgrade to degraded and fires slack", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "broken", "user1", 3)
+		require.NoError(t, err)
+		_, err = tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user2", 3)
+		require.NoError(t, err)
+
+		// Third report hits threshold
+		result, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user3", 3)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), result.ReportCount)
+		assert.Equal(t, types.SeverityDegraded, result.Outage.Severity)
+		assert.True(t, result.Outage.ConfirmedAt.Valid)
+
+		// Slack fires on upgrade
+		msgs := tm.mockServer.PostedMessages()
+		require.Len(t, msgs, 1)
+		assert.Equal(t, "#test-channel", msgs[0].Channel)
+
+		// Further reports are now rejected (outage is confirmed)
+		_, err = tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user4", 3)
+		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
+	})
+
+	t.Run("rejects report when active confirmed outage exists", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		// Use the manager to create a confirmed outage (admin flow)
+		confirmed := &types.Outage{
+			ComponentName:    "test-component",
+			SubComponentName: "test-sub",
+			Severity:         types.SeverityDown,
+			StartTime:        time.Now(),
+			Description:      "Admin confirmed outage",
+			DiscoveredFrom:   "frontend",
+			CreatedBy:        "admin",
+			ConfirmedAt:      sql.NullTime{Time: time.Now(), Valid: true},
+		}
+		require.NoError(t, tm.manager.CreateOutage(confirmed, nil, "admin"))
+
+		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
+		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
+	})
+
+	t.Run("rejects report when active non-suspected outage exists", func(t *testing.T) {
+		tm := setupTestManager(t, cfg)
+		defer tm.close()
+
+		// Simulate a component-monitor outage that hasn't been confirmed yet
+		unconfirmed := &types.Outage{
+			ComponentName:    "test-component",
+			SubComponentName: "test-sub",
+			Severity:         types.SeverityDown,
+			StartTime:        time.Now(),
+			Description:      "Component-monitor detected failure",
+			DiscoveredFrom:   "component-monitor",
+			CreatedBy:        "dashboard",
+		}
+		require.NoError(t, tm.manager.CreateOutage(unconfirmed, nil, "dashboard"))
+
+		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
+		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
+	})
 }

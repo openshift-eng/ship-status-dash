@@ -90,6 +90,17 @@ type SubComponent struct {
 	// to the parent component status, bypassing the generic "partial" roll-up.
 	Critical       bool                   `json:"critical,omitempty" yaml:"critical,omitempty"`
 	SlackReporting []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
+	// ReportThreshold is the number of community reports required to upgrade a suspected outage
+	// to degraded and trigger Slack notifications. Defaults to 3 when unset.
+	ReportThreshold int `json:"report_threshold,omitempty" yaml:"report_threshold,omitempty"`
+}
+
+// GetReportThreshold returns the configured report threshold, defaulting to 3.
+func (s *SubComponent) GetReportThreshold() int {
+	if s.ReportThreshold <= 0 {
+		return 3
+	}
+	return s.ReportThreshold
 }
 
 // Monitoring defines how this sub-component is automatically monitored.

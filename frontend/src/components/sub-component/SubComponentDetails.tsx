@@ -12,8 +12,14 @@ import {
   Button,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   IconButton,
   Paper,
+  Snackbar,
   styled,
   TextField,
   ToggleButton,
@@ -31,6 +37,7 @@ import { useTags } from '../../contexts/TagsContext'
 import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
+  getReportOutageEndpoint,
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
@@ -201,11 +208,14 @@ const SubComponentDetails = () => {
     componentSlug: string
     subComponentSlug: string
   }>()
-  const { isComponentAdmin } = useAuth()
+  const { user, isComponentAdmin } = useAuth()
   const { getTag } = useTags()
   const [outages, setOutages] = useState<Outage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportSnackbar, setReportSnackbar] = useState<string | null>(null)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
@@ -312,6 +322,33 @@ const SubComponentDetails = () => {
 
   const handleOutageAction = () => {
     fetchData()
+  }
+
+  const handleReportSubmit = () => {
+    if (!componentName || !subComponentName) return
+    setReportSubmitting(true)
+    fetch(getReportOutageEndpoint(componentName, subComponentName), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (response.ok) {
+          setReportSnackbar('Report recorded')
+          setReportDialogOpen(false)
+          fetchData()
+        } else {
+          return response.json().then((data) => {
+            setReportSnackbar(data.error || 'Failed to submit report')
+          })
+        }
+      })
+      .catch(() => {
+        setReportSnackbar('Failed to submit report')
+      })
+      .finally(() => {
+        setReportSubmitting(false)
+      })
   }
 
   const columns: GridColDef[] = [
@@ -532,6 +569,15 @@ const SubComponentDetails = () => {
                 Report Outage
               </ReportOutageButton>
             )}
+            {user && !isAdmin && (
+              <Button
+                variant="outlined"
+                startIcon={<ReportProblem />}
+                onClick={() => setReportDialogOpen(true)}
+              >
+                Report Issue
+              </Button>
+            )}
             <StyledButton
               variant="contained"
               onClick={() => navigate(`/${componentSlug}`)}
@@ -672,6 +718,29 @@ const SubComponentDetails = () => {
         onSuccess={handleOutageAction}
         componentName={componentName || ''}
         subComponentName={subComponentName || ''}
+      />
+
+      <Dialog open={reportDialogOpen} onClose={() => setReportDialogOpen(false)}>
+        <DialogTitle>Report Issue</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Report a suspected issue with {componentName} / {subComponentName}. If others have
+            already reported this, your report will be added to the existing one.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReportDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleReportSubmit} variant="contained" disabled={reportSubmitting}>
+            {reportSubmitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!reportSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setReportSnackbar(null)}
+        message={reportSnackbar}
       />
     </PageContainer>
   )

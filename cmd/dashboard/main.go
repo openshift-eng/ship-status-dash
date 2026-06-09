@@ -285,6 +285,9 @@ func main() {
 	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)
 
+	suspectedExpiryChecker := NewSuspectedOutageExpiryChecker(db, 5*time.Minute, log)
+	go suspectedExpiryChecker.Start(ctx)
+
 	addr := ":" + opts.Port
 	go func() {
 		if err := server.Start(addr); err != nil && err != http.ErrServerClosed {

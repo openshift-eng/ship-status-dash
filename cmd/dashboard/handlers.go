@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -54,6 +55,19 @@ func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.Dash
 // config returns the current dashboard configuration.
 func (h *Handlers) config() *types.DashboardConfig {
 	return h.configManager.Get()
+}
+
+// excludeSuspectedOutages removes unconfirmed suspected outages from the list.
+// These should not appear in public views or influence status until upgraded via threshold.
+func excludeSuspectedOutages(outages []types.Outage) []types.Outage {
+	result := make([]types.Outage, 0, len(outages))
+	for _, o := range outages {
+		if o.Severity == types.SeveritySuspected && !o.ConfirmedAt.Valid {
+			continue
+		}
+		result = append(result, o)
+	}
+	return result
 }
 
 func respondWithJSON(w http.ResponseWriter, statusCode int, data interface{}) {
@@ -138,7 +152,7 @@ func (h *Handlers) GetOutagesJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, outages)
+	respondWithJSON(w, http.StatusOK, excludeSuspectedOutages(outages))
 }
 
 // GetSubComponentOutagesJSON retrieves outages for a specific sub-component.
@@ -171,7 +185,7 @@ func (h *Handlers) GetSubComponentOutagesJSON(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, outages)
+	respondWithJSON(w, http.StatusOK, excludeSuspectedOutages(outages))
 }
 
 // CreateOutageJSON creates a new outage for a sub-component.
@@ -265,9 +279,37 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-resolve any active suspected outage on the same sub-component
+	if outage.ConfirmedAt.Valid {
+		h.resolveActiveSuspectedOutage(componentName, subComponentName, activeUser, logger)
+	}
+
 	logger.Infof("Successfully created outage: %d", outage.ID)
 
 	respondWithJSON(w, http.StatusCreated, outage)
+}
+
+// resolveActiveSuspectedOutage resolves any active suspected outage on a sub-component.
+// Called when an admin creates a confirmed outage, so the suspected one doesn't linger.
+func (h *Handlers) resolveActiveSuspectedOutage(componentSlug, subComponentSlug, user string, logger *logrus.Entry) {
+	activeOutages, err := h.outageManager.GetActiveOutagesForSubComponent(componentSlug, subComponentSlug)
+	if err != nil {
+		logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
+		return
+	}
+	for i := range activeOutages {
+		if activeOutages[i].Severity == types.SeveritySuspected && !activeOutages[i].ConfirmedAt.Valid {
+			activeOutages[i].EndTime = sql.NullTime{Time: time.Now(), Valid: true}
+			if err := h.outageManager.UpdateOutage(&activeOutages[i], user); err != nil {
+				logger.WithFields(logrus.Fields{
+					"outage_id": activeOutages[i].ID,
+					"error":     err,
+				}).Warn("Failed to auto-resolve suspected outage")
+			} else {
+				logger.WithField("outage_id", activeOutages[i].ID).Info("Auto-resolved suspected outage after admin confirmed outage")
+			}
+		}
+	}
 }
 
 // UpdateOutageJSON updates an existing outage with the provided fields.
@@ -550,12 +592,13 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	outages, err := h.outageManager.GetActiveOutagesForSubComponent(componentName, subComponentName)
+	allOutages, err := h.outageManager.GetActiveOutagesForSubComponent(componentName, subComponentName)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
 		return
 	}
+	outages := excludeSuspectedOutages(allOutages)
 
 	status := types.StatusHealthy
 	if len(outages) > 0 {
@@ -618,11 +661,12 @@ func (h *Handlers) GetAllComponentsStatusJSON(w http.ResponseWriter, r *http.Req
 
 // getComponentStatus calculates the status of a component based on its sub-components and active outages
 func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus.Entry) (types.ComponentStatus, error) {
-	outages, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
+	allOutages, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		return types.ComponentStatus{}, err
 	}
+	outages := excludeSuspectedOutages(allOutages)
 
 	subComponentsWithOutages := make(map[string]bool)
 	for _, outage := range outages {
@@ -727,7 +771,7 @@ func (h *Handlers) GetSubComponentHistoryJSON(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, buildHistoryBuckets(outages, days, now))
+	respondWithJSON(w, http.StatusOK, buildHistoryBuckets(excludeSuspectedOutages(outages), days, now))
 }
 
 // ListTagsJSON returns the list of configured tags.
@@ -812,6 +856,7 @@ func (h *Handlers) GetOutagesDuringJSON(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outages")
 		return
 	}
+	outages = excludeSuspectedOutages(outages)
 	if outages == nil {
 		outages = []types.Outage{}
 	}
@@ -894,4 +939,63 @@ func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Reque
 	}
 
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+// ReportOutageJSON handles community outage reports from authenticated non-admin users.
+func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+	subComponent := component.GetSubComponentBySlug(subComponentName)
+	if subComponent == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	var req struct {
+		Description string `json:"description"`
+	}
+	// Body is optional — empty body is valid for a +1
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	threshold := subComponent.GetReportThreshold()
+	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, threshold)
+	if err != nil {
+		if errors.Is(err, outage.ErrOutageAlreadyTracked) {
+			respondWithError(w, http.StatusConflict, "An outage is already being tracked for this component")
+			return
+		}
+		if errors.Is(err, outage.ErrAlreadyReported) {
+			respondWithError(w, http.StatusConflict, "You have already reported this outage")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to process outage report")
+		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
+		return
+	}
+
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+
+	respondWithJSON(w, status, result.Outage)
 }

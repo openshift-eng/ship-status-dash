@@ -161,3 +161,8 @@ func (m *MockOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAud
 func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) error {
 	return nil
 }
+
+// ReportSuspectedOutage is included for interface completeness.
+func (m *MockOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error) {
+	return nil, nil
+}

@@ -67,6 +67,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageAuditLog table")
 	}
 
+	if err = db.AutoMigrate(&types.OutageReport{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate OutageReport table")
+	}
+
 	log.Info("Migration completed successfully")
 
 	var tableCount int64

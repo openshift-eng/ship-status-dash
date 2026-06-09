@@ -13,6 +13,7 @@ components:
         tags: ["pr-merging", "github"]
         requires_confirmation: true
         critical: true
+        report_threshold: 3
       - name: "Deck"
         description: "Dashboard for Prow"
         tags: ["frontend"]
