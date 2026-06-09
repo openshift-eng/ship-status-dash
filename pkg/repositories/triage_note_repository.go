@@ -9,6 +9,7 @@ import (
 // TriageNoteRepository handles persistence for triage notes attached to outages.
 type TriageNoteRepository interface {
 	AddTriageNote(note *types.TriageNote) error
+	ListTriageNotes(outageID uint) ([]types.TriageNote, error)
 	GetTriageNote(outageID, noteID uint) (*types.TriageNote, error)
 	UpdateTriageNote(outageID, noteID uint, body string) (*types.TriageNote, error)
 	DeleteTriageNote(outageID, noteID uint) error
@@ -24,6 +25,14 @@ func NewGORMTriageNoteRepository(db *gorm.DB) TriageNoteRepository {
 
 func (r *gormTriageNoteRepository) AddTriageNote(note *types.TriageNote) error {
 	return r.db.Create(note).Error
+}
+
+func (r *gormTriageNoteRepository) ListTriageNotes(outageID uint) ([]types.TriageNote, error) {
+	var notes []types.TriageNote
+	if err := r.db.Where("outage_id = ?", outageID).Order("created_at ASC").Find(&notes).Error; err != nil {
+		return nil, err
+	}
+	return notes, nil
 }
 
 // Returns gorm.ErrRecordNotFound if no matching note exists for the given outage.

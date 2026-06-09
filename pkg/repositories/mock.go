@@ -212,6 +212,10 @@ func (m *MockTriageNoteRepository) AddTriageNote(note *types.TriageNote) error {
 	return m.AddTriageNoteError
 }
 
+func (m *MockTriageNoteRepository) ListTriageNotes(_ uint) ([]types.TriageNote, error) {
+	return nil, nil
+}
+
 func (m *MockTriageNoteRepository) GetTriageNote(outageID, noteID uint) (*types.TriageNote, error) {
 	if m.GetTriageNoteFn != nil {
 		return m.GetTriageNoteFn(outageID, noteID)
@@ -262,6 +266,10 @@ func (m *MockOutageLinkRepository) AddOutageLink(link *types.OutageLink) error {
 	linkCopy := *link
 	m.AddedOutageLinks = append(m.AddedOutageLinks, &linkCopy)
 	return m.AddOutageLinkError
+}
+
+func (m *MockOutageLinkRepository) ListOutageLinks(_ uint) ([]types.OutageLink, error) {
+	return nil, nil
 }
 
 func (m *MockOutageLinkRepository) GetOutageLink(outageID, linkID uint) (*types.OutageLink, error) {

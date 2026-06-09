@@ -135,6 +135,18 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: false,
 		},
 		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/triage-notes",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetTriageNotesJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageLinksJSON,
+			protected: false,
+		},
+		{
 			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
 			method:    http.MethodPatch,
 			handler:   s.handlers.UpdateOutageJSON,

@@ -9,6 +9,7 @@ import (
 // OutageLinkRepository handles persistence for user-curated links attached to outages.
 type OutageLinkRepository interface {
 	AddOutageLink(link *types.OutageLink) error
+	ListOutageLinks(outageID uint) ([]types.OutageLink, error)
 	GetOutageLink(outageID, linkID uint) (*types.OutageLink, error)
 	UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description string) (*types.OutageLink, error)
 	DeleteOutageLink(outageID, linkID uint) error
@@ -24,6 +25,14 @@ func NewGORMOutageLinkRepository(db *gorm.DB) OutageLinkRepository {
 
 func (r *gormOutageLinkRepository) AddOutageLink(link *types.OutageLink) error {
 	return r.db.Create(link).Error
+}
+
+func (r *gormOutageLinkRepository) ListOutageLinks(outageID uint) ([]types.OutageLink, error) {
+	var links []types.OutageLink
+	if err := r.db.Where("outage_id = ?", outageID).Order("created_at ASC").Find(&links).Error; err != nil {
+		return nil, err
+	}
+	return links, nil
 }
 
 // Returns gorm.ErrRecordNotFound if no matching link exists for the given outage.

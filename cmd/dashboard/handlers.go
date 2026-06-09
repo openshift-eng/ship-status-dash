@@ -990,6 +990,84 @@ func (h *Handlers) GetOutageAuditLogsJSON(w http.ResponseWriter, r *http.Request
 	respondWithJSON(w, http.StatusOK, auditLogs)
 }
 
+// GetTriageNotesJSON returns all triage notes for a given outage.
+func (h *Handlers) GetTriageNotesJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageIDStr,
+	})
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	notes, err := h.triageNoteRepo.ListTriageNotes(uint(outageID))
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to list triage notes")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get triage notes")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, notes)
+}
+
+// GetOutageLinksJSON returns all links for a given outage.
+func (h *Handlers) GetOutageLinksJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageIDStr,
+	})
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	links, err := h.outageLinkRepo.ListOutageLinks(uint(outageID))
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to list outage links")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage links")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, links)
+}
+
 // GetSubComponentStatusJSON returns the status of a subcomponent based on active outages
 func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
