@@ -90,6 +90,36 @@ export const getSubComponentHistoryEndpoint = (
 ) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outage-history?days=${days}`
 
+export const getTriageNotesEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/triage-notes`
+
+export const getTriageNoteEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+  noteId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/triage-notes/${noteId}`
+
+export const getOutageLinksEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/links`
+
+export const getOutageLinkEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+  linkId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/links/${linkId}`
+
 export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
 
 export const getExternalPageEndpoint = (slug: string) =>

@@ -30,11 +30,11 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance
-func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository) *Server {
+func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository) *Server {
 	return &Server{
 		logger:        logger,
 		configManager: configManager,
-		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, groupCache),
+		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, triageNoteRepo, outageLinkRepo, groupCache),
 		corsOrigin:    corsOrigin,
 		hmacSecret:    hmacSecret,
 		groupCache:    groupCache,
@@ -135,6 +135,18 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: false,
 		},
 		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/triage-notes",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetTriageNotesJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageLinksJSON,
+			protected: false,
+		},
+		{
 			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}",
 			method:    http.MethodPatch,
 			handler:   s.handlers.UpdateOutageJSON,
@@ -150,6 +162,42 @@ func (s *Server) setupRoutes() http.Handler {
 			path:      "/api/components/{componentName}/{subComponentName}/outages",
 			method:    http.MethodPost,
 			handler:   s.handlers.CreateOutageJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/triage-notes",
+			method:    http.MethodPost,
+			handler:   s.handlers.AddTriageNoteJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/triage-notes/{noteId:[0-9]+}",
+			method:    http.MethodPatch,
+			handler:   s.handlers.UpdateTriageNoteJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/triage-notes/{noteId:[0-9]+}",
+			method:    http.MethodDelete,
+			handler:   s.handlers.DeleteTriageNoteJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links",
+			method:    http.MethodPost,
+			handler:   s.handlers.AddOutageLinkJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links/{linkId:[0-9]+}",
+			method:    http.MethodPatch,
+			handler:   s.handlers.UpdateOutageLinkJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links/{linkId:[0-9]+}",
+			method:    http.MethodDelete,
+			handler:   s.handlers.DeleteOutageLinkJSON,
 			protected: true,
 		},
 		{
