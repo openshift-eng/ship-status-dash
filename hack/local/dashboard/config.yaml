@@ -18,6 +18,7 @@ components:
         description: "Dashboard for Prow"
         tags: ["frontend"]
         requires_confirmation: false
+        report_threshold: 2
     owners:
       - user: "developer"
       - service_account: "system:serviceaccount:ship-status:component-monitor"

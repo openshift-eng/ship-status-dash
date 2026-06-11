@@ -164,7 +164,8 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.Dashbo
 func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
 	log.Info("Connecting to PostgreSQL database")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+		Logger:         logger.Default.LogMode(logger.Silent),
+		TranslateError: true,
 	})
 	if err != nil {
 		log.WithField("error", err).Fatal("Failed to connect to database")
@@ -285,7 +286,7 @@ func main() {
 	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)
 
-	suspectedExpiryChecker := NewSuspectedOutageExpiryChecker(db, 5*time.Minute, log)
+	suspectedExpiryChecker := NewSuspectedOutageExpiryChecker(outageManager, 5*time.Minute, log)
 	go suspectedExpiryChecker.Start(ctx)
 
 	addr := ":" + opts.Port

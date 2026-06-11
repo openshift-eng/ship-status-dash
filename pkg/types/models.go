@@ -104,7 +104,7 @@ func (o *Outage) Validate() (string, bool) {
 	if o.Severity == "" {
 		validationErrors = append(validationErrors, "Severity is required")
 	} else if !IsValidSeverity(string(o.Severity)) {
-		validationErrors = append(validationErrors, "Invalid severity. Must be one of: Down, Degraded, Suspected")
+		validationErrors = append(validationErrors, "Invalid severity. Must be one of: Down, Degraded, Suspected, CapacityExhausted")
 	}
 
 	if o.StartTime.IsZero() {

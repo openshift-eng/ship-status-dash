@@ -159,7 +159,7 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: true,
 		},
 		{
-			path:      "/api/components/{componentName}/{subComponentName}/report",
+			path:      "/api/components/{componentName}/{subComponentName}/outages/report",
 			method:    http.MethodPost,
 			handler:   s.handlers.ReportOutageJSON,
 			protected: true,

@@ -95,10 +95,12 @@ type SubComponent struct {
 	ReportThreshold int `json:"report_threshold,omitempty" yaml:"report_threshold,omitempty"`
 }
 
-// GetReportThreshold returns the configured report threshold, defaulting to 3.
+const DefaultReportThreshold = 3
+
+// GetReportThreshold returns the configured report threshold, defaulting to DefaultReportThreshold.
 func (s *SubComponent) GetReportThreshold() int {
 	if s.ReportThreshold <= 0 {
-		return 3
+		return DefaultReportThreshold
 	}
 	return s.ReportThreshold
 }

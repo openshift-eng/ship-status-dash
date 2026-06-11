@@ -32,6 +32,8 @@ type OutageRepository interface {
 	AppendReasons(outageID uint, reasons []types.Reason) error
 
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
+	GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error)
+	GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error)
 
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 
@@ -41,6 +43,11 @@ type OutageRepository interface {
 // gormOutageRepository is a GORM implementation of OutageRepository.
 type gormOutageRepository struct {
 	db *gorm.DB
+}
+
+// excludeUnconfirmedSuspected is a GORM scope that filters out unconfirmed suspected outages.
+func excludeUnconfirmedSuspected(db *gorm.DB) *gorm.DB {
+	return db.Where("NOT (severity = ? AND confirmed_at IS NULL)", types.SeveritySuspected)
 }
 
 // NewGORMOutageRepository creates a new GORM-based OutageRepository.
@@ -97,7 +104,7 @@ func (r *gormOutageRepository) GetOutageByID(componentSlug, subComponentSlug str
 // Reasons are preloaded.
 func (r *gormOutageRepository) GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
 	var outages []types.Outage
-	err := r.db.Preload("Reasons").
+	err := r.db.Preload("Reasons").Scopes(excludeUnconfirmedSuspected).
 		Where("component_name = ? AND sub_component_name = ?", componentSlug, subComponentSlug).
 		Order("start_time DESC").
 		Find(&outages).Error
@@ -108,7 +115,7 @@ func (r *gormOutageRepository) GetOutagesForSubComponent(componentSlug, subCompo
 // Reasons are preloaded.
 func (r *gormOutageRepository) GetOutagesForComponent(componentSlug string, subComponentSlugs []string) ([]types.Outage, error) {
 	var outages []types.Outage
-	err := r.db.Preload("Reasons").
+	err := r.db.Preload("Reasons").Scopes(excludeUnconfirmedSuspected).
 		Where("component_name = ? AND sub_component_name IN ?", componentSlug, subComponentSlugs).
 		Order("start_time DESC").
 		Find(&outages).Error
@@ -120,7 +127,8 @@ func (r *gormOutageRepository) GetOutagesForComponent(componentSlug string, subC
 func (r *gormOutageRepository) GetActiveOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error) {
 	var outages []types.Outage
 	now := time.Now().UTC()
-	err := r.db.Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, subComponentSlug, now).
+	err := r.db.Scopes(excludeUnconfirmedSuspected).
+		Where("component_name = ? AND sub_component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, subComponentSlug, now).
 		Order("start_time DESC").
 		Find(&outages).Error
 	return outages, err
@@ -131,7 +139,8 @@ func (r *gormOutageRepository) GetActiveOutagesForSubComponent(componentSlug, su
 func (r *gormOutageRepository) GetActiveOutagesForComponent(componentSlug string) ([]types.Outage, error) {
 	var outages []types.Outage
 	now := time.Now().UTC()
-	err := r.db.Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, now).
+	err := r.db.Scopes(excludeUnconfirmedSuspected).
+		Where("component_name = ? AND (end_time IS NULL OR end_time > ?)", componentSlug, now).
 		Order("start_time DESC").
 		Find(&outages).Error
 	return outages, err
@@ -143,6 +152,30 @@ func (r *gormOutageRepository) GetAllActiveOutages() ([]types.Outage, error) {
 	now := time.Now().UTC()
 	err := r.db.Where("end_time IS NULL OR end_time > ?", now).
 		Order("component_name, sub_component_name, start_time DESC").
+		Find(&outages).Error
+	return outages, err
+}
+
+// GetActiveSuspectedOutages retrieves active unconfirmed suspected outages for a sub-component.
+func (r *gormOutageRepository) GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	var outages []types.Outage
+	err := r.db.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND severity = ? AND confirmed_at IS NULL",
+		componentSlug, subComponentSlug, types.SeveritySuspected).
+		Find(&outages).Error
+	return outages, err
+}
+
+// GetStaleSuspectedOutages returns active suspected outages whose most recent report is older than cutoff.
+func (r *gormOutageRepository) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
+	var outages []types.Outage
+	err := r.db.
+		Where("severity = ? AND end_time IS NULL AND confirmed_at IS NULL", types.SeveritySuspected).
+		Where("id IN (?)",
+			r.db.Model(&types.OutageReport{}).
+				Select("outage_id").
+				Group("outage_id").
+				Having("MAX(created_at) < ?", cutoff),
+		).
 		Find(&outages).Error
 	return outages, err
 }
@@ -223,7 +256,7 @@ func (r *gormOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, 
 	}
 	qs := queryStart.UTC()
 	qe := queryEnd.UTC()
-	q := r.db.Preload("Reasons").
+	q := r.db.Preload("Reasons").Scopes(excludeUnconfirmedSuspected).
 		Where("start_time <= ? AND (end_time IS NULL OR end_time > ?)", qe, qs)
 	conds := make([]string, len(refs))
 	args := make([]interface{}, 0, len(refs)*2)

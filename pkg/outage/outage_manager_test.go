@@ -522,7 +522,7 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		assert.Equal(t, int64(1), result.ReportCount)
 		assert.Equal(t, types.SeveritySuspected, result.Outage.Severity)
 		assert.Equal(t, "things seem broken", result.Outage.Description)
-		assert.Equal(t, "community", result.Outage.DiscoveredFrom)
+		assert.Equal(t, CommunityReportSource, result.Outage.DiscoveredFrom)
 		assert.Equal(t, "user1", result.Outage.CreatedBy)
 		assert.False(t, result.Outage.ConfirmedAt.Valid)
 		assert.False(t, result.Outage.EndTime.Valid)

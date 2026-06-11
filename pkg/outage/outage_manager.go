@@ -1,7 +1,6 @@
 package outage
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,6 +14,8 @@ import (
 	"github.com/slack-go/slack"
 	"gorm.io/gorm"
 )
+
+const CommunityReportSource = "community"
 
 var (
 	ErrOutageAlreadyTracked = errors.New("an outage is already being tracked for this component")
@@ -42,6 +43,8 @@ type OutageManager interface {
 	FindReopenableOutage(componentSlug, subComponentSlug, createdBy string, since time.Time, reasons []types.Reason) (*types.Outage, error)
 	AppendReasons(outageID uint, reasons []types.Reason) error
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
+	GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error)
+	GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error)
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 	DeleteOutage(outage *types.Outage, user string) error
 	ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error)
@@ -194,6 +197,16 @@ func (m *DBOutageManager) GetOutagesDuring(queryStart, queryEnd time.Time, refs 
 	return outageRepo.GetOutagesDuring(queryStart, queryEnd, refs)
 }
 
+func (m *DBOutageManager) GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveSuspectedOutages(componentSlug, subComponentSlug)
+}
+
+func (m *DBOutageManager) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetStaleSuspectedOutages(cutoff)
+}
+
 func (m *DBOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.GetOutageAuditLogs(outageID)
@@ -206,17 +219,41 @@ func (m *DBOutageManager) DeleteOutage(outage *types.Outage, user string) error 
 
 // ReportSuspectedOutage handles a community report for a sub-component.
 // It creates a new suspected outage or +1s an existing one, upgrading severity when the threshold is met.
+// If a concurrent request creates the same suspected outage (unique index violation), retries once.
 func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error) {
 	logger := m.logger.WithFields(logrus.Fields{
 		"component":     componentSlug,
 		"sub_component": subComponentSlug,
-		"user":          user,
+		"active_user":   user,
 	})
 
+	result, err := m.reportSuspectedOutageTx(componentSlug, subComponentSlug, description, user, threshold, logger)
+	if err != nil && isUniqueViolation(err) {
+		logger.Debug("Concurrent suspected outage creation detected, retrying")
+		result, err = m.reportSuspectedOutageTx(componentSlug, subComponentSlug, description, user, threshold, logger)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Outage != nil && result.Outage.Severity == types.SeverityDegraded && result.Outage.ConfirmedAt.Valid && m.slackReporter != nil {
+		if err := m.slackReporter.ReportOutage(result.Outage); err != nil {
+			logger.WithFields(logrus.Fields{
+				"outage_id": result.Outage.ID,
+				"error":     err,
+			}).Error("Failed to report upgraded outage to Slack")
+		}
+	}
+
+	return result, nil
+}
+
+func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlug, description, user string, threshold int, logger *logrus.Entry) (*ReportResult, error) {
 	var result ReportResult
 
 	if err := m.db.Transaction(func(tx *gorm.DB) error {
-		// Find any active outage on this sub-component
+		outageRepo := repositories.NewGORMOutageRepository(tx)
+
 		var activeOutage types.Outage
 		err := tx.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL",
 			componentSlug, subComponentSlug).First(&activeOutage).Error
@@ -226,7 +263,6 @@ func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug,
 		}
 
 		if err == gorm.ErrRecordNotFound {
-			// No active outage — create a new suspected outage
 			desc := "Suspected outage reported by community"
 			if description != "" {
 				desc = description
@@ -237,20 +273,18 @@ func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug,
 				Severity:         types.SeveritySuspected,
 				StartTime:        time.Now(),
 				Description:      desc,
-				DiscoveredFrom:   "community",
+				DiscoveredFrom:   CommunityReportSource,
 				CreatedBy:        user,
 			}
-			if err := tx.WithContext(withUser(tx.Statement.Context, user)).Create(&activeOutage).Error; err != nil {
+			if err := outageRepo.CreateOutage(&activeOutage, user); err != nil {
 				return fmt.Errorf("failed to create suspected outage: %w", err)
 			}
 			result.Created = true
 			logger.WithField("outage_id", activeOutage.ID).Info("Created new suspected outage from community report")
 		} else if activeOutage.Severity != types.SeveritySuspected || activeOutage.ConfirmedAt.Valid {
-			// Active outage exists that isn't a community-reported suspected outage — reject
 			return ErrOutageAlreadyTracked
 		}
 
-		// Check if user already reported this outage
 		var existingReport types.OutageReport
 		err = tx.Where("outage_id = ? AND \"user\" = ?", activeOutage.ID, user).First(&existingReport).Error
 		if err == nil {
@@ -260,27 +294,27 @@ func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug,
 			return fmt.Errorf("failed to check existing report: %w", err)
 		}
 
-		// Add the report
 		report := types.OutageReport{
 			OutageID: activeOutage.ID,
 			User:     user,
 		}
 		if err := tx.Create(&report).Error; err != nil {
+			if isUniqueViolation(err) {
+				return ErrAlreadyReported
+			}
 			return fmt.Errorf("failed to create outage report: %w", err)
 		}
 
-		// Count total reports
 		var count int64
 		if err := tx.Model(&types.OutageReport{}).Where("outage_id = ?", activeOutage.ID).Count(&count).Error; err != nil {
 			return fmt.Errorf("failed to count reports: %w", err)
 		}
 		result.ReportCount = count
 
-		// Check threshold — upgrade to Degraded if met
 		if count >= int64(threshold) && activeOutage.Severity == types.SeveritySuspected {
 			activeOutage.Severity = types.SeverityDegraded
 			activeOutage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
-			if err := tx.WithContext(withUser(tx.Statement.Context, user)).Save(&activeOutage).Error; err != nil {
+			if err := outageRepo.SaveOutage(&activeOutage, user); err != nil {
 				return fmt.Errorf("failed to upgrade outage severity: %w", err)
 			}
 			logger.WithFields(logrus.Fields{
@@ -296,19 +330,9 @@ func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug,
 		return nil, err
 	}
 
-	// Fire Slack reporting outside the transaction if threshold was just met
-	if result.Outage != nil && result.Outage.Severity == types.SeverityDegraded && result.Outage.ConfirmedAt.Valid && m.slackReporter != nil {
-		if err := m.slackReporter.ReportOutage(result.Outage); err != nil {
-			logger.WithFields(logrus.Fields{
-				"outage_id": result.Outage.ID,
-				"error":     err,
-			}).Error("Failed to report upgraded outage to Slack")
-		}
-	}
-
 	return &result, nil
 }
 
-func withUser(ctx context.Context, user string) context.Context {
-	return context.WithValue(ctx, types.CurrentUserKey, user)
+func isUniqueViolation(err error) bool {
+	return errors.Is(err, gorm.ErrDuplicatedKey)
 }
