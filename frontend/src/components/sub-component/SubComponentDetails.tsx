@@ -29,7 +29,7 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
@@ -244,7 +244,7 @@ const SubComponentDetails = () => {
         )
       : getSubComponentOutagesEndpoint(componentName, subComponentName)
 
-  const fetchData = useCallback(() => {
+  const fetchData = () => {
     if (!componentName || !subComponentName) {
       return
     }
@@ -307,14 +307,14 @@ const SubComponentDetails = () => {
           setLoading(false)
         })
     }, 0)
-  }, [componentName, subComponentName, subComponentSlug, outagesEndpoint, dateStart, dateEnd])
+  }
 
   useEffect(() => {
     if (!componentName || !subComponentName) {
       return
     }
     fetchData()
-  }, [componentName, subComponentName, fetchData])
+  }, [componentName, subComponentName, subComponentSlug, outagesEndpoint, dateStart, dateEnd])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
