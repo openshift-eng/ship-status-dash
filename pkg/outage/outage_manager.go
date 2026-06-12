@@ -2,6 +2,7 @@ package outage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -29,9 +30,9 @@ type ReportResult struct {
 	ReportCount int64
 }
 
-// OutageManager defines the interface for outage management operations.
+// OutageManager is the service-layer interface for outage lifecycle operations, including triage notes and links.
 type OutageManager interface {
-	CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error
+	CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error
 	UpdateOutage(outage *types.Outage, user string) error
 	GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error)
 	GetOutagesForSubComponent(componentSlug, subComponentSlug string) ([]types.Outage, error)
@@ -48,9 +49,16 @@ type OutageManager interface {
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 	DeleteOutage(outage *types.Outage, user string) error
 	ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error)
+
+	AddTriageNote(note *types.TriageNote) error
+	UpdateTriageNote(outageID, noteID uint, body, user string) (*types.TriageNote, error)
+	DeleteTriageNote(outageID, noteID uint, user string) error
+	AddOutageLink(link *types.OutageLink, user string) error
+	UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description, user string) (*types.OutageLink, error)
+	DeleteOutageLink(outageID, linkID uint, user string) error
 }
 
-// DBOutageManager handles outage creation and updates with Slack reporting using a database.
+// DBOutageManager implements OutageManager with PostgreSQL persistence and optional Slack reporting.
 type DBOutageManager struct {
 	slackThreadRepo repositories.SlackThreadRepository
 	db              *gorm.DB
@@ -58,7 +66,6 @@ type DBOutageManager struct {
 	logger          *logrus.Logger
 }
 
-// NewDBOutageManager creates a new DBOutageManager instance.
 func NewDBOutageManager(
 	db *gorm.DB,
 	slackClient *slack.Client,
@@ -81,8 +88,7 @@ func NewDBOutageManager(
 	}
 }
 
-// CreateOutage creates a new outage and posts to Slack channels if configured.
-func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
+func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error {
 	if msg, ok := outage.Validate(); !ok {
 		return fmt.Errorf("validation failed: %s", msg)
 	}
@@ -96,6 +102,18 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 		for _, reason := range reasons {
 			reason.OutageID = outage.ID
 			if err := outageRepo.CreateReason(&reason); err != nil {
+				return err
+			}
+		}
+
+		if initialTriageNote != "" {
+			noteRepo := repositories.NewGORMTriageNoteRepository(tx)
+			note := &types.TriageNote{
+				OutageID: outage.ID,
+				Body:     initialTriageNote,
+				Author:   user,
+			}
+			if err := noteRepo.AddTriageNote(note); err != nil {
 				return err
 			}
 		}
@@ -118,7 +136,6 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 	return nil
 }
 
-// UpdateOutage updates an existing outage and posts thread replies to Slack.
 func (m *DBOutageManager) UpdateOutage(outage *types.Outage, user string) error {
 	if msg, ok := outage.Validate(); !ok {
 		return fmt.Errorf("validation failed: %s", msg)
@@ -146,7 +163,6 @@ func (m *DBOutageManager) UpdateOutage(outage *types.Outage, user string) error 
 	return nil
 }
 
-// GetOutageByID delegates read operations to the repository.
 func (m *DBOutageManager) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.GetOutageByID(componentSlug, subComponentSlug, outageID)
@@ -335,4 +351,143 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 
 func isUniqueViolation(err error) bool {
 	return errors.Is(err, gorm.ErrDuplicatedKey)
+}
+
+// snapshotOutage captures the full outage state as JSON for before/after audit log comparison.
+func (m *DBOutageManager) snapshotOutage(outageID uint) []byte {
+	var outage types.Outage
+	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&outage, outageID).Error; err != nil {
+		return nil
+	}
+	data, err := json.Marshal(outage)
+	if err != nil {
+		m.logger.WithFields(logrus.Fields{
+			"outage_id": outageID,
+			"error":     err,
+		}).Warn("Failed to marshal outage snapshot for audit log")
+		return nil
+	}
+	return data
+}
+
+func (m *DBOutageManager) auditMutation(outageID uint, user string, old, new []byte) {
+	if err := m.db.Create(&types.OutageAuditLog{
+		OutageID:  outageID,
+		User:      user,
+		Operation: string(types.Update),
+		Old:       old,
+		New:       new,
+	}).Error; err != nil {
+		m.logger.WithFields(logrus.Fields{
+			"outage_id": outageID,
+			"error":     err,
+		}).Error("Failed to write audit log for child mutation")
+	}
+}
+
+// AddTriageNote saves a new triage note. Slack failures are logged but do not fail the operation.
+func (m *DBOutageManager) AddTriageNote(note *types.TriageNote) error {
+	oldOutage := m.loadOutage(note.OutageID)
+	old := m.snapshotOutage(note.OutageID)
+
+	noteRepo := repositories.NewGORMTriageNoteRepository(m.db)
+	if err := noteRepo.AddTriageNote(note); err != nil {
+		return err
+	}
+
+	m.auditMutation(note.OutageID, note.Author, old, m.snapshotOutage(note.OutageID))
+	m.reportChildUpdate(note.OutageID, oldOutage)
+	return nil
+}
+
+func (m *DBOutageManager) UpdateTriageNote(outageID, noteID uint, body, user string) (*types.TriageNote, error) {
+	old := m.snapshotOutage(outageID)
+
+	noteRepo := repositories.NewGORMTriageNoteRepository(m.db)
+	result, err := noteRepo.UpdateTriageNote(outageID, noteID, body)
+	if err != nil {
+		return nil, err
+	}
+
+	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	return result, nil
+}
+
+func (m *DBOutageManager) DeleteTriageNote(outageID, noteID uint, user string) error {
+	old := m.snapshotOutage(outageID)
+
+	noteRepo := repositories.NewGORMTriageNoteRepository(m.db)
+	if err := noteRepo.DeleteTriageNote(outageID, noteID); err != nil {
+		return err
+	}
+
+	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	return nil
+}
+
+func (m *DBOutageManager) AddOutageLink(link *types.OutageLink, user string) error {
+	oldOutage := m.loadOutage(link.OutageID)
+	old := m.snapshotOutage(link.OutageID)
+
+	linkRepo := repositories.NewGORMOutageLinkRepository(m.db)
+	if err := linkRepo.AddOutageLink(link); err != nil {
+		return err
+	}
+
+	m.auditMutation(link.OutageID, user, old, m.snapshotOutage(link.OutageID))
+	m.reportChildUpdate(link.OutageID, oldOutage)
+	return nil
+}
+
+func (m *DBOutageManager) UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description, user string) (*types.OutageLink, error) {
+	oldOutage := m.loadOutage(outageID)
+	old := m.snapshotOutage(outageID)
+
+	linkRepo := repositories.NewGORMOutageLinkRepository(m.db)
+	result, err := linkRepo.UpdateOutageLink(outageID, linkID, url, linkType, description)
+	if err != nil {
+		return nil, err
+	}
+
+	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	m.reportChildUpdate(outageID, oldOutage)
+	return result, nil
+}
+
+func (m *DBOutageManager) DeleteOutageLink(outageID, linkID uint, user string) error {
+	old := m.snapshotOutage(outageID)
+
+	linkRepo := repositories.NewGORMOutageLinkRepository(m.db)
+	if err := linkRepo.DeleteOutageLink(outageID, linkID); err != nil {
+		return err
+	}
+
+	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	return nil
+}
+
+// loadOutage captures the pre-mutation state so reportChildUpdate can diff against post-mutation.
+func (m *DBOutageManager) loadOutage(outageID uint) *types.Outage {
+	var outage types.Outage
+	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&outage, outageID).Error; err != nil {
+		return nil
+	}
+	return &outage
+}
+
+// reportChildUpdate triggers Slack thread replies by diffing the pre/post outage state.
+func (m *DBOutageManager) reportChildUpdate(outageID uint, oldOutage *types.Outage) {
+	if m.slackReporter == nil || oldOutage == nil {
+		return
+	}
+	newOutage := m.loadOutage(outageID)
+	if newOutage == nil {
+		return
+	}
+	if err := m.slackReporter.ReportOutageUpdate(newOutage, oldOutage); err != nil {
+		m.logger.WithFields(logrus.Fields{
+			"outage_id": outageID,
+			"error":     err,
+		}).Error("Failed to report child update to Slack")
+	}
 }

@@ -206,7 +206,7 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 				return fmt.Errorf("validation failed: %s", message)
 			}
 
-			if err := p.outageManager.CreateOutage(&outage, status.Reasons, req.ComponentMonitor); err != nil {
+			if err := p.outageManager.CreateOutage(&outage, status.Reasons, req.ComponentMonitor, ""); err != nil {
 				statusLogger.WithField("error", err).Error("Failed to create outage and reasons")
 				continue
 			}

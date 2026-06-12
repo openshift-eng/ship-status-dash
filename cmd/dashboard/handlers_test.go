@@ -29,8 +29,10 @@ func newTestHandlers(t *testing.T, cfg *types.DashboardConfig, om outage.OutageM
 	cfgManager.Get()
 
 	pingRepo := &repositories.MockComponentPingRepository{}
+	triageNoteRepo := &repositories.MockTriageNoteRepository{}
+	outageLinkRepo := &repositories.MockOutageLinkRepository{}
 	cache := auth.NewGroupMembershipCache(logrus.New())
-	return NewHandlers(logrus.New(), cfgManager, om, pingRepo, cache)
+	return NewHandlers(logrus.New(), cfgManager, om, pingRepo, triageNoteRepo, outageLinkRepo, cache)
 }
 
 // minimalDashboardConfig is a tiny valid config (one component, one sub-component) for handler tests.

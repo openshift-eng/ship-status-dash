@@ -58,6 +58,8 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("Tags", testTags(client))
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
+	t.Run("TriageNotes", testTriageNotes(client))
+	t.Run("OutageLinks", testOutageLinks(client))
 	t.Run("AbsentReport", testAbsentReport(client))
 	t.Run("CommunityReport", testCommunityReport(client))
 	// ConfigHotReload should be tested at the end, it attempts to clean up after itself, but due to the nature of timing,
@@ -421,9 +423,8 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 
 		// Now update the outage
 		updatePayload := map[string]interface{}{
-			"severity":     string(types.SeverityDegraded),
-			"description":  "Updated description",
-			"triage_notes": "Updated triage notes",
+			"severity":    string(types.SeverityDegraded),
+			"description": "Updated description",
 		}
 
 		updateBytes, err := json.Marshal(updatePayload)
@@ -451,8 +452,6 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, createdOutage.ID, updatedOutage.ID)
 		assert.Equal(t, string(types.SeverityDegraded), string(updatedOutage.Severity))
 		assert.Equal(t, "Updated description", updatedOutage.Description)
-		assert.NotNil(t, updatedOutage.TriageNotes)
-		assert.Equal(t, "Updated triage notes", *updatedOutage.TriageNotes)
 		assert.WithinDuration(t, createdOutage.StartTime.UTC(), updatedOutage.StartTime.UTC(), time.Second) // Should remain unchanged
 		assert.Equal(t, createdOutage.CreatedBy, updatedOutage.CreatedBy)                                   // Should remain unchanged
 
@@ -561,8 +560,7 @@ func testUpdateOutage(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 
 			updatePayload := map[string]interface{}{
-				"description":  "Updated description by editor",
-				"triage_notes": "Updated triage notes by editor",
+				"description": "Updated description by editor",
 			}
 			updateBytes, err := json.Marshal(updatePayload)
 			require.NoError(t, err)
@@ -2424,6 +2422,463 @@ func testConfigHotReload(client *TestHTTPClient) func(*testing.T) {
 			finalStatus := getStatus(t, client, "Boskos", "")
 			assert.Equal(t, types.StatusHealthy, finalStatus.Status)
 			assert.Empty(t, finalStatus.ActiveOutages)
+		})
+	}
+}
+
+func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		outage := createOutage(t, client, "Prow", "Deck")
+		defer deleteOutage(t, client, "Prow", "Deck", outage.ID)
+
+		basePath := fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes",
+			utils.Slugify("Prow"), utils.Slugify("Deck"), outage.ID)
+
+		t.Run("POST creates a triage note", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "Investigating the issue"})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var note types.TriageNote
+			err = json.NewDecoder(resp.Body).Decode(&note)
+			require.NoError(t, err)
+			assert.Equal(t, "Investigating the issue", note.Body)
+			assert.Equal(t, "developer", note.Author)
+			assert.Equal(t, outage.ID, note.OutageID)
+			assert.NotZero(t, note.ID)
+		})
+
+		t.Run("POST rejects empty body", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": ""})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("GET lists triage notes", func(t *testing.T) {
+			resp, err := client.Get(basePath, false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var notes []types.TriageNote
+			err = json.NewDecoder(resp.Body).Decode(&notes)
+			require.NoError(t, err)
+			assert.NotEmpty(t, notes)
+			for _, n := range notes {
+				assert.Equal(t, outage.ID, n.OutageID)
+				assert.NotEmpty(t, n.Body)
+			}
+		})
+
+		t.Run("PATCH updates a triage note", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "Original"})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.TriageNote
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			updateBody, _ := json.Marshal(map[string]string{"body": "Revised note"})
+			notePath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Patch(notePath, updateBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			var updated types.TriageNote
+			json.NewDecoder(resp2.Body).Decode(&updated)
+			assert.Equal(t, "Revised note", updated.Body)
+		})
+
+		t.Run("PATCH with empty body returns 400", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "For validation"})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.TriageNote
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			emptyBody, _ := json.Marshal(map[string]string{"body": ""})
+			notePath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Patch(notePath, emptyBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+		})
+
+		t.Run("DELETE removes a triage note", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "To be deleted"})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.TriageNote
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			notePath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Delete(notePath)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusNoContent, resp2.StatusCode)
+		})
+
+		t.Run("cross-component access returns 404", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "Cross-component test"})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.TriageNote
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			wrongPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes/%d",
+				utils.Slugify("Boskos"), utils.Slugify("Quota"), outage.ID, created.ID)
+			updateBody, _ := json.Marshal(map[string]string{"body": "hacked"})
+			resp2, err := client.Patch(wrongPath, updateBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusNotFound, resp2.StatusCode)
+		})
+
+		t.Run("non-admin non-author returns 403 on PATCH and DELETE", func(t *testing.T) {
+			serverURL := os.Getenv("TEST_SERVER_URL")
+			mockOauthProxyURL := os.Getenv("TEST_MOCK_OAUTH_PROXY_URL")
+			require.NotEmpty(t, serverURL)
+			require.NotEmpty(t, mockOauthProxyURL)
+
+			// Create note on Boskos (developer is admin, editor is not)
+			boskosOutage := createOutage(t, client, "Boskos", "Quota")
+			defer deleteOutage(t, client, "Boskos", "Quota", boskosOutage.ID)
+
+			boskosNotePath := fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes",
+				utils.Slugify("Boskos"), utils.Slugify("Quota"), boskosOutage.ID)
+			noteBody, _ := json.Marshal(map[string]string{"body": "Developer's note"})
+			resp, err := client.Post(boskosNotePath, noteBody)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.TriageNote
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			editorClient, err := NewTestHTTPClientWithUsername(serverURL, mockOauthProxyURL, "editor")
+			require.NoError(t, err)
+
+			notePath := fmt.Sprintf("%s/%d", boskosNotePath, created.ID)
+
+			updateBody, _ := json.Marshal(map[string]string{"body": "Unauthorized edit"})
+			resp2, err := editorClient.Patch(notePath, updateBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp2.StatusCode)
+
+			resp3, err := editorClient.Delete(notePath)
+			require.NoError(t, err)
+			defer resp3.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp3.StatusCode)
+		})
+
+		t.Run("CreateOutage with initial_triage_note", func(t *testing.T) {
+			payload := map[string]interface{}{
+				"severity":            string(types.SeverityDown),
+				"start_time":          time.Now().UTC().Format(time.RFC3339),
+				"description":         "Outage with initial note",
+				"discovered_from":     "e2e-test",
+				"initial_triage_note": "First observations",
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			resp, err := client.Post(fmt.Sprintf("/api/components/%s/%s/outages",
+				utils.Slugify("Prow"), utils.Slugify("Deck")), payloadBytes)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.Outage
+			json.NewDecoder(resp.Body).Decode(&created)
+			defer deleteOutage(t, client, "Prow", "Deck", created.ID)
+
+			getResp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+				utils.Slugify("Prow"), utils.Slugify("Deck"), created.ID), false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var fetched types.Outage
+			json.NewDecoder(getResp.Body).Decode(&fetched)
+			require.Len(t, fetched.TriageNotes, 1)
+			assert.Equal(t, "First observations", fetched.TriageNotes[0].Body)
+			assert.Equal(t, "developer", fetched.TriageNotes[0].Author)
+		})
+	}
+}
+
+func testOutageLinks(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		outage := createOutage(t, client, "Prow", "Deck")
+		defer deleteOutage(t, client, "Prow", "Deck", outage.ID)
+
+		basePath := fmt.Sprintf("/api/components/%s/%s/outages/%d/links",
+			utils.Slugify("Prow"), utils.Slugify("Deck"), outage.ID)
+
+		t.Run("POST creates an outage link", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://example.com/rca",
+				LinkType: "rca",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var link types.OutageLink
+			err = json.NewDecoder(resp.Body).Decode(&link)
+			require.NoError(t, err)
+			assert.Equal(t, "https://example.com/rca", link.URL)
+			assert.Equal(t, types.LinkTypeRCA, link.LinkType)
+			assert.Empty(t, link.Description)
+			assert.Equal(t, outage.ID, link.OutageID)
+		})
+
+		t.Run("POST rejects invalid URL", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "not-a-url",
+				LinkType: "rca",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("POST rejects invalid link type", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://example.com",
+				LinkType: "invalid_type",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("GET lists outage links", func(t *testing.T) {
+			resp, err := client.Get(basePath, false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var links []types.OutageLink
+			err = json.NewDecoder(resp.Body).Decode(&links)
+			require.NoError(t, err)
+			assert.NotEmpty(t, links)
+			for _, l := range links {
+				assert.Equal(t, outage.ID, l.OutageID)
+				assert.NotEmpty(t, l.URL)
+			}
+		})
+
+		t.Run("PATCH updates an outage link", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:         "https://old.example.com",
+				LinkType:    "other",
+				Description: "Original",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+			assert.Equal(t, "Original", created.Description)
+
+			updateBody, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://new.example.com/rca",
+				LinkType: "rca",
+			})
+			linkPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Patch(linkPath, updateBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusOK, resp2.StatusCode)
+
+			var updated types.OutageLink
+			json.NewDecoder(resp2.Body).Decode(&updated)
+			assert.Equal(t, "https://new.example.com/rca", updated.URL)
+			assert.Equal(t, types.LinkTypeRCA, updated.LinkType)
+			assert.Empty(t, updated.Description)
+		})
+
+		t.Run("PATCH with invalid URL returns 400", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://example.com/patch-val",
+				LinkType: "other",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			invalidBody, _ := json.Marshal(types.OutageLinkRequest{URL: "not-valid", LinkType: "rca"})
+			linkPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Patch(linkPath, invalidBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+		})
+
+		t.Run("PATCH with invalid link type returns 400", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://example.com/type-val",
+				LinkType: "other",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			invalidBody, _ := json.Marshal(types.OutageLinkRequest{URL: "https://example.com", LinkType: "bogus"})
+			linkPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Patch(linkPath, invalidBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+		})
+
+		t.Run("DELETE removes an outage link", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:         "https://example.com/to-delete",
+				LinkType:    "other",
+				Description: "Will be removed",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			linkPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			resp2, err := client.Delete(linkPath)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusNoContent, resp2.StatusCode)
+		})
+
+		t.Run("cross-component access returns 404", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:      "https://example.com/cross-comp",
+				LinkType: "rca",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			wrongPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/links/%d",
+				utils.Slugify("Boskos"), utils.Slugify("Quota"), outage.ID, created.ID)
+			updateBody, _ := json.Marshal(types.OutageLinkRequest{URL: "https://example.com/hacked", LinkType: "rca"})
+			resp2, err := client.Patch(wrongPath, updateBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusNotFound, resp2.StatusCode)
+		})
+
+		t.Run("unauthorized user returns 403 on POST, PATCH, and DELETE", func(t *testing.T) {
+			serverURL := os.Getenv("TEST_SERVER_URL")
+			mockOauthProxyURL := os.Getenv("TEST_MOCK_OAUTH_PROXY_URL")
+			require.NotEmpty(t, serverURL)
+			require.NotEmpty(t, mockOauthProxyURL)
+
+			// Create link on Boskos (developer is admin, editor is not)
+			boskosOutage := createOutage(t, client, "Boskos", "Quota")
+			defer deleteOutage(t, client, "Boskos", "Quota", boskosOutage.ID)
+
+			boskosLinkPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/links",
+				utils.Slugify("Boskos"), utils.Slugify("Quota"), boskosOutage.ID)
+			linkBody, _ := json.Marshal(types.OutageLinkRequest{URL: "https://example.com/boskos", LinkType: "rca"})
+			resp, err := client.Post(boskosLinkPath, linkBody)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageLink
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			editorClient, err := NewTestHTTPClientWithUsername(serverURL, mockOauthProxyURL, "editor")
+			require.NoError(t, err)
+
+			// POST forbidden
+			newBody, _ := json.Marshal(types.OutageLinkRequest{URL: "https://example.com/unauth", LinkType: "other"})
+			resp2, err := editorClient.Post(boskosLinkPath, newBody)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp2.StatusCode)
+
+			// PATCH forbidden
+			linkPath := fmt.Sprintf("%s/%d", boskosLinkPath, created.ID)
+			resp3, err := editorClient.Patch(linkPath, newBody)
+			require.NoError(t, err)
+			defer resp3.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp3.StatusCode)
+
+			// DELETE forbidden
+			resp4, err := editorClient.Delete(linkPath)
+			require.NoError(t, err)
+			defer resp4.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp4.StatusCode)
+		})
+
+		t.Run("outage GET includes links", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageLinkRequest{
+				URL:         "https://example.com/verify",
+				LinkType:    "incident_channel_thread",
+				Description: "Thread",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			getResp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+				utils.Slugify("Prow"), utils.Slugify("Deck"), outage.ID), false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var fetched types.Outage
+			err = json.NewDecoder(getResp.Body).Decode(&fetched)
+			require.NoError(t, err)
+			require.NotEmpty(t, fetched.Links)
+
+			var found bool
+			for _, l := range fetched.Links {
+				if l.URL == "https://example.com/verify" {
+					found = true
+					assert.Equal(t, types.LinkTypeIncidentChannelThread, l.LinkType)
+				}
+			}
+			assert.True(t, found, "expected link to appear in outage GET response")
 		})
 	}
 }

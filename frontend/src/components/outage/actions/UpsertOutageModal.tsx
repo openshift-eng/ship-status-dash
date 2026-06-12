@@ -73,7 +73,7 @@ const UpsertOutageModal = ({
       return {
         severity: outage.severity,
         description: outage.description || '',
-        triage_notes: outage.triage_notes || '',
+        triage_notes: '',
         start_time: formatDateForDateTimeLocal(new Date(outage.start_time)),
         end_time: outage.end_time.Valid
           ? formatDateForDateTimeLocal(new Date(outage.end_time.Time))
@@ -180,7 +180,6 @@ const UpsertOutageModal = ({
       severity: formData.severity,
       description: formData.description.trim(),
       start_time: new Date(formData.start_time).toISOString(),
-      triage_notes: formData.triage_notes || undefined,
       confirmed: formData.confirmed,
     }
 
@@ -198,8 +197,10 @@ const UpsertOutageModal = ({
 
     if (!isUpdateMode) {
       requestData.discovered_from = 'frontend'
-      // Don't require confirmation for new outages added from the frontend
       requestData.confirmed = true
+      if (formData.triage_notes.trim()) {
+        requestData.initial_triage_note = formData.triage_notes.trim()
+      }
     }
 
     const url = isUpdateMode
@@ -225,7 +226,6 @@ const UpsertOutageModal = ({
         return response.json()
       })
       .then(() => {
-        // Only reset form in create mode, update mode closes the modal
         if (!isUpdateMode) {
           setFormData({
             severity: '',
@@ -321,15 +321,18 @@ const UpsertOutageModal = ({
           placeholder="Describe the outage..."
         />
 
-        <StyledTextField
-          fullWidth
-          label="Triage Notes"
-          multiline
-          rows={2}
-          value={formData.triage_notes}
-          onChange={handleInputChange('triage_notes')}
-          placeholder="Initial triage notes..."
-        />
+        {!isUpdateMode && (
+          <StyledTextField
+            fullWidth
+            label="Initial Triage Note (optional)"
+            multiline
+            rows={2}
+            value={formData.triage_notes}
+            onChange={handleInputChange('triage_notes')}
+            placeholder="Add an initial triage note..."
+            helperText="Will be posted as the first triage note on the outage"
+          />
+        )}
 
         <StyledTextField
           fullWidth

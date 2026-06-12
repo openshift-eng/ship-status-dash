@@ -165,11 +165,6 @@ func (r *SlackReporter) formatOutageMessage(outage *types.Outage, component *typ
 		parts = append(parts, "Description:")
 		parts = append(parts, formatQuoteBlock(description))
 	}
-	if triageNotes := getStringValue(outage.TriageNotes); triageNotes != "" {
-		truncatedNotes := truncateString(triageNotes)
-		parts = append(parts, "Triage notes:")
-		parts = append(parts, formatQuoteBlock(truncatedNotes))
-	}
 	parts = append(parts, fmt.Sprintf("Started: `%s`", outage.StartTime.Format(time.RFC3339)))
 	parts = append(parts, fmt.Sprintf("Created by: `%s`", outage.CreatedBy))
 	parts = append(parts, fmt.Sprintf("Discovered from: `%s`", outage.DiscoveredFrom))
@@ -233,10 +228,30 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 		changes = append(changes, formatQuoteBlock(description))
 	}
 
-	if getStringValue(oldOutage.TriageNotes) != getStringValue(outage.TriageNotes) {
-		triageNotes := truncateString(getStringValue(outage.TriageNotes))
-		changes = append(changes, "Triage notes updated:")
-		changes = append(changes, formatQuoteBlock(triageNotes))
+	if len(outage.TriageNotes) > len(oldOutage.TriageNotes) {
+		newNote := outage.TriageNotes[len(outage.TriageNotes)-1]
+		changes = append(changes, fmt.Sprintf("Triage note from `%s`:", newNote.Author))
+		changes = append(changes, formatQuoteBlock(truncateString(newNote.Body)))
+	}
+
+	if len(outage.Links) > len(oldOutage.Links) {
+		newLink := outage.Links[len(outage.Links)-1]
+		label := newLink.URL
+		if newLink.Description != "" {
+			label = newLink.Description
+		}
+		changes = append(changes, fmt.Sprintf("Link added: <%s|%s>", newLink.URL, label))
+	} else if len(outage.Links) == len(oldOutage.Links) && len(outage.Links) > 0 {
+		for i := range outage.Links {
+			if i < len(oldOutage.Links) && outage.Links[i].URL != oldOutage.Links[i].URL {
+				label := outage.Links[i].URL
+				if outage.Links[i].Description != "" {
+					label = outage.Links[i].Description
+				}
+				changes = append(changes, fmt.Sprintf("Link updated: <%s|%s>", outage.Links[i].URL, label))
+				break
+			}
+		}
 	}
 
 	if len(changes) == 0 {
@@ -248,13 +263,6 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 	parts = append(parts, fmt.Sprintf("<%s|View Outage>", r.buildOutageLink(outage)))
 
 	return strings.Join(parts, "\n")
-}
-
-func getStringValue(ptr *string) string {
-	if ptr == nil {
-		return ""
-	}
-	return *ptr
 }
 
 const maxTruncateLength = 240

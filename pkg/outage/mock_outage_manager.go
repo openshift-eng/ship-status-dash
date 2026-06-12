@@ -21,7 +21,7 @@ type MockOutageManager struct {
 	UpdatedOutages []*types.Outage
 
 	// Mock functions
-	CreateOutageFn                   func(*types.Outage, []types.Reason) error
+	CreateOutageFn                   func(*types.Outage, []types.Reason, string) error
 	UpdateOutageFn                   func(*types.Outage, string) error
 	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
@@ -47,9 +47,9 @@ func (m *MockOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponen
 }
 
 // CreateOutage captures the outage and reasons for assertions.
-func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user string) error {
+func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error {
 	if m.CreateOutageFn != nil {
-		return m.CreateOutageFn(outage, reasons)
+		return m.CreateOutageFn(outage, reasons, initialTriageNote)
 	}
 	// Capture the outage and reasons
 	outageCopy := *outage
@@ -179,4 +179,28 @@ func (m *MockOutageManager) GetStaleSuspectedOutages(cutoff time.Time) ([]types.
 // ReportSuspectedOutage is included for interface completeness.
 func (m *MockOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error) {
 	return nil, nil
+}
+
+func (m *MockOutageManager) AddTriageNote(note *types.TriageNote) error {
+	return nil
+}
+
+func (m *MockOutageManager) UpdateTriageNote(outageID, noteID uint, body, user string) (*types.TriageNote, error) {
+	return nil, nil
+}
+
+func (m *MockOutageManager) DeleteTriageNote(outageID, noteID uint, user string) error {
+	return nil
+}
+
+func (m *MockOutageManager) AddOutageLink(link *types.OutageLink, user string) error {
+	return nil
+}
+
+func (m *MockOutageManager) UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description, user string) (*types.OutageLink, error) {
+	return nil, nil
+}
+
+func (m *MockOutageManager) DeleteOutageLink(outageID, linkID uint, user string) error {
+	return nil
 }

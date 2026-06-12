@@ -27,7 +27,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{}, &types.OutageReport{})
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{}, &types.OutageReport{}, &types.TriageNote{}, &types.OutageLink{})
 	if err != nil {
 		t.Fatalf("Failed to migrate test database: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestOutageManager_CreateOutage(t *testing.T) {
 			tm := setupTestManager(t, tt.config)
 			defer tm.close()
 
-			err := tm.manager.CreateOutage(tt.outage, tt.reasons, "test-user")
+			err := tm.manager.CreateOutage(tt.outage, tt.reasons, "test-user", "")
 			if err != nil {
 				t.Fatalf("Failed to create outage: %v", err)
 			}
@@ -388,7 +388,7 @@ func TestOutageManager_GetOutageAuditLogs(t *testing.T) {
 				}
 				tm2 := setupTestManager(t, config)
 				*tm = *tm2
-				err := tm.manager.CreateOutage(outage, nil, "test-user")
+				err := tm.manager.CreateOutage(outage, nil, "test-user", "")
 				require.NoError(t, err)
 				return outage.ID
 			},
@@ -478,7 +478,7 @@ func TestOutageManager_DeleteOutage(t *testing.T) {
 		CreatedBy:        "system",
 		DiscoveredFrom:   "component-monitor",
 	}
-	err := tm.manager.CreateOutage(outage, nil, "test-user")
+	err := tm.manager.CreateOutage(outage, nil, "test-user", "")
 	require.NoError(t, err)
 	outageID := outage.ID
 
@@ -493,6 +493,44 @@ func TestOutageManager_DeleteOutage(t *testing.T) {
 	assert.Equal(t, "test-user", logs[0].User)
 	assert.Equal(t, "CREATE", logs[1].Operation)
 	assert.Equal(t, "test-user", logs[1].User)
+}
+
+func TestOutageManager_CreateOutage_WithInitialTriageNote(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage with initial note",
+		CreatedBy:        "reporter",
+		DiscoveredFrom:   "frontend",
+	}
+
+	err := tm.manager.CreateOutage(outage, nil, "reporter", "Initial investigation started")
+	require.NoError(t, err)
+	assert.NotZero(t, outage.ID)
+
+	var notes []types.TriageNote
+	err = tm.db.Where("outage_id = ?", outage.ID).Find(&notes).Error
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, "Initial investigation started", notes[0].Body)
+	assert.Equal(t, "reporter", notes[0].Author)
+	assert.Equal(t, outage.ID, notes[0].OutageID)
 }
 
 func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
@@ -597,7 +635,6 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		tm := setupTestManager(t, cfg)
 		defer tm.close()
 
-		// Use the manager to create a confirmed outage (admin flow)
 		confirmed := &types.Outage{
 			ComponentName:    "test-component",
 			SubComponentName: "test-sub",
@@ -608,7 +645,7 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 			CreatedBy:        "admin",
 			ConfirmedAt:      sql.NullTime{Time: time.Now(), Valid: true},
 		}
-		require.NoError(t, tm.manager.CreateOutage(confirmed, nil, "admin"))
+		require.NoError(t, tm.manager.CreateOutage(confirmed, nil, "admin", ""))
 
 		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
 		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
@@ -618,7 +655,6 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		tm := setupTestManager(t, cfg)
 		defer tm.close()
 
-		// Simulate a component-monitor outage that hasn't been confirmed yet
 		unconfirmed := &types.Outage{
 			ComponentName:    "test-component",
 			SubComponentName: "test-sub",
@@ -628,9 +664,347 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 			DiscoveredFrom:   "component-monitor",
 			CreatedBy:        "dashboard",
 		}
-		require.NoError(t, tm.manager.CreateOutage(unconfirmed, nil, "dashboard"))
+		require.NoError(t, tm.manager.CreateOutage(unconfirmed, nil, "dashboard", ""))
 
 		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
 		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
 	})
+}
+
+func TestOutageManager_AddTriageNote(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				SlackReporting: []types.SlackReportingConfig{
+					{Channel: "#test-channel"},
+				},
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for triage note test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	note := &types.TriageNote{
+		OutageID: outage.ID,
+		Body:     "Investigating root cause",
+		Author:   "on-call-user",
+	}
+	err = tm.manager.AddTriageNote(note)
+	require.NoError(t, err)
+	assert.NotZero(t, note.ID)
+
+	var saved []types.TriageNote
+	err = tm.db.Where("outage_id = ?", outage.ID).Find(&saved).Error
+	require.NoError(t, err)
+	require.Len(t, saved, 1)
+	assert.Equal(t, "Investigating root cause", saved[0].Body)
+	assert.Equal(t, "on-call-user", saved[0].Author)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "on-call-user", logs[0].User)
+
+	msgs := tm.mockServer.PostedMessages()
+	require.Len(t, msgs, 2)
+	assert.Contains(t, msgs[1].Text, "Triage note from `on-call-user`")
+	assert.Contains(t, msgs[1].Text, "Investigating root cause")
+}
+
+func TestOutageManager_UpdateTriageNote(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for update note test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	note := &types.TriageNote{
+		OutageID: outage.ID,
+		Body:     "Original text",
+		Author:   "author-user",
+	}
+	err = tm.manager.AddTriageNote(note)
+	require.NoError(t, err)
+
+	updated, err := tm.manager.UpdateTriageNote(outage.ID, note.ID, "Revised text", "author-user")
+	require.NoError(t, err)
+	assert.Equal(t, "Revised text", updated.Body)
+
+	var saved types.TriageNote
+	err = tm.db.First(&saved, note.ID).Error
+	require.NoError(t, err)
+	assert.Equal(t, "Revised text", saved.Body)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "author-user", logs[0].User)
+}
+
+func TestOutageManager_DeleteTriageNote(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for delete note test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	note := &types.TriageNote{
+		OutageID: outage.ID,
+		Body:     "Note to delete",
+		Author:   "author-user",
+	}
+	err = tm.manager.AddTriageNote(note)
+	require.NoError(t, err)
+
+	err = tm.manager.DeleteTriageNote(outage.ID, note.ID, "author-user")
+	require.NoError(t, err)
+
+	var remaining []types.TriageNote
+	err = tm.db.Where("outage_id = ?", outage.ID).Find(&remaining).Error
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "author-user", logs[0].User)
+}
+
+func TestOutageManager_AddOutageLink(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				SlackReporting: []types.SlackReportingConfig{
+					{Channel: "#test-channel"},
+				},
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for link test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	link := &types.OutageLink{
+		OutageID:    outage.ID,
+		URL:         "https://example.com/rca",
+		LinkType:    types.LinkTypeRCA,
+		Description: "Root cause analysis",
+	}
+	err = tm.manager.AddOutageLink(link, "on-call-user")
+	require.NoError(t, err)
+	assert.NotZero(t, link.ID)
+
+	var saved []types.OutageLink
+	err = tm.db.Where("outage_id = ?", outage.ID).Find(&saved).Error
+	require.NoError(t, err)
+	require.Len(t, saved, 1)
+	assert.Equal(t, "https://example.com/rca", saved[0].URL)
+	assert.Equal(t, types.LinkTypeRCA, saved[0].LinkType)
+	assert.Equal(t, "Root cause analysis", saved[0].Description)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "on-call-user", logs[0].User)
+
+	msgs := tm.mockServer.PostedMessages()
+	require.Len(t, msgs, 2)
+	assert.Contains(t, msgs[1].Text, "Link added:")
+	assert.Contains(t, msgs[1].Text, "https://example.com/rca")
+}
+
+func TestOutageManager_UpdateOutageLink(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				SlackReporting: []types.SlackReportingConfig{
+					{Channel: "#test-channel"},
+				},
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for update link test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	link := &types.OutageLink{
+		OutageID:    outage.ID,
+		URL:         "https://old.example.com",
+		LinkType:    types.LinkTypeOther,
+		Description: "Original link",
+	}
+	err = tm.manager.AddOutageLink(link, "on-call-user")
+	require.NoError(t, err)
+
+	updated, err := tm.manager.UpdateOutageLink(outage.ID, link.ID, "https://new.example.com", types.LinkTypeRCA, "Updated RCA", "on-call-user")
+	require.NoError(t, err)
+	assert.Equal(t, "https://new.example.com", updated.URL)
+	assert.Equal(t, types.LinkTypeRCA, updated.LinkType)
+	assert.Equal(t, "Updated RCA", updated.Description)
+
+	var saved types.OutageLink
+	err = tm.db.First(&saved, link.ID).Error
+	require.NoError(t, err)
+	assert.Equal(t, "https://new.example.com", saved.URL)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "on-call-user", logs[0].User)
+
+	msgs := tm.mockServer.PostedMessages()
+	require.Len(t, msgs, 3)
+	assert.Contains(t, msgs[2].Text, "Link updated:")
+	assert.Contains(t, msgs[2].Text, "https://new.example.com")
+}
+
+func TestOutageManager_DeleteOutageLink(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outage := &types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-sub",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		Description:      "Outage for delete link test",
+		CreatedBy:        "system",
+		DiscoveredFrom:   "component-monitor",
+	}
+	err := tm.manager.CreateOutage(outage, nil, "system", "")
+	require.NoError(t, err)
+
+	link := &types.OutageLink{
+		OutageID:    outage.ID,
+		URL:         "https://example.com/to-delete",
+		LinkType:    types.LinkTypeOther,
+		Description: "Will be removed",
+	}
+	err = tm.manager.AddOutageLink(link, "on-call-user")
+	require.NoError(t, err)
+
+	err = tm.manager.DeleteOutageLink(outage.ID, link.ID, "on-call-user")
+	require.NoError(t, err)
+
+	var remaining []types.OutageLink
+	err = tm.db.Where("outage_id = ?", outage.ID).Find(&remaining).Error
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
+
+	var logs []types.OutageAuditLog
+	err = tm.db.Where("outage_id = ?", outage.ID).Order("created_at DESC").Find(&logs).Error
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	assert.Equal(t, "UPDATE", logs[0].Operation)
+	assert.Equal(t, "on-call-user", logs[0].User)
 }

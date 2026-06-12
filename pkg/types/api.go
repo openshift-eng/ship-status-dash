@@ -7,13 +7,25 @@ import (
 
 // UpsertOutageRequest represents the fields to create or update an outage.
 type UpsertOutageRequest struct {
-	Severity       *string       `json:"severity,omitempty"`
-	StartTime      *time.Time    `json:"start_time,omitempty"`
-	EndTime        *sql.NullTime `json:"end_time,omitempty"`
-	Description    *string       `json:"description,omitempty"`
-	DiscoveredFrom *string       `json:"discovered_from,omitempty"`
-	Confirmed      *bool         `json:"confirmed,omitempty"`
-	TriageNotes    *string       `json:"triage_notes,omitempty"`
+	Severity          *string       `json:"severity,omitempty"`
+	StartTime         *time.Time    `json:"start_time,omitempty"`
+	EndTime           *sql.NullTime `json:"end_time,omitempty"`
+	Description       *string       `json:"description,omitempty"`
+	DiscoveredFrom    *string       `json:"discovered_from,omitempty"`
+	Confirmed         *bool         `json:"confirmed,omitempty"`
+	InitialTriageNote *string       `json:"initial_triage_note,omitempty"`
+}
+
+// TriageNoteBodyRequest represents the body of a request to add or update a triage note.
+type TriageNoteBodyRequest struct {
+	Body string `json:"body"`
+}
+
+// OutageLinkRequest represents the body of a request to add or update an outage link.
+type OutageLinkRequest struct {
+	URL         string `json:"url"`
+	LinkType    string `json:"link_type,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // ComponentMonitorReportRequest represents a report from a component monitor.

@@ -59,6 +59,49 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/report` - Submit a community outage report
   - **Public:** No (requires authentication)
 
+### Outage History
+
+- **GET** `/api/components/{componentName}/{subComponentName}/outage-history` - Get historical outage data for a sub-component
+  - **Public:** Yes
+
+### Audit Logs
+
+- **GET** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/audit-logs` - Get audit logs for a specific outage
+  - **Public:** Yes
+
+### Triage Notes
+
+- **GET** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes` - Get all triage notes for an outage
+  - **Public:** Yes
+
+- **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes` - Add a triage note to an outage
+  - **Public:** No (requires authentication and component authorization)
+
+- **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Update a triage note
+  - **Public:** No (requires authentication and component authorization or note authorship)
+
+- **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Delete a triage note
+  - **Public:** No (requires authentication and component authorization or note authorship)
+
+### Outage Links
+
+- **GET** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links` - Get all links for an outage
+  - **Public:** Yes
+
+- **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links` - Add a link to an outage
+  - **Public:** No (requires authentication and component authorization)
+
+- **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Update an outage link
+  - **Public:** No (requires authentication and component authorization)
+
+- **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Delete an outage link
+  - **Public:** No (requires authentication and component authorization)
+
+### External Pages
+
+- **GET** `/api/external-pages/{pageSlug}` - Get an external page by slug
+  - **Public:** Yes
+
 ### User Information
 
 - **GET** `/api/user` - Get authenticated user information

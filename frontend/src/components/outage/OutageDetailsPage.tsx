@@ -6,6 +6,7 @@ import {
   Forum,
   History,
   Info,
+  Notes,
   Settings,
 } from '@mui/icons-material'
 import {
@@ -16,12 +17,15 @@ import {
   CircularProgress,
   Container,
   Paper,
+  Snackbar,
   Typography,
   styled,
 } from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { useAuth } from '../../contexts/AuthContext'
+import type { OutageLink, TriageNote } from '../../types'
 import type { Outage } from '../../types'
 import { getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
@@ -33,6 +37,8 @@ import OutageActions from './actions/OutageActions'
 import AuditLogModal from './AuditLogModal'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
 import Section from './OutageDetailsSection'
+import OutageLinksSection from './OutageLinksSection'
+import TriageNotesSection from './TriageNotesSection'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
@@ -208,6 +214,11 @@ const OutageDetailsPage = () => {
   const [outage, setOutage] = useState<Outage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [auditLogModalOpen, setAuditLogModalOpen] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
+
+  const { user, isComponentAdmin } = useAuth()
+  const isAdmin = outage ? isComponentAdmin(outage.component_name) : false
+  const currentUser = user?.username ?? ''
 
   const validationError =
     !componentName || !subComponentName || !outageId
@@ -265,6 +276,51 @@ const OutageDetailsPage = () => {
 
     fetchOutage()
   }, [componentName, subComponentName, outageId, fetchOutage])
+
+  const handleNoteAdded = (note: TriageNote) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, triage_notes: [...(prev.triage_notes ?? []), note] }
+    })
+  }
+
+  const handleNoteUpdated = (note: TriageNote) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        triage_notes: (prev.triage_notes ?? []).map((n) => (n.ID === note.ID ? note : n)),
+      }
+    })
+  }
+
+  const handleNoteDeleted = (noteId: number) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, triage_notes: (prev.triage_notes ?? []).filter((n) => n.ID !== noteId) }
+    })
+  }
+
+  const handleLinkAdded = (link: OutageLink) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: [...(prev.links ?? []), link] }
+    })
+  }
+
+  const handleLinkUpdated = (link: OutageLink) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: (prev.links ?? []).map((l) => (l.ID === link.ID ? link : l)) }
+    })
+  }
+
+  const handleLinkDeleted = (linkId: number) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, links: (prev.links ?? []).filter((l) => l.ID !== linkId) }
+    })
+  }
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
@@ -434,10 +490,38 @@ const OutageDetailsPage = () => {
               )}
             </ConfirmationChipContainer>
           </FieldBox>
-          {outage.triage_notes && (
-            <Field label="Triage Notes" value={outage.triage_notes} valueVariant="pre-wrap" />
-          )}
         </Section>
+
+        <FullWidthGridItem>
+          <Section icon={<Notes />} title="Triage Notes">
+            <TriageNotesSection
+              notes={outage.triage_notes ?? []}
+              isAdmin={isAdmin}
+              currentUser={currentUser}
+              componentName={componentName}
+              subComponentName={subComponentName}
+              outageId={outage.ID}
+              onNoteAdded={handleNoteAdded}
+              onNoteUpdated={handleNoteUpdated}
+              onNoteDeleted={handleNoteDeleted}
+              onDeleteSuccess={setSnackbarMessage}
+            />
+          </Section>
+        </FullWidthGridItem>
+
+        <FullWidthGridItem>
+          <OutageLinksSection
+            links={outage.links ?? []}
+            isAdmin={isAdmin}
+            componentName={componentName}
+            subComponentName={subComponentName}
+            outageId={outage.ID}
+            onLinkAdded={handleLinkAdded}
+            onLinkUpdated={handleLinkUpdated}
+            onLinkDeleted={handleLinkDeleted}
+            onDeleteSuccess={setSnackbarMessage}
+          />
+        </FullWidthGridItem>
 
         {outage.reasons && outage.reasons.length > 0 && (
           <FullWidthGridItem>
@@ -515,6 +599,17 @@ const OutageDetailsPage = () => {
           outageId={outage.ID}
         />
       )}
+
+      <Snackbar
+        open={snackbarMessage !== null}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="success" onClose={() => setSnackbarMessage(null)} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </StyledContainer>
   )
 }

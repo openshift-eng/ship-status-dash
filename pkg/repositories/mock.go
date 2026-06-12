@@ -195,6 +195,118 @@ func (m *MockOutageRepository) DeleteOutage(outage *types.Outage, user string) e
 	return m.DeleteOutageError
 }
 
+// MockTriageNoteRepository is a mock implementation of TriageNoteRepository.
+type MockTriageNoteRepository struct {
+	AddTriageNoteError    error
+	GetTriageNoteError    error
+	UpdateTriageNoteError error
+	DeleteTriageNoteError error
+
+	AddedTriageNotes []*types.TriageNote
+	TriageNoteByID   *types.TriageNote
+
+	AddTriageNoteFn    func(*types.TriageNote) error
+	GetTriageNoteFn    func(uint, uint) (*types.TriageNote, error)
+	UpdateTriageNoteFn func(uint, uint, string) (*types.TriageNote, error)
+	DeleteTriageNoteFn func(uint, uint) error
+}
+
+func (m *MockTriageNoteRepository) AddTriageNote(note *types.TriageNote) error {
+	if m.AddTriageNoteFn != nil {
+		return m.AddTriageNoteFn(note)
+	}
+	noteCopy := *note
+	m.AddedTriageNotes = append(m.AddedTriageNotes, &noteCopy)
+	return m.AddTriageNoteError
+}
+
+func (m *MockTriageNoteRepository) ListTriageNotes(_ uint) ([]types.TriageNote, error) {
+	return nil, nil
+}
+
+func (m *MockTriageNoteRepository) GetTriageNote(outageID, noteID uint) (*types.TriageNote, error) {
+	if m.GetTriageNoteFn != nil {
+		return m.GetTriageNoteFn(outageID, noteID)
+	}
+	if m.GetTriageNoteError != nil {
+		return nil, m.GetTriageNoteError
+	}
+	return m.TriageNoteByID, nil
+}
+
+func (m *MockTriageNoteRepository) UpdateTriageNote(outageID, noteID uint, body string) (*types.TriageNote, error) {
+	if m.UpdateTriageNoteFn != nil {
+		return m.UpdateTriageNoteFn(outageID, noteID, body)
+	}
+	if m.UpdateTriageNoteError != nil {
+		return nil, m.UpdateTriageNoteError
+	}
+	return m.TriageNoteByID, nil
+}
+
+func (m *MockTriageNoteRepository) DeleteTriageNote(outageID, noteID uint) error {
+	if m.DeleteTriageNoteFn != nil {
+		return m.DeleteTriageNoteFn(outageID, noteID)
+	}
+	return m.DeleteTriageNoteError
+}
+
+// MockOutageLinkRepository is a mock implementation of OutageLinkRepository.
+type MockOutageLinkRepository struct {
+	AddOutageLinkError    error
+	GetOutageLinkError    error
+	UpdateOutageLinkError error
+	DeleteOutageLinkError error
+
+	AddedOutageLinks []*types.OutageLink
+	OutageLinkByID   *types.OutageLink
+
+	AddOutageLinkFn    func(*types.OutageLink) error
+	GetOutageLinkFn    func(uint, uint) (*types.OutageLink, error)
+	UpdateOutageLinkFn func(uint, uint, string, types.LinkType, string) (*types.OutageLink, error)
+	DeleteOutageLinkFn func(uint, uint) error
+}
+
+func (m *MockOutageLinkRepository) AddOutageLink(link *types.OutageLink) error {
+	if m.AddOutageLinkFn != nil {
+		return m.AddOutageLinkFn(link)
+	}
+	linkCopy := *link
+	m.AddedOutageLinks = append(m.AddedOutageLinks, &linkCopy)
+	return m.AddOutageLinkError
+}
+
+func (m *MockOutageLinkRepository) ListOutageLinks(_ uint) ([]types.OutageLink, error) {
+	return nil, nil
+}
+
+func (m *MockOutageLinkRepository) GetOutageLink(outageID, linkID uint) (*types.OutageLink, error) {
+	if m.GetOutageLinkFn != nil {
+		return m.GetOutageLinkFn(outageID, linkID)
+	}
+	if m.GetOutageLinkError != nil {
+		return nil, m.GetOutageLinkError
+	}
+	return m.OutageLinkByID, nil
+}
+
+func (m *MockOutageLinkRepository) UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description string) (*types.OutageLink, error) {
+	if m.UpdateOutageLinkFn != nil {
+		return m.UpdateOutageLinkFn(outageID, linkID, url, linkType, description)
+	}
+	if m.UpdateOutageLinkError != nil {
+		return nil, m.UpdateOutageLinkError
+	}
+	return m.OutageLinkByID, nil
+}
+
+func (m *MockOutageLinkRepository) DeleteOutageLink(outageID, linkID uint) error {
+	if m.DeleteOutageLinkFn != nil {
+		return m.DeleteOutageLinkFn(outageID, linkID)
+	}
+	return m.DeleteOutageLinkError
+}
+
 func (m *MockComponentPingRepository) UpsertComponentReportPing(componentSlug, subComponentSlug string, timestamp time.Time) error {
 	m.UpsertedPings = append(m.UpsertedPings, struct {
 		ComponentSlug    string
