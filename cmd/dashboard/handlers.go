@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -1497,8 +1498,10 @@ func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Description string `json:"description"`
 	}
-	// Body is optional — empty body is valid for a +1
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
 
 	threshold := subComponent.GetReportThreshold()
 	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, threshold)
