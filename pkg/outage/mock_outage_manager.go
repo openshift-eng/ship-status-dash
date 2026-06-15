@@ -28,6 +28,7 @@ type MockOutageManager struct {
 	GetActiveOutagesForComponentFn   func(string) ([]types.Outage, error)
 	FindReopenableOutageFn           func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
 	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
+	GetStaleSuspectedOutagesFn       func(time.Time) ([]types.Outage, error)
 
 	LastGetOutagesDuringQueryStart time.Time
 	LastGetOutagesDuringQueryEnd   time.Time
@@ -160,6 +161,24 @@ func (m *MockOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAud
 // DeleteOutage is not used by ComponentMonitorReportProcessor but included for interface completeness.
 func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) error {
 	return nil
+}
+
+// GetActiveSuspectedOutages is included for interface completeness.
+func (m *MockOutageManager) GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	return nil, nil
+}
+
+// GetStaleSuspectedOutages returns mock stale suspected outages.
+func (m *MockOutageManager) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
+	if m.GetStaleSuspectedOutagesFn != nil {
+		return m.GetStaleSuspectedOutagesFn(cutoff)
+	}
+	return nil, nil
+}
+
+// ReportSuspectedOutage is included for interface completeness.
+func (m *MockOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug, description, user string, threshold int) (*ReportResult, error) {
+	return nil, nil
 }
 
 func (m *MockOutageManager) AddTriageNote(note *types.TriageNote) error {

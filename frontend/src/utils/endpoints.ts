@@ -90,6 +90,9 @@ export const getSubComponentHistoryEndpoint = (
 ) =>
   `${getPublicDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outage-history?days=${days}`
 
+export const getReportOutageEndpoint = (componentName: string, subComponentName: string) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/report`
+
 export const getTriageNotesEndpoint = (
   componentName: string,
   subComponentName: string,

@@ -75,6 +75,16 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageLink table")
 	}
 
+	if err = db.AutoMigrate(&types.OutageReport{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate OutageReport table")
+	}
+
+	if err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_suspected_per_subcomponent
+		ON outages (component_name, sub_component_name)
+		WHERE end_time IS NULL AND severity = 'Suspected' AND confirmed_at IS NULL`).Error; err != nil {
+		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
+	}
+
 	// TODO: remove once all environments have run this migration (triage_notes moved to own table)
 	if db.Migrator().HasColumn(&types.Outage{}, "triage_notes") {
 		if err = db.Migrator().DropColumn(&types.Outage{}, "triage_notes"); err != nil {

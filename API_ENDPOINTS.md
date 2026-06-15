@@ -56,6 +56,9 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Delete an outage
   - **Public:** No (requires authentication and component authorization)
 
+- **POST** `/api/components/{componentName}/{subComponentName}/outages/report` - Submit a community outage report
+  - **Public:** No (requires authentication)
+
 ### Outage History
 
 - **GET** `/api/components/{componentName}/{subComponentName}/outage-history` - Get historical outage data for a sub-component

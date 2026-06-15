@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -275,9 +276,37 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-resolve any active suspected outage on the same sub-component,
+	// since a confirmed admin outage supersedes any community-reported suspected outage.
+	if outage.ConfirmedAt.Valid {
+		h.resolveActiveSuspectedOutage(componentName, subComponentName, activeUser, logger)
+	}
+
 	logger.Infof("Successfully created outage: %d", outage.ID)
 
 	respondWithJSON(w, http.StatusCreated, outage)
+}
+
+// resolveActiveSuspectedOutage resolves any active suspected outage on a sub-component.
+// Called when an admin creates a confirmed outage, so the suspected one doesn't linger.
+func (h *Handlers) resolveActiveSuspectedOutage(componentSlug, subComponentSlug, user string, logger *logrus.Entry) {
+	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentSlug, subComponentSlug)
+	if err != nil {
+		logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
+		return
+	}
+	now := time.Now()
+	for i := range suspected {
+		suspected[i].EndTime = sql.NullTime{Time: now, Valid: true}
+		if err := h.outageManager.UpdateOutage(&suspected[i], user); err != nil {
+			logger.WithFields(logrus.Fields{
+				"outage_id": suspected[i].ID,
+				"error":     err,
+			}).Warn("Failed to auto-resolve suspected outage")
+		} else {
+			logger.WithField("outage_id", suspected[i].ID).Info("Auto-resolved suspected outage after admin confirmed outage")
+		}
+	}
 }
 
 // UpdateOutageJSON updates an existing outage with the provided fields.
@@ -1435,4 +1464,67 @@ func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Reque
 	}
 
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+// ReportOutageJSON handles community outage reports from authenticated non-admin users.
+func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+	subComponent := component.GetSubComponentBySlug(subComponentName)
+	if subComponent == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	var req struct {
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	threshold := subComponent.GetReportThreshold()
+	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, threshold)
+	if err != nil {
+		if errors.Is(err, outage.ErrOutageAlreadyTracked) {
+			respondWithError(w, http.StatusConflict, "An outage is already being tracked for this component")
+			return
+		}
+		if errors.Is(err, outage.ErrAlreadyReported) {
+			respondWithError(w, http.StatusConflict, "You have already reported this outage")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to process outage report")
+		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
+		return
+	}
+
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+
+	logger.WithField("outage_id", result.Outage.ID).Info("Successfully processed community outage report")
+
+	respondWithJSON(w, status, result.Outage)
 }
