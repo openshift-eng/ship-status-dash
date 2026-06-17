@@ -1097,6 +1097,25 @@ func (h *Handlers) GetOutageLinksJSON(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, links)
 }
 
+type reportResponse struct {
+	Outage      *types.Outage `json:"outage"`
+	ReportCount int64         `json:"report_count"`
+	Created     bool          `json:"created"`
+}
+
+// splitSuspectedOutages separates unconfirmed suspected outages from confirmed ones
+// so status endpoints can reflect them without exposing them in the public outage list.
+func splitSuspectedOutages(outages []types.Outage) (confirmed, suspected []types.Outage) {
+	for _, o := range outages {
+		if o.Severity == types.SeveritySuspected && !o.ConfirmedAt.Valid {
+			suspected = append(suspected, o)
+		} else {
+			confirmed = append(confirmed, o)
+		}
+	}
+	return
+}
+
 // GetSubComponentStatusJSON returns the status of a subcomponent based on active outages
 func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -1127,6 +1146,8 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	confirmed, suspected := splitSuspectedOutages(outages)
+
 	status := types.StatusHealthy
 	if len(outages) > 0 {
 		status = types.StatusFromOutages(outages)
@@ -1140,9 +1161,20 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 	response := types.ComponentStatus{
 		ComponentName: fmt.Sprintf("%s/%s", componentName, subComponentName),
 		Status:        status,
-		ActiveOutages: outages,
+		ActiveOutages: confirmed,
 		LastPingTime:  lastPingTime,
 	}
+
+	if len(suspected) > 0 {
+		s := suspected[0]
+		response.SuspectedOutage = &types.SuspectedOutageInfo{
+			OutageID:    s.ID,
+			ReportCount: int64(len(s.Reports)),
+			Description: s.Description,
+			StartTime:   s.StartTime,
+		}
+	}
+
 	respondWithJSON(w, http.StatusOK, response)
 }
 
@@ -1188,19 +1220,23 @@ func (h *Handlers) GetAllComponentsStatusJSON(w http.ResponseWriter, r *http.Req
 
 // getComponentStatus calculates the status of a component based on its sub-components and active outages
 func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus.Entry) (types.ComponentStatus, error) {
-	outages, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
+	allOutages, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		return types.ComponentStatus{}, err
 	}
 
+	confirmed, suspected := splitSuspectedOutages(allOutages)
+	hasSuspected := len(suspected) > 0
+
+	// Component-level rollup uses only confirmed outages for partial/critical logic.
 	subComponentsWithOutages := make(map[string]bool)
-	for _, outage := range outages {
+	for _, outage := range confirmed {
 		subComponentsWithOutages[outage.SubComponentName] = true
 	}
 
 	var criticalOutages []types.Outage
-	for _, outage := range outages {
+	for _, outage := range confirmed {
 		sub := component.GetSubComponentBySlug(outage.SubComponentName)
 		if sub != nil && sub.Critical {
 			criticalOutages = append(criticalOutages, outage)
@@ -1210,7 +1246,9 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	isPartialOutage := len(subComponentsWithOutages) < len(component.Subcomponents)
 
 	var status types.Status
-	if len(outages) == 0 {
+	if len(confirmed) == 0 && hasSuspected {
+		status = types.StatusSuspected
+	} else if len(confirmed) == 0 {
 		status = types.StatusHealthy
 	} else if len(criticalOutages) > 0 && isPartialOutage {
 		// Critical sub-component has an outage in a partial scenario: bypass Partial and propagate its severity.
@@ -1218,18 +1256,17 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	} else if isPartialOutage {
 		status = types.StatusPartial
 	} else {
-		status = types.StatusFromOutages(outages)
+		status = types.StatusFromOutages(confirmed)
 	}
 
-	// The last ping time is the time of the most recent ping for ANY of the sub-components in the component.
 	lastPingTime, err := h.pingRepo.GetMostRecentPingTimeForAnySubComponent(component.Slug)
 	if err != nil {
 		logger.WithField("error", err).Warn("Failed to query component report pings")
 	}
 
-	// Pre-compute per-sub-component status so clients don't have to iterate active_outages.
+	// Per-sub-component statuses use all outages so cards reflect suspected status.
 	subOutages := make(map[string][]types.Outage, len(component.Subcomponents))
-	for _, o := range outages {
+	for _, o := range allOutages {
 		subOutages[o.SubComponentName] = append(subOutages[o.SubComponentName], o)
 	}
 	subComponentStatuses := make(map[string]types.Status, len(component.Subcomponents))
@@ -1244,7 +1281,7 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	return types.ComponentStatus{
 		ComponentName:        component.Name,
 		Status:               status,
-		ActiveOutages:        outages,
+		ActiveOutages:        confirmed,
 		LastPingTime:         lastPingTime,
 		SubComponentStatuses: subComponentStatuses,
 	}, nil
@@ -1519,12 +1556,16 @@ func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status := http.StatusOK
+	httpStatus := http.StatusOK
 	if result.Created {
-		status = http.StatusCreated
+		httpStatus = http.StatusCreated
 	}
 
 	logger.WithField("outage_id", result.Outage.ID).Info("Successfully processed community outage report")
 
-	respondWithJSON(w, status, result.Outage)
+	respondWithJSON(w, httpStatus, reportResponse{
+		Outage:      result.Outage,
+		ReportCount: result.ReportCount,
+		Created:     result.Created,
+	})
 }

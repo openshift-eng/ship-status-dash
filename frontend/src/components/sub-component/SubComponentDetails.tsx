@@ -34,7 +34,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTags } from '../../contexts/TagsContext'
-import type { ComponentStatus, Outage, SubComponent } from '../../types'
+import type { ComponentStatus, Outage, ReportOutageResponse, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
   getOutagesDuringEndpoint,
@@ -50,6 +50,8 @@ import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
+
+import SuspectedReportsBanner from './SuspectedReportsBanner'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1),
@@ -348,12 +350,17 @@ const SubComponentDetails = () => {
     })
       .then((response) => {
         if (response.ok) {
-          setReportSuccess('Report recorded')
-          setReportDialogOpen(false)
-          setReportDescription('')
-          fetchData()
+          return response.json().then((data: ReportOutageResponse) => {
+            const count = data.report_count
+            setReportSuccess(
+              `Report recorded \u2014 ${count} ${count === 1 ? 'report' : 'reports'}`,
+            )
+            setReportDialogOpen(false)
+            setReportDescription('')
+            fetchData()
+          })
         } else {
-          return response.json().then((data) => {
+          return response.json().then((data: { error?: string }) => {
             setReportError(data.error || 'Failed to submit report')
           })
         }
@@ -574,7 +581,7 @@ const SubComponentDetails = () => {
                 Report Outage
               </ReportOutageButton>
             )}
-            {user && !isAdmin && (
+            {user && !isAdmin && !subComponentStatus?.suspected_outage && (
               <Button
                 variant="outlined"
                 startIcon={<ReportProblem />}
@@ -639,6 +646,15 @@ const SubComponentDetails = () => {
             </DocumentationButtonContainer>
           )}
         </StyledPaper>
+      )}
+
+      {subComponentStatus?.suspected_outage && (
+        <SuspectedReportsBanner
+          suspected={subComponentStatus.suspected_outage}
+          componentSlug={componentSlug || ''}
+          subComponentName={subComponentName}
+          onReportClick={() => setReportDialogOpen(true)}
+        />
       )}
 
       <StyledPaper>

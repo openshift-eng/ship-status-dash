@@ -145,6 +145,26 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 	}
 }
 
+func TestSplitSuspectedOutages(t *testing.T) {
+	confirmed := sql.NullTime{Time: time.Now(), Valid: true}
+	unconfirmed := sql.NullTime{}
+
+	outages := []types.Outage{
+		{Severity: types.SeverityDegraded, ConfirmedAt: confirmed},
+		{Severity: types.SeveritySuspected, ConfirmedAt: unconfirmed},
+		{Severity: types.SeveritySuspected, ConfirmedAt: confirmed},
+		{Severity: types.SeverityDown, ConfirmedAt: unconfirmed},
+	}
+
+	gotConfirmed, gotSuspected := splitSuspectedOutages(outages)
+
+	assert.Len(t, gotSuspected, 1, "only unconfirmed Suspected severity should be split out")
+	assert.Equal(t, types.SeveritySuspected, gotSuspected[0].Severity)
+	assert.False(t, gotSuspected[0].ConfirmedAt.Valid)
+
+	assert.Len(t, gotConfirmed, 3)
+}
+
 func TestGetOutagesDuringJSON(t *testing.T) {
 	cfg := minimalDashboardConfig()
 	t0 := time.Date(2025, 4, 1, 10, 0, 0, 0, time.UTC)

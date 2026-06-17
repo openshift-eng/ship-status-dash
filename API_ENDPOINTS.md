@@ -16,6 +16,7 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **GET** `/api/status/{componentName}/{subComponentName}` - Get status of a specific sub-component
   - **Public:** Yes
+  - Response includes an optional `suspected_outage` object (`{ outage_id, report_count, description, start_time }`) when an unconfirmed community-reported outage exists. Suspected outages are excluded from the `active_outages` list.
 
 ### Component Information
 
@@ -58,6 +59,7 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/report` - Submit a community outage report
   - **Public:** No (requires authentication)
+  - Response: `{ outage, report_count, created }` — `created` is true when a new suspected outage was opened, `report_count` is the total number of reports on the outage.
 
 ### Outage History
 

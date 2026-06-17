@@ -29,12 +29,21 @@ func (s Status) ToSeverity() Severity {
 	}
 }
 
+// SuspectedOutageInfo exposes community-reported suspected outage data in status responses.
+type SuspectedOutageInfo struct {
+	OutageID    uint      `json:"outage_id"`
+	ReportCount int64     `json:"report_count"`
+	Description string    `json:"description,omitempty"`
+	StartTime   time.Time `json:"start_time"`
+}
+
 type ComponentStatus struct {
-	ComponentName        string            `json:"component_name"`
-	Status               Status            `json:"status"`
-	ActiveOutages        []Outage          `json:"active_outages"`
-	LastPingTime         *time.Time        `json:"last_ping_time,omitempty"`
-	SubComponentStatuses map[string]Status `json:"sub_component_statuses,omitempty"`
+	ComponentName        string               `json:"component_name"`
+	Status               Status               `json:"status"`
+	ActiveOutages        []Outage             `json:"active_outages"`
+	LastPingTime         *time.Time           `json:"last_ping_time,omitempty"`
+	SubComponentStatuses map[string]Status    `json:"sub_component_statuses,omitempty"`
+	SuspectedOutage      *SuspectedOutageInfo `json:"suspected_outage,omitempty"`
 }
 
 // StatusFromOutages returns the roll-up status from active outages when the caller has already

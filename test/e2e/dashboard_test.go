@@ -2156,6 +2156,15 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 			return fmt.Sprintf("/api/components/%s/%s/outages/%d", componentSlug, subComponentSlug, id)
 		}
 
+		type reportResponse struct {
+			Outage      *types.Outage `json:"outage"`
+			ReportCount int64         `json:"report_count"`
+			Created     bool          `json:"created"`
+		}
+
+		statusEndpoint := fmt.Sprintf("/api/status/%s/%s", componentSlug, subComponentSlug)
+		componentStatusEndpoint := fmt.Sprintf("/api/status/%s", componentSlug)
+
 		t.Run("first report creates a suspected outage", func(t *testing.T) {
 			payload, _ := json.Marshal(map[string]string{"description": "Deck UI is not loading"})
 			resp, err := reporter1.Post(reportEndpoint, payload)
@@ -2164,8 +2173,11 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 
 			assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-			var outage types.Outage
-			require.NoError(t, json.NewDecoder(resp.Body).Decode(&outage))
+			var report reportResponse
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&report))
+			outage := report.Outage
+			assert.True(t, report.Created)
+			assert.Equal(t, int64(1), report.ReportCount)
 			assert.Equal(t, types.SeveritySuspected, outage.Severity)
 			assert.Equal(t, "Deck UI is not loading", outage.Description)
 			assert.Equal(t, outage_pkg.CommunityReportSource, outage.DiscoveredFrom)
@@ -2176,6 +2188,36 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 				for _, o := range outages {
 					assert.NotEqual(t, outage.ID, o.ID, "suspected outage should not appear in public list")
 				}
+			})
+
+			t.Run("sub-component status shows Suspected with suspected_outage info", func(t *testing.T) {
+				resp, err := adminClient.Get(statusEndpoint, false)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var status types.ComponentStatus
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+				assert.Equal(t, types.StatusSuspected, status.Status)
+				require.NotNil(t, status.SuspectedOutage, "expected suspected_outage in status response")
+				assert.Equal(t, outage.ID, status.SuspectedOutage.OutageID)
+				assert.Equal(t, int64(1), status.SuspectedOutage.ReportCount)
+
+				for _, o := range status.ActiveOutages {
+					assert.NotEqual(t, outage.ID, o.ID, "suspected outage should not appear in active_outages")
+				}
+			})
+
+			t.Run("component status shows Suspected for sub-component", func(t *testing.T) {
+				resp, err := adminClient.Get(componentStatusEndpoint, false)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var status types.ComponentStatus
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+				require.Contains(t, status.SubComponentStatuses, subComponentSlug)
+				assert.Equal(t, types.StatusSuspected, status.SubComponentStatuses[subComponentSlug])
 			})
 
 			t.Run("suspected outage is accessible by direct ID", func(t *testing.T) {
@@ -2207,11 +2249,25 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 				defer resp.Body.Close()
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-				var upgraded types.Outage
-				require.NoError(t, json.NewDecoder(resp.Body).Decode(&upgraded))
-				assert.Equal(t, outage.ID, upgraded.ID)
-				assert.Equal(t, types.SeverityDegraded, upgraded.Severity)
-				assert.True(t, upgraded.ConfirmedAt.Valid, "outage should be confirmed after threshold reached")
+				var report reportResponse
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&report))
+				assert.False(t, report.Created)
+				assert.Equal(t, int64(2), report.ReportCount)
+				assert.Equal(t, outage.ID, report.Outage.ID)
+				assert.Equal(t, types.SeverityDegraded, report.Outage.Severity)
+				assert.True(t, report.Outage.ConfirmedAt.Valid, "outage should be confirmed after threshold reached")
+			})
+
+			t.Run("after upgrade status shows Degraded without suspected_outage", func(t *testing.T) {
+				resp, err := adminClient.Get(statusEndpoint, false)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var status types.ComponentStatus
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+				assert.Equal(t, types.StatusDegraded, status.Status)
+				assert.Nil(t, status.SuspectedOutage, "suspected_outage should be absent after upgrade")
 			})
 
 			t.Run("upgraded outage now appears in public list", func(t *testing.T) {
