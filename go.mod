@@ -10,7 +10,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/openshift/client-go v0.0.0-20251205093018-96a6cbc1420c
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.68.1
+	github.com/prometheus/common v0.69.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/slack-go/slack v0.25.0
 	github.com/stretchr/testify v1.11.1
