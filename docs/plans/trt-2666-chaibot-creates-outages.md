@@ -91,9 +91,9 @@ The component-monitor follows this flow:
 
 ### Existing Chai-bot Integration
 
-Chai-bot runs on a separate OpenShift cluster from SHIP Status. It already has
-read-only access to SHIP Status via an external MCP endpoint
-(`mcp.ship-status.ci.openshift.org/mcp`) using `streamable_http` transport.
+Chai-bot runs on a separate OpenShift cluster from SHIP Status. Rather than
+calling the REST API directly, it integrates through an external MCP endpoint (`mcp.ship-status.ci.openshift.org/mcp`) using `streamable_http`
+transport.
 Tools are discovered dynamically via `tools/list` at startup -- if new tools
 are added to the MCP server, chai-bot picks them up automatically.
 
@@ -113,8 +113,7 @@ these endpoints without auth changes. This is the central design challenge.
 
 ## Design Options
 
-There are really two distinct auth problems here, and it helps to think about
-them separately.
+There are really two distinct auth problems here.
 
 ### Problem 1: How does chai-bot authenticate for write operations?
 
@@ -263,9 +262,10 @@ resolution logic, and keeps authorization in the system that owns the data.
 
 ### Problem 3: How does a SA use the outage CRUD endpoints?
 
-The existing outage endpoints use `IsUserAuthorizedForComponent`, which skips
-`Owner.ServiceAccount`. This is a gap -- the MCP server's SA can't use them
-as-is.
+The existing outage endpoints use `IsUserAuthorizedForComponent`, which only
+checks `Owner.User` and `Owner.RoverGroup`. Even if the MCP server's SA is
+listed as a `service_account` owner in the config, this function won't
+recognize it and the request will be rejected.
 
 #### Option A: Extend `IsUserAuthorizedForComponent` to check service accounts
 
@@ -385,12 +385,11 @@ authorization logic.
   component, since it needs to create and manage outages for all components
   on behalf of chai-bot. This follows the existing per-component ownership
   model and requires no dashboard code changes.
-- Alternatively, the dashboard could support a global "trusted delegating SA"
-  concept -- a top-level config key listing SAs that can delegate on behalf of
-  any user, separate from per-component ownership. This would avoid the
-  maintenance burden of updating every component's owners list whenever a new
-  component is added. The per-component approach is simpler to start with, but
-  if the config grows unwieldy, a global key may be worth adding later.
+- Alternatively, a global "trusted delegating SA" config key would avoid
+  updating every component's owners list whenever a new component is added.
+  Adding the SA to each component individually is simpler to start with, but
+  the global key is likely the better long-term option because it removes the
+  need to update every component's owners list when new components are added.
 
 **Auth middleware (`cmd/dashboard/auth.go`):**
 
@@ -410,6 +409,9 @@ authorization logic.
   a new `ActingServiceAccount` column records the SA that carried the request
 - For bot-initiated actions (no delegation), `User` is the SA itself and
   `ActingServiceAccount` is empty
+- This requires a database migration to add the `ActingServiceAccount` column
+  to the `outage_audit_logs` table (via `cmd/migrate`). Existing rows will have
+  this column empty, which is the correct value for non-delegated actions.
 
 **Authorization (`cmd/dashboard/handlers.go`):**
 
