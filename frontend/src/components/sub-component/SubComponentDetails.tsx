@@ -34,11 +34,16 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTags } from '../../contexts/TagsContext'
-import type { ComponentStatus, Outage, ReportOutageResponse, SubComponent } from '../../types'
+import type {
+  ComponentStatus,
+  Outage,
+  ReportSuspectedOutageResponse,
+  SubComponent,
+} from '../../types'
 import {
   getComponentInfoEndpoint,
   getOutagesDuringEndpoint,
-  getReportOutageEndpoint,
+  getReportSuspectedOutageEndpoint,
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
@@ -221,6 +226,7 @@ const SubComponentDetails = () => {
   const [reportDescription, setReportDescription] = useState('')
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportSuccess, setReportSuccess] = useState<string | null>(null)
+  const [hasUserReported, setHasUserReported] = useState(false)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
@@ -333,16 +339,20 @@ const SubComponentDetails = () => {
     fetchData()
   }
 
-  const handleReportSubmit = () => {
+  const hasSuspectedOutage = !!subComponentStatus?.suspected_outage
+
+  const handleReportSuspectedSubmit = () => {
     if (!componentName || !subComponentName) return
     setReportSubmitting(true)
     const body: Record<string, string> = {}
-    const trimmed = reportDescription.trim()
-    if (trimmed) {
-      body.description = trimmed
+    if (!hasSuspectedOutage) {
+      const trimmed = reportDescription.trim()
+      if (trimmed) {
+        body.description = trimmed
+      }
     }
     setReportError(null)
-    fetch(getReportOutageEndpoint(componentName, subComponentName), {
+    fetch(getReportSuspectedOutageEndpoint(componentName, subComponentName), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -350,13 +360,14 @@ const SubComponentDetails = () => {
     })
       .then((response) => {
         if (response.ok) {
-          return response.json().then((data: ReportOutageResponse) => {
+          return response.json().then((data: ReportSuspectedOutageResponse) => {
             const count = data.report_count
             setReportSuccess(
               `Report recorded \u2014 ${count} ${count === 1 ? 'report' : 'reports'}`,
             )
             setReportDialogOpen(false)
             setReportDescription('')
+            setHasUserReported(true)
             fetchData()
           })
         } else {
@@ -653,6 +664,7 @@ const SubComponentDetails = () => {
           suspected={subComponentStatus.suspected_outage}
           componentSlug={componentSlug || ''}
           subComponentName={subComponentName}
+          hasUserReported={hasUserReported}
           onReportClick={() => setReportDialogOpen(true)}
         />
       )}
@@ -759,17 +771,19 @@ const SubComponentDetails = () => {
             Report a suspected issue with {componentName} / {subComponentName}. If others have
             already reported this, your report will be added to the existing one.
           </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="What are you experiencing? (optional)"
-            fullWidth
-            multiline
-            minRows={2}
-            maxRows={4}
-            value={reportDescription}
-            onChange={(e) => setReportDescription(e.target.value)}
-          />
+          {!hasSuspectedOutage && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="What are you experiencing? (optional)"
+              fullWidth
+              multiline
+              minRows={2}
+              maxRows={4}
+              value={reportDescription}
+              onChange={(e) => setReportDescription(e.target.value)}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button
@@ -780,7 +794,11 @@ const SubComponentDetails = () => {
           >
             Cancel
           </Button>
-          <Button onClick={handleReportSubmit} variant="contained" disabled={reportSubmitting}>
+          <Button
+            onClick={handleReportSuspectedSubmit}
+            variant="contained"
+            disabled={reportSubmitting}
+          >
             {reportSubmitting ? 'Submitting...' : 'Submit'}
           </Button>
         </DialogActions>

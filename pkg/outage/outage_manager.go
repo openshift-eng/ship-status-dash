@@ -18,11 +18,6 @@ import (
 
 const CommunityReportSource = "community"
 
-var (
-	ErrOutageAlreadyTracked = errors.New("an outage is already being tracked for this component")
-	ErrAlreadyReported      = errors.New("you have already reported this outage")
-)
-
 // ReportResult contains the outcome of a community outage report.
 type ReportResult struct {
 	Outage      *types.Outage
@@ -45,6 +40,7 @@ type OutageManager interface {
 	AppendReasons(outageID uint, reasons []types.Reason) error
 	GetOutagesDuring(queryStart, queryEnd time.Time, refs []types.SubComponentRef) ([]types.Outage, error)
 	GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error)
+	GetActiveSuspectedOutagesForComponent(componentSlug string) ([]types.Outage, error)
 	GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error)
 	GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error)
 	DeleteOutage(outage *types.Outage, user string) error
@@ -115,6 +111,24 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 			}
 			if err := noteRepo.AddTriageNote(note); err != nil {
 				return err
+			}
+		}
+
+		suspected, err := outageRepo.GetActiveSuspectedOutages(outage.ComponentName, outage.SubComponentName)
+		if err != nil {
+			m.logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
+			return nil
+		}
+		now := time.Now()
+		for i := range suspected {
+			suspected[i].EndTime = sql.NullTime{Time: now, Valid: true}
+			if err := outageRepo.SaveOutage(&suspected[i], user); err != nil {
+				m.logger.WithFields(logrus.Fields{
+					"outage_id": suspected[i].ID,
+					"error":     err,
+				}).Warn("Failed to auto-resolve suspected outage")
+			} else {
+				m.logger.WithField("outage_id", suspected[i].ID).Info("Auto-resolved suspected outage")
 			}
 		}
 
@@ -218,6 +232,11 @@ func (m *DBOutageManager) GetActiveSuspectedOutages(componentSlug, subComponentS
 	return outageRepo.GetActiveSuspectedOutages(componentSlug, subComponentSlug)
 }
 
+func (m *DBOutageManager) GetActiveSuspectedOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	outageRepo := repositories.NewGORMOutageRepository(m.db)
+	return outageRepo.GetActiveSuspectedOutagesForComponent(componentSlug)
+}
+
 func (m *DBOutageManager) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
 	outageRepo := repositories.NewGORMOutageRepository(m.db)
 	return outageRepo.GetStaleSuspectedOutages(cutoff)
@@ -252,7 +271,7 @@ func (m *DBOutageManager) ReportSuspectedOutage(componentSlug, subComponentSlug,
 		return nil, err
 	}
 
-	if result.Outage != nil && result.Outage.Severity == types.SeverityDegraded && result.Outage.ConfirmedAt.Valid && m.slackReporter != nil {
+	if result.Outage != nil && result.Outage.Severity == types.SeverityDegraded && m.slackReporter != nil {
 		if err := m.slackReporter.ReportOutage(result.Outage); err != nil {
 			logger.WithFields(logrus.Fields{
 				"outage_id": result.Outage.ID,
@@ -271,11 +290,11 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 		outageRepo := repositories.NewGORMOutageRepository(tx)
 
 		var activeOutage types.Outage
-		err := tx.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL",
-			componentSlug, subComponentSlug).First(&activeOutage).Error
+		err := tx.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND severity = ? AND confirmed_at IS NULL",
+			componentSlug, subComponentSlug, types.SeveritySuspected).First(&activeOutage).Error
 
 		if err != nil && err != gorm.ErrRecordNotFound {
-			return fmt.Errorf("failed to query active outages: %w", err)
+			return fmt.Errorf("failed to query active suspected outages: %w", err)
 		}
 
 		if err == gorm.ErrRecordNotFound {
@@ -297,17 +316,6 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 			}
 			result.Created = true
 			logger.WithField("outage_id", activeOutage.ID).Info("Created new suspected outage from community report")
-		} else if activeOutage.Severity != types.SeveritySuspected || activeOutage.ConfirmedAt.Valid {
-			return ErrOutageAlreadyTracked
-		}
-
-		var existingReport types.OutageReport
-		err = tx.Where("outage_id = ? AND \"user\" = ?", activeOutage.ID, user).First(&existingReport).Error
-		if err == nil {
-			return ErrAlreadyReported
-		}
-		if err != gorm.ErrRecordNotFound {
-			return fmt.Errorf("failed to check existing report: %w", err)
 		}
 
 		report := types.OutageReport{
@@ -315,9 +323,6 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 			User:     user,
 		}
 		if err := tx.Create(&report).Error; err != nil {
-			if isUniqueViolation(err) {
-				return ErrAlreadyReported
-			}
 			return fmt.Errorf("failed to create outage report: %w", err)
 		}
 
@@ -329,7 +334,6 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 
 		if count >= int64(threshold) && activeOutage.Severity == types.SeveritySuspected {
 			activeOutage.Severity = types.SeverityDegraded
-			activeOutage.ConfirmedAt = sql.NullTime{Time: time.Now(), Valid: true}
 			if err := outageRepo.SaveOutage(&activeOutage, user); err != nil {
 				return fmt.Errorf("failed to upgrade outage severity: %w", err)
 			}

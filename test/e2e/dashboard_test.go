@@ -2151,7 +2151,7 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 		reporter2, err := NewTestHTTPClientWithUsername(adminClient.publicURL, adminClient.protectedURL, "reporter2")
 		require.NoError(t, err)
 
-		reportEndpoint := fmt.Sprintf("/api/components/%s/%s/outages/report", componentSlug, subComponentSlug)
+		reportEndpoint := fmt.Sprintf("/api/components/%s/%s/outages/report-suspected", componentSlug, subComponentSlug)
 		outageEndpoint := func(id uint) string {
 			return fmt.Sprintf("/api/components/%s/%s/outages/%d", componentSlug, subComponentSlug, id)
 		}
@@ -2247,7 +2247,7 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 				resp, err := reporter2.Post(reportEndpoint, nil)
 				require.NoError(t, err)
 				defer resp.Body.Close()
-				assert.Equal(t, http.StatusOK, resp.StatusCode)
+				assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 				var report reportResponse
 				require.NoError(t, json.NewDecoder(resp.Body).Decode(&report))
@@ -2255,7 +2255,6 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 				assert.Equal(t, int64(2), report.ReportCount)
 				assert.Equal(t, outage.ID, report.Outage.ID)
 				assert.Equal(t, types.SeverityDegraded, report.Outage.Severity)
-				assert.True(t, report.Outage.ConfirmedAt.Valid, "outage should be confirmed after threshold reached")
 			})
 
 			t.Run("after upgrade status shows Degraded without suspected_outage", func(t *testing.T) {
@@ -2300,7 +2299,7 @@ func testCommunityReport(adminClient *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("report on non-existent sub-component returns 404", func(t *testing.T) {
-			resp, err := reporter1.Post(fmt.Sprintf("/api/components/%s/nonexistent/outages/report", componentSlug), nil)
+			resp, err := reporter1.Post(fmt.Sprintf("/api/components/%s/nonexistent/outages/report-suspected", componentSlug), nil)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			assert.Equal(t, http.StatusNotFound, resp.StatusCode)

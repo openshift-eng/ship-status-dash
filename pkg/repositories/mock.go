@@ -185,6 +185,10 @@ func (m *MockOutageRepository) GetActiveSuspectedOutages(componentSlug, subCompo
 	return nil, nil
 }
 
+func (m *MockOutageRepository) GetActiveSuspectedOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	return nil, nil
+}
+
 func (m *MockOutageRepository) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
 	return nil, nil
 }

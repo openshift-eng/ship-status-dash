@@ -602,7 +602,7 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user1", 3)
-		assert.ErrorIs(t, err, ErrAlreadyReported)
+		assert.Error(t, err)
 	})
 
 	t.Run("threshold triggers upgrade to degraded and fires slack", func(t *testing.T) {
@@ -619,19 +619,15 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), result.ReportCount)
 		assert.Equal(t, types.SeverityDegraded, result.Outage.Severity)
-		assert.True(t, result.Outage.ConfirmedAt.Valid)
+		assert.False(t, result.Outage.ConfirmedAt.Valid)
 
 		// Slack fires on upgrade
 		msgs := tm.mockServer.PostedMessages()
 		require.Len(t, msgs, 1)
 		assert.Equal(t, "#test-channel", msgs[0].Channel)
-
-		// Further reports are now rejected (outage is confirmed)
-		_, err = tm.manager.ReportSuspectedOutage("test-component", "test-sub", "", "user4", 3)
-		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
 	})
 
-	t.Run("rejects report when active confirmed outage exists", func(t *testing.T) {
+	t.Run("creates suspected outage even when confirmed outage exists", func(t *testing.T) {
 		tm := setupTestManager(t, cfg)
 		defer tm.close()
 
@@ -647,27 +643,9 @@ func TestOutageManager_ReportSuspectedOutage(t *testing.T) {
 		}
 		require.NoError(t, tm.manager.CreateOutage(confirmed, nil, "admin", ""))
 
-		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
-		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
-	})
-
-	t.Run("rejects report when active non-suspected outage exists", func(t *testing.T) {
-		tm := setupTestManager(t, cfg)
-		defer tm.close()
-
-		unconfirmed := &types.Outage{
-			ComponentName:    "test-component",
-			SubComponentName: "test-sub",
-			Severity:         types.SeverityDown,
-			StartTime:        time.Now(),
-			Description:      "Component-monitor detected failure",
-			DiscoveredFrom:   "component-monitor",
-			CreatedBy:        "dashboard",
-		}
-		require.NoError(t, tm.manager.CreateOutage(unconfirmed, nil, "dashboard", ""))
-
-		_, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
-		assert.ErrorIs(t, err, ErrOutageAlreadyTracked)
+		result, err := tm.manager.ReportSuspectedOutage("test-component", "test-sub", "seems broken", "user1", 3)
+		require.NoError(t, err)
+		assert.True(t, result.Created)
 	})
 }
 

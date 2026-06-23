@@ -85,14 +85,6 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
 	}
 
-	// TODO: remove once all environments have run this migration (triage_notes moved to own table)
-	if db.Migrator().HasColumn(&types.Outage{}, "triage_notes") {
-		if err = db.Migrator().DropColumn(&types.Outage{}, "triage_notes"); err != nil {
-			log.WithField("error", err).Fatal("Failed to drop triage_notes column from outages table")
-		}
-		log.Info("Dropped legacy triage_notes column from outages table")
-	}
-
 	// TODO: remove once all environments have run this migration (added_by replaced by audit logs)
 	if db.Migrator().HasTable("outage_links") {
 		var addedByExists int64

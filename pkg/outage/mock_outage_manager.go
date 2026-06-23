@@ -21,14 +21,16 @@ type MockOutageManager struct {
 	UpdatedOutages []*types.Outage
 
 	// Mock functions
-	CreateOutageFn                   func(*types.Outage, []types.Reason, string) error
-	UpdateOutageFn                   func(*types.Outage, string) error
-	GetActiveOutagesCreatedByFn      func(string, string, string) ([]types.Outage, error)
-	GetActiveOutagesDiscoveredFromFn func(string, string, string) ([]types.Outage, error)
-	GetActiveOutagesForComponentFn   func(string) ([]types.Outage, error)
-	FindReopenableOutageFn           func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
-	GetOutagesDuringFn               func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
-	GetStaleSuspectedOutagesFn       func(time.Time) ([]types.Outage, error)
+	CreateOutageFn                          func(*types.Outage, []types.Reason, string) error
+	UpdateOutageFn                          func(*types.Outage, string) error
+	GetActiveOutagesCreatedByFn             func(string, string, string) ([]types.Outage, error)
+	GetActiveOutagesDiscoveredFromFn        func(string, string, string) ([]types.Outage, error)
+	GetActiveOutagesForComponentFn          func(string) ([]types.Outage, error)
+	GetActiveSuspectedOutagesForComponentFn func(string) ([]types.Outage, error)
+	GetActiveSuspectedOutagesFn             func(string, string) ([]types.Outage, error)
+	FindReopenableOutageFn                  func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
+	GetOutagesDuringFn                      func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
+	GetStaleSuspectedOutagesFn              func(time.Time) ([]types.Outage, error)
 
 	LastGetOutagesDuringQueryStart time.Time
 	LastGetOutagesDuringQueryEnd   time.Time
@@ -163,8 +165,19 @@ func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) erro
 	return nil
 }
 
-// GetActiveSuspectedOutages is included for interface completeness.
+// GetActiveSuspectedOutages returns mock suspected outages for a sub-component.
 func (m *MockOutageManager) GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	if m.GetActiveSuspectedOutagesFn != nil {
+		return m.GetActiveSuspectedOutagesFn(componentSlug, subComponentSlug)
+	}
+	return nil, nil
+}
+
+// GetActiveSuspectedOutagesForComponent returns mock suspected outages for a component.
+func (m *MockOutageManager) GetActiveSuspectedOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	if m.GetActiveSuspectedOutagesForComponentFn != nil {
+		return m.GetActiveSuspectedOutagesForComponentFn(componentSlug)
+	}
 	return nil, nil
 }
 

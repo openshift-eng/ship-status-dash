@@ -277,36 +277,9 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-resolve any active suspected outage on the same sub-component,
-	// since a confirmed admin outage supersedes any community-reported suspected outage.
-	if outage.ConfirmedAt.Valid {
-		h.resolveActiveSuspectedOutage(componentName, subComponentName, activeUser, logger)
-	}
-
 	logger.Infof("Successfully created outage: %d", outage.ID)
 
 	respondWithJSON(w, http.StatusCreated, outage)
-}
-
-// resolveActiveSuspectedOutage resolves any active suspected outage on a sub-component.
-// Called when an admin creates a confirmed outage, so the suspected one doesn't linger.
-func (h *Handlers) resolveActiveSuspectedOutage(componentSlug, subComponentSlug, user string, logger *logrus.Entry) {
-	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentSlug, subComponentSlug)
-	if err != nil {
-		logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
-		return
-	}
-	now := time.Now()
-	for i := range suspected {
-		suspected[i].EndTime = sql.NullTime{Time: now, Valid: true}
-		if err := h.outageManager.UpdateOutage(&suspected[i], user); err != nil {
-			logger.WithFields(logrus.Fields{
-				"outage_id": suspected[i].ID,
-				"error":     err,
-			}).Warn("Failed to auto-resolve suspected outage")
-		} else {
-			logger.WithField("outage_id", suspected[i].ID).Info("Auto-resolved suspected outage after admin confirmed outage")
-		}
-	}
 }
 
 // UpdateOutageJSON updates an existing outage with the provided fields.
@@ -1097,25 +1070,6 @@ func (h *Handlers) GetOutageLinksJSON(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, links)
 }
 
-type reportResponse struct {
-	Outage      *types.Outage `json:"outage"`
-	ReportCount int64         `json:"report_count"`
-	Created     bool          `json:"created"`
-}
-
-// splitSuspectedOutages separates unconfirmed suspected outages from confirmed ones
-// so status endpoints can reflect them without exposing them in the public outage list.
-func splitSuspectedOutages(outages []types.Outage) (confirmed, suspected []types.Outage) {
-	for _, o := range outages {
-		if o.Severity == types.SeveritySuspected && !o.ConfirmedAt.Valid {
-			suspected = append(suspected, o)
-		} else {
-			confirmed = append(confirmed, o)
-		}
-	}
-	return
-}
-
 // GetSubComponentStatusJSON returns the status of a subcomponent based on active outages
 func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -1146,11 +1100,18 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	confirmed, suspected := splitSuspectedOutages(outages)
+	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentName, subComponentName)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query suspected outages from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
+		return
+	}
 
 	status := types.StatusHealthy
 	if len(outages) > 0 {
 		status = types.StatusFromOutages(outages)
+	} else if len(suspected) > 0 {
+		status = types.StatusSuspected
 	}
 
 	lastPingTime, err := h.pingRepo.GetLastPingTime(componentName, subComponentName)
@@ -1161,7 +1122,7 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 	response := types.ComponentStatus{
 		ComponentName: fmt.Sprintf("%s/%s", componentName, subComponentName),
 		Status:        status,
-		ActiveOutages: confirmed,
+		ActiveOutages: outages,
 		LastPingTime:  lastPingTime,
 	}
 
@@ -1220,16 +1181,18 @@ func (h *Handlers) GetAllComponentsStatusJSON(w http.ResponseWriter, r *http.Req
 
 // getComponentStatus calculates the status of a component based on its sub-components and active outages
 func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus.Entry) (types.ComponentStatus, error) {
-	allOutages, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
+	confirmed, err := h.outageManager.GetActiveOutagesForComponent(component.Slug)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to query active outages from database")
 		return types.ComponentStatus{}, err
 	}
 
-	confirmed, suspected := splitSuspectedOutages(allOutages)
-	hasSuspected := len(suspected) > 0
+	suspected, err := h.outageManager.GetActiveSuspectedOutagesForComponent(component.Slug)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query suspected outages from database")
+		return types.ComponentStatus{}, err
+	}
 
-	// Component-level rollup uses only confirmed outages for partial/critical logic.
 	subComponentsWithOutages := make(map[string]bool)
 	for _, outage := range confirmed {
 		subComponentsWithOutages[outage.SubComponentName] = true
@@ -1246,12 +1209,11 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 	isPartialOutage := len(subComponentsWithOutages) < len(component.Subcomponents)
 
 	var status types.Status
-	if len(confirmed) == 0 && hasSuspected {
+	if len(confirmed) == 0 && len(suspected) > 0 {
 		status = types.StatusSuspected
 	} else if len(confirmed) == 0 {
 		status = types.StatusHealthy
 	} else if len(criticalOutages) > 0 && isPartialOutage {
-		// Critical sub-component has an outage in a partial scenario: bypass Partial and propagate its severity.
 		status = types.StatusFromOutages(criticalOutages)
 	} else if isPartialOutage {
 		status = types.StatusPartial
@@ -1264,15 +1226,22 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		logger.WithField("error", err).Warn("Failed to query component report pings")
 	}
 
-	// Per-sub-component statuses use all outages so cards reflect suspected status.
-	subOutages := make(map[string][]types.Outage, len(component.Subcomponents))
-	for _, o := range allOutages {
-		subOutages[o.SubComponentName] = append(subOutages[o.SubComponentName], o)
+	suspectedBySubComponent := make(map[string]bool)
+	for _, o := range suspected {
+		suspectedBySubComponent[o.SubComponentName] = true
 	}
 	subComponentStatuses := make(map[string]types.Status, len(component.Subcomponents))
 	for _, sub := range component.Subcomponents {
-		if subs, ok := subOutages[sub.Slug]; ok {
-			subComponentStatuses[sub.Slug] = types.StatusFromOutages(subs)
+		if _, hasOutage := subComponentsWithOutages[sub.Slug]; hasOutage {
+			var subOutages []types.Outage
+			for _, o := range confirmed {
+				if o.SubComponentName == sub.Slug {
+					subOutages = append(subOutages, o)
+				}
+			}
+			subComponentStatuses[sub.Slug] = types.StatusFromOutages(subOutages)
+		} else if suspectedBySubComponent[sub.Slug] {
+			subComponentStatuses[sub.Slug] = types.StatusSuspected
 		} else {
 			subComponentStatuses[sub.Slug] = types.StatusHealthy
 		}
@@ -1503,8 +1472,14 @@ func (h *Handlers) GetAuthenticatedUserJSON(w http.ResponseWriter, r *http.Reque
 	respondWithJSON(w, http.StatusOK, response)
 }
 
-// ReportOutageJSON handles community outage reports from authenticated non-admin users.
-func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
+type reportSuspectedResponse struct {
+	Outage      *types.Outage `json:"outage"`
+	ReportCount int64         `json:"report_count"`
+	Created     bool          `json:"created"`
+}
+
+// ReportSuspectedOutageJSON handles community suspected-outage reports from authenticated non-admin users.
+func (h *Handlers) ReportSuspectedOutageJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
@@ -1540,30 +1515,42 @@ func (h *Handlers) ReportOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	threshold := subComponent.GetReportThreshold()
-	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, threshold)
+	activeOutages, err := h.outageManager.GetActiveOutagesForSubComponent(componentName, subComponentName)
 	if err != nil {
-		if errors.Is(err, outage.ErrOutageAlreadyTracked) {
-			respondWithError(w, http.StatusConflict, "An outage is already being tracked for this component")
-			return
+		logger.WithField("error", err).Error("Failed to query active outages")
+		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
+		return
+	}
+	if len(activeOutages) > 0 {
+		respondWithError(w, http.StatusConflict, "An outage is already being tracked for this component")
+		return
+	}
+
+	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentName, subComponentName)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query suspected outages")
+		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
+		return
+	}
+	if len(suspected) > 0 {
+		for _, r := range suspected[0].Reports {
+			if r.User == activeUser {
+				respondWithError(w, http.StatusConflict, "You have already reported this outage")
+				return
+			}
 		}
-		if errors.Is(err, outage.ErrAlreadyReported) {
-			respondWithError(w, http.StatusConflict, "You have already reported this outage")
-			return
-		}
-		logger.WithField("error", err).Error("Failed to process outage report")
+	}
+
+	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, subComponent.ReportThreshold)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to process suspected outage report")
 		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
 		return
 	}
 
-	httpStatus := http.StatusOK
-	if result.Created {
-		httpStatus = http.StatusCreated
-	}
+	logger.WithField("outage_id", result.Outage.ID).Info("Successfully processed community suspected outage report")
 
-	logger.WithField("outage_id", result.Outage.ID).Info("Successfully processed community outage report")
-
-	respondWithJSON(w, httpStatus, reportResponse{
+	respondWithJSON(w, http.StatusCreated, reportSuspectedResponse{
 		Outage:      result.Outage,
 		ReportCount: result.ReportCount,
 		Created:     result.Created,

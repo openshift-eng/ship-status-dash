@@ -207,9 +207,9 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: true,
 		},
 		{
-			path:      "/api/components/{componentName}/{subComponentName}/outages/report",
+			path:      "/api/components/{componentName}/{subComponentName}/outages/report-suspected",
 			method:    http.MethodPost,
-			handler:   s.handlers.ReportOutageJSON,
+			handler:   s.handlers.ReportSuspectedOutageJSON,
 			protected: true,
 		},
 		{

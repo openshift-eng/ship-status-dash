@@ -14,7 +14,7 @@ export interface SuspectedOutageInfo {
   start_time: string
 }
 
-export interface ReportOutageResponse {
+export interface ReportSuspectedOutageResponse {
   outage: Outage
   report_count: number
   created: boolean

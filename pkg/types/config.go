@@ -97,14 +97,6 @@ type SubComponent struct {
 
 const DefaultReportThreshold = 3
 
-// GetReportThreshold returns the configured report threshold, defaulting to DefaultReportThreshold.
-func (s *SubComponent) GetReportThreshold() int {
-	if s.ReportThreshold <= 0 {
-		return DefaultReportThreshold
-	}
-	return s.ReportThreshold
-}
-
 // Monitoring defines how this sub-component is automatically monitored.
 type Monitoring struct {
 	Frequency string `json:"frequency" yaml:"frequency"`
