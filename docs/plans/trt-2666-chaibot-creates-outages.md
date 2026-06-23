@@ -355,7 +355,7 @@ outages to verify the requesting user is authorized
 - Duplicate detection: check for existing active outages before creating
 - Slack notification deduplication: check if alerting is already active
 
-## Implementation Plan
+## Implementation Plan (Updated - 6/23)
 
 ### Phase 1: Service Account and Auth Infrastructure
 
@@ -514,11 +514,7 @@ check, which does not affect existing human user authorization flows.
 
 1. **Scope of MCP tools.** Should chai-bot also update outage severity, or
   only create and resolve? Should it manage outage links?
-  > **A:** Chai-bot should be able to do anything a human can do through
-  > the web UI (update severity, add triage notes, manage links, etc.). Need
-  > to look into the full set of operations and whether any are too
-  > complicated to expose as MCP tools.
-
+  > **A:** Chai-bot should be able to do anything a human can do through the web UI (update severity, add triage notes, manage links, etc.) -- need to look into the full set of operations and whether any are too complicated to expose as MCP tools.
 2. **Bot-initiated severity.** Should bot-initiated outages always be
   `Suspected`, or should chai-bot be able to set `Degraded`/`Down` when it
    has high-confidence signals (e.g., confirmed by multiple probes)?
