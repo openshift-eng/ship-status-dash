@@ -290,7 +290,7 @@ func (m *DBOutageManager) reportSuspectedOutageTx(componentSlug, subComponentSlu
 		outageRepo := repositories.NewGORMOutageRepository(tx)
 
 		var activeOutage types.Outage
-		err := tx.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND severity = ? AND confirmed_at IS NULL",
+		err := tx.Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND severity = ?",
 			componentSlug, subComponentSlug, types.SeveritySuspected).First(&activeOutage).Error
 
 		if err != nil && err != gorm.ErrRecordNotFound {
