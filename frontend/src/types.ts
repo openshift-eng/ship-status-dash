@@ -12,12 +12,7 @@ export interface SuspectedOutageInfo {
   report_count: number
   description?: string
   start_time: string
-}
-
-export interface ReportSuspectedOutageResponse {
-  outage: Outage
-  report_count: number
-  created: boolean
+  reporters: string[]
 }
 
 export interface ComponentStatus {

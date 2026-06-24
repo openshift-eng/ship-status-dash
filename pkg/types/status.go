@@ -35,6 +35,7 @@ type SuspectedOutageInfo struct {
 	ReportCount int64     `json:"report_count"`
 	Description string    `json:"description,omitempty"`
 	StartTime   time.Time `json:"start_time"`
+	Reporters   []string  `json:"reporters"`
 }
 
 type ComponentStatus struct {

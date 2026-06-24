@@ -1127,11 +1127,16 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 
 	if len(suspected) > 0 {
 		s := suspected[0]
+		reporters := make([]string, len(s.Reports))
+		for i, r := range s.Reports {
+			reporters[i] = r.User
+		}
 		response.SuspectedOutage = &types.SuspectedOutageInfo{
 			OutageID:    s.ID,
 			ReportCount: int64(len(s.Reports)),
 			Description: s.Description,
 			StartTime:   s.StartTime,
+			Reporters:   reporters,
 		}
 	}
 

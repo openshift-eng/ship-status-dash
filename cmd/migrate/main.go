@@ -79,9 +79,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageReport table")
 	}
 
+	db.Exec("DROP INDEX IF EXISTS idx_one_active_suspected_per_subcomponent")
 	if err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_suspected_per_subcomponent
 		ON outages (component_name, sub_component_name)
-		WHERE end_time IS NULL AND severity = 'Suspected' AND confirmed_at IS NULL`).Error; err != nil {
+		WHERE end_time IS NULL AND severity = 'Suspected' AND deleted_at IS NULL`).Error; err != nil {
 		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
 	}
 

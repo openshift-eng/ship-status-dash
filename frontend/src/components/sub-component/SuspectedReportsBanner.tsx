@@ -1,4 +1,4 @@
-import { Alert, Button, Typography } from '@mui/material'
+import { Alert, Button, Tooltip, Typography } from '@mui/material'
 
 import { useAuth } from '../../contexts/AuthContext'
 import type { SuspectedOutageInfo } from '../../types'
@@ -20,7 +20,7 @@ const SuspectedReportsBanner = ({
   onReportClick,
 }: SuspectedReportsBannerProps) => {
   const { user, isComponentAdmin } = useAuth()
-  const showReportButton = !!user && !isComponentAdmin(componentSlug) && !hasUserReported
+  const isNonAdmin = !!user && !isComponentAdmin(componentSlug)
 
   const reportCount = suspected.report_count
   const reportLabel = reportCount === 1 ? 'report' : 'reports'
@@ -32,10 +32,20 @@ const SuspectedReportsBanner = ({
       icon={false}
       sx={{ mb: 2, py: 2, px: 3 }}
       action={
-        showReportButton ? (
-          <Button variant="outlined" size="small" color="warning" onClick={onReportClick}>
-            Experiencing this?
-          </Button>
+        isNonAdmin ? (
+          hasUserReported ? (
+            <Tooltip title="You have already reported this outage">
+              <span>
+                <Button variant="outlined" size="small" color="warning" disabled>
+                  You reported this
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <Button variant="outlined" size="small" color="warning" onClick={onReportClick}>
+              Experiencing this?
+            </Button>
+          )
         ) : undefined
       }
     >

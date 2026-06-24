@@ -34,12 +34,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTags } from '../../contexts/TagsContext'
-import type {
-  ComponentStatus,
-  Outage,
-  ReportSuspectedOutageResponse,
-  SubComponent,
-} from '../../types'
+import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
   getOutagesDuringEndpoint,
@@ -226,7 +221,6 @@ const SubComponentDetails = () => {
   const [reportDescription, setReportDescription] = useState('')
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportSuccess, setReportSuccess] = useState<string | null>(null)
-  const [hasUserReported, setHasUserReported] = useState(false)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
@@ -237,6 +231,9 @@ const SubComponentDetails = () => {
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const isAdmin = isComponentAdmin(componentSlug || '')
+  const hasUserReported = !!(
+    user && subComponentStatus?.suspected_outage?.reporters?.includes(user.username)
+  )
 
   const validationError =
     !componentName || !subComponentName ? 'Missing component or subcomponent name' : null
@@ -360,18 +357,18 @@ const SubComponentDetails = () => {
     })
       .then((response) => {
         if (response.ok) {
-          return response.json().then((data: ReportSuspectedOutageResponse) => {
-            const count = data.report_count
-            setReportSuccess(
-              `Report recorded \u2014 ${count} ${count === 1 ? 'report' : 'reports'}`,
-            )
+          return response.json().then(() => {
+            setReportSuccess('Report recorded')
             setReportDialogOpen(false)
             setReportDescription('')
-            setHasUserReported(true)
             fetchData()
           })
         } else {
           return response.json().then((data: { error?: string }) => {
+            if (response.status === 409) {
+              setReportDialogOpen(false)
+              fetchData()
+            }
             setReportError(data.error || 'Failed to submit report')
           })
         }
@@ -592,7 +589,7 @@ const SubComponentDetails = () => {
                 Report Outage
               </ReportOutageButton>
             )}
-            {user && !isAdmin && !subComponentStatus?.suspected_outage && (
+            {user && !isAdmin && subComponentStatus && !subComponentStatus.suspected_outage && (
               <Button
                 variant="outlined"
                 startIcon={<ReportProblem />}
