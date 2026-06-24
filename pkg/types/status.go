@@ -46,21 +46,25 @@ type ComponentStatus struct {
 	SuspectedOutage      *SuspectedOutageInfo `json:"suspected_outage,omitempty"`
 }
 
-// StatusFromOutages returns the roll-up status from active outages when the caller has already
-// narrowed the case (for example, every sub-component has at least one outage).
+// StatusFromOutages returns the roll-up status from active outages. Suspected-severity
+// outages are filtered out upstream by the excludeSuspected repository scope.
+// Unconfirmed outages whose severity is not Degraded are treated as Suspected
+// (admin-created outages on requires_confirmation sub-components). Unconfirmed Degraded
+// outages are treated as Degraded (community-reported outages that reached the report threshold
+// but have not yet been admin-confirmed).
 func StatusFromOutages(outages []Outage) Status {
 	if len(outages) == 0 {
 		return StatusHealthy
 	}
 
 	confirmedOutages := make([]Outage, 0)
-	hasUnconfirmedOutage := false
+	hasUnconfirmedNonDegraded := false
 
 	for _, outage := range outages {
-		if outage.ConfirmedAt.Valid {
+		if outage.ConfirmedAt.Valid || outage.Severity == SeverityDegraded {
 			confirmedOutages = append(confirmedOutages, outage)
 		} else {
-			hasUnconfirmedOutage = true
+			hasUnconfirmedNonDegraded = true
 		}
 	}
 
@@ -68,7 +72,7 @@ func StatusFromOutages(outages []Outage) Status {
 		mostCriticalSeverity := confirmedOutages[0].Severity
 		highestLevel := GetSeverityLevel(mostCriticalSeverity)
 
-		for _, outage := range confirmedOutages {
+		for _, outage := range confirmedOutages[1:] {
 			level := GetSeverityLevel(outage.Severity)
 			if level > highestLevel {
 				highestLevel = level
@@ -78,7 +82,7 @@ func StatusFromOutages(outages []Outage) Status {
 		return mostCriticalSeverity.ToStatus()
 	}
 
-	if hasUnconfirmedOutage {
+	if hasUnconfirmedNonDegraded {
 		return StatusSuspected
 	}
 
