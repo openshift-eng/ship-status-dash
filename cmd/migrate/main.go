@@ -85,18 +85,6 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
 	}
 
-	// TODO: remove once all environments have run this migration (added_by replaced by audit logs)
-	if db.Migrator().HasTable("outage_links") {
-		var addedByExists int64
-		db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name = 'added_by'").Scan(&addedByExists)
-		if addedByExists > 0 {
-			if err = db.Exec("ALTER TABLE outage_links DROP COLUMN added_by").Error; err != nil {
-				log.WithField("error", err).Fatal("Failed to drop added_by column from outage_links")
-			}
-			log.Info("Dropped added_by column from outage_links table")
-		}
-	}
-
 	// TODO: remove once all environments have run this migration (incident_channel renamed to incident_channel_thread)
 	if db.Migrator().HasTable("outage_links") {
 		if err = db.Exec("UPDATE outage_links SET link_type = 'incident_channel_thread' WHERE link_type = 'incident_channel'").Error; err != nil {

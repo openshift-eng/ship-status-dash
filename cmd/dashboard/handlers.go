@@ -276,7 +276,6 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-resolve any active suspected outage on the same sub-component,
 	logger.Infof("Successfully created outage: %d", outage.ID)
 
 	respondWithJSON(w, http.StatusCreated, outage)
@@ -1507,9 +1506,7 @@ func (h *Handlers) ReportSuspectedOutageJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req struct {
-		Description string `json:"description"`
-	}
+	var req types.ReportSuspectedOutageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return

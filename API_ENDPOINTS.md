@@ -57,7 +57,7 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Delete an outage
   - **Public:** No (requires authentication and component authorization)
 
-- **POST** `/api/components/{componentName}/{subComponentName}/outages/report` - Submit a community outage report
+- **POST** `/api/components/{componentName}/{subComponentName}/outages/report-suspected` - Submit a community suspected outage report
   - **Public:** No (requires authentication)
   - Response: `{ outage, report_count, created }` — `created` is true when a new suspected outage was opened, `report_count` is the total number of reports on the outage.
 
