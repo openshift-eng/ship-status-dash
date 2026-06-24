@@ -7,12 +7,21 @@ export type Status =
   | 'Unknown'
   | 'CapacityExhausted'
 
+export interface SuspectedOutageInfo {
+  outage_id: number
+  report_count: number
+  description?: string
+  start_time: string
+  reporters: string[]
+}
+
 export interface ComponentStatus {
   component_name: string
   status: Status
   active_outages: Outage[]
   last_ping_time?: string
   sub_component_statuses?: Record<string, Status>
+  suspected_outage?: SuspectedOutageInfo
 }
 
 export interface OutageDayBucket {

@@ -75,24 +75,15 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageLink table")
 	}
 
-	// TODO: remove once all environments have run this migration (triage_notes moved to own table)
-	if db.Migrator().HasColumn(&types.Outage{}, "triage_notes") {
-		if err = db.Migrator().DropColumn(&types.Outage{}, "triage_notes"); err != nil {
-			log.WithField("error", err).Fatal("Failed to drop triage_notes column from outages table")
-		}
-		log.Info("Dropped legacy triage_notes column from outages table")
+	if err = db.AutoMigrate(&types.OutageReport{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate OutageReport table")
 	}
 
-	// TODO: remove once all environments have run this migration (added_by replaced by audit logs)
-	if db.Migrator().HasTable("outage_links") {
-		var addedByExists int64
-		db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'outage_links' AND column_name = 'added_by'").Scan(&addedByExists)
-		if addedByExists > 0 {
-			if err = db.Exec("ALTER TABLE outage_links DROP COLUMN added_by").Error; err != nil {
-				log.WithField("error", err).Fatal("Failed to drop added_by column from outage_links")
-			}
-			log.Info("Dropped added_by column from outage_links table")
-		}
+	db.Exec("DROP INDEX IF EXISTS idx_one_active_suspected_per_subcomponent")
+	if err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_suspected_per_subcomponent
+		ON outages (component_name, sub_component_name)
+		WHERE end_time IS NULL AND severity = 'Suspected' AND deleted_at IS NULL`).Error; err != nil {
+		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
 	}
 
 	// TODO: remove once all environments have run this migration (incident_channel renamed to incident_channel_thread)

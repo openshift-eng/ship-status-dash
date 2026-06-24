@@ -16,7 +16,7 @@ type Severity string
 const (
 	SeverityDown     Severity = "Down"
 	SeverityDegraded Severity = "Degraded"
-	//TODO: Suspected might be useful in the future (for the down-detector type voting), but it isn't used anywhere yet.
+	// SeveritySuspected is used by the community reporting feature (non-admin outage reports).
 	SeveritySuspected Severity = "Suspected"
 	// SeverityCapacityExhausted is for components that can go into outage due to lack of resources. For example, a boskos cloud-account.
 	SeverityCapacityExhausted Severity = "CapacityExhausted"
@@ -92,6 +92,7 @@ type Outage struct {
 	// SlackThreads are the Slack threads associated with the outage
 	SlackThreads []SlackThread    `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
 	AuditLogs    []OutageAuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:OutageID"`
+	Reports      []OutageReport   `json:"reports,omitempty" gorm:"foreignKey:OutageID"`
 	TriageNotes  []TriageNote     `json:"triage_notes,omitempty" gorm:"foreignKey:OutageID"`
 	Links        []OutageLink     `json:"links,omitempty" gorm:"foreignKey:OutageID"`
 }
@@ -104,7 +105,7 @@ func (o *Outage) Validate() (string, bool) {
 	if o.Severity == "" {
 		validationErrors = append(validationErrors, "Severity is required")
 	} else if !IsValidSeverity(string(o.Severity)) {
-		validationErrors = append(validationErrors, "Invalid severity. Must be one of: Down, Degraded, Suspected")
+		validationErrors = append(validationErrors, "Invalid severity. Must be one of: Down, Degraded, Suspected, CapacityExhausted")
 	}
 
 	if o.StartTime.IsZero() {
@@ -279,6 +280,13 @@ type OutageAuditLog struct {
 	Operation string `json:"operation" gorm:"column:operation;not null"`
 	Old       []byte `json:"old,omitempty" gorm:"column:old;type:jsonb"`
 	New       []byte `json:"new,omitempty" gorm:"column:new;type:jsonb"`
+}
+
+// OutageReport tracks an individual user's report of a suspected outage.
+type OutageReport struct {
+	gorm.Model
+	OutageID uint   `json:"outage_id" gorm:"column:outage_id;not null;uniqueIndex:idx_outage_report_user"`
+	User     string `json:"user" gorm:"column:user;not null;uniqueIndex:idx_outage_report_user"`
 }
 
 // TriageNote represents a single note added to an outage during triage.

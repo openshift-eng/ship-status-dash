@@ -16,6 +16,7 @@ components:
       - name: Deck
         description: The frontend for Prow
         requires_confirmation: false
+        report_threshold: 2
         tags:
           - frontend
       - name: Hook

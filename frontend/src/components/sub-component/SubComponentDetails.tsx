@@ -12,8 +12,14 @@ import {
   Button,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   IconButton,
   Paper,
+  Snackbar,
   styled,
   TextField,
   ToggleButton,
@@ -23,7 +29,7 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
@@ -31,6 +37,8 @@ import { useTags } from '../../contexts/TagsContext'
 import type { ComponentStatus, Outage, SubComponent } from '../../types'
 import {
   getComponentInfoEndpoint,
+  getOutagesDuringEndpoint,
+  getReportSuspectedOutageEndpoint,
   getSubComponentOutagesEndpoint,
   getSubComponentStatusEndpoint,
 } from '../../utils/endpoints'
@@ -42,6 +50,8 @@ import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
+
+import SuspectedReportsBanner from './SuspectedReportsBanner'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1),
@@ -201,11 +211,16 @@ const SubComponentDetails = () => {
     componentSlug: string
     subComponentSlug: string
   }>()
-  const { isComponentAdmin } = useAuth()
+  const { user, isComponentAdmin } = useAuth()
   const { getTag } = useTags()
   const [outages, setOutages] = useState<Outage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [createOutageModalOpen, setCreateOutageModalOpen] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportDescription, setReportDescription] = useState('')
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [reportSuccess, setReportSuccess] = useState<string | null>(null)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
@@ -216,24 +231,35 @@ const SubComponentDetails = () => {
   const componentName = componentSlug ? deslugify(componentSlug) : ''
   const subComponentName = subComponentSlug ? deslugify(subComponentSlug) : ''
   const isAdmin = isComponentAdmin(componentSlug || '')
+  const hasUserReported = !!(
+    user && subComponentStatus?.suspected_outage?.reporters?.includes(user.username)
+  )
 
   const validationError =
     !componentName || !subComponentName ? 'Missing component or subcomponent name' : null
   const [loading, setLoading] = useState(!!(componentName && subComponentName))
 
-  const fetchData = useCallback(() => {
+  const outagesEndpoint =
+    dateStart && dateEnd
+      ? getOutagesDuringEndpoint(
+          componentName,
+          subComponentName,
+          new Date(dateStart + 'T00:00:00Z'),
+          new Date(dateEnd + 'T23:59:59.999Z'),
+        )
+      : getSubComponentOutagesEndpoint(componentName, subComponentName)
+
+  const fetchData = () => {
     if (!componentName || !subComponentName) {
       return
     }
 
-    // Use setTimeout to defer state updates, then start async fetch
     setTimeout(() => {
       setLoading(true)
       setError(null)
 
-      // Fetch outages, status, and component configuration in parallel
       Promise.all([
-        fetch(getSubComponentOutagesEndpoint(componentName, subComponentName)),
+        fetch(outagesEndpoint),
         fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
         fetch(getComponentInfoEndpoint(componentName)),
       ])
@@ -261,19 +287,15 @@ const SubComponentDetails = () => {
             const [outagesData, statusData, componentData] = results
             if (outagesData) {
               setOutages(outagesData)
-              // Set default filter to 'ongoing' if there are any ongoing outages
-              const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
-              if (hasOngoing) {
-                setStatusFilter('ongoing')
-              } else {
-                setStatusFilter('all')
+              if (!dateStart && !dateEnd) {
+                const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
+                setStatusFilter(hasOngoing ? 'ongoing' : 'all')
               }
             }
             if (statusData) {
               setSubComponentStatus(statusData)
             }
             if (componentData) {
-              // Store the entire subcomponent configuration
               const foundSubComponent = componentData.sub_components.find(
                 (sub: SubComponent) => sub.slug === subComponentSlug,
               )
@@ -290,14 +312,14 @@ const SubComponentDetails = () => {
           setLoading(false)
         })
     }, 0)
-  }, [componentName, subComponentName, subComponentSlug])
+  }
 
   useEffect(() => {
     if (!componentName || !subComponentName) {
       return
     }
     fetchData()
-  }, [componentName, subComponentName, subComponentSlug, fetchData])
+  }, [componentName, subComponentName, subComponentSlug, outagesEndpoint, dateStart, dateEnd])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
@@ -312,6 +334,51 @@ const SubComponentDetails = () => {
 
   const handleOutageAction = () => {
     fetchData()
+  }
+
+  const hasSuspectedOutage = !!subComponentStatus?.suspected_outage
+
+  const handleReportSuspectedSubmit = () => {
+    if (!componentName || !subComponentName) return
+    setReportSubmitting(true)
+    const body: Record<string, string> = {}
+    if (!hasSuspectedOutage) {
+      const trimmed = reportDescription.trim()
+      if (trimmed) {
+        body.description = trimmed
+      }
+    }
+    setReportError(null)
+    fetch(getReportSuspectedOutageEndpoint(componentName, subComponentName), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    })
+      .then((response) => {
+        if (response.ok) {
+          return response.json().then(() => {
+            setReportSuccess('Report recorded')
+            setReportDialogOpen(false)
+            setReportDescription('')
+            fetchData()
+          })
+        } else {
+          return response.json().then((data: { error?: string }) => {
+            if (response.status === 409) {
+              setReportDialogOpen(false)
+              fetchData()
+            }
+            setReportError(data.error || 'Failed to submit report')
+          })
+        }
+      })
+      .catch(() => {
+        setReportError('Failed to submit report')
+      })
+      .finally(() => {
+        setReportSubmitting(false)
+      })
   }
 
   const columns: GridColDef[] = [
@@ -440,17 +507,7 @@ const SubComponentDetails = () => {
       : []),
   ]
 
-  // Filter by date range from URL params (overlap: outage was active during the filtered period)
-  const dateFilteredOutages = outages.filter((outage) => {
-    if (!dateStart || !dateEnd) return true
-    const outageStart = new Date(outage.start_time).getTime()
-    const outageEnd = outage.end_time.Valid ? new Date(outage.end_time.Time).getTime() : Infinity
-    const filterStart = new Date(dateStart + 'T00:00:00Z').getTime()
-    const filterEnd = new Date(dateEnd + 'T00:00:00Z').getTime()
-    return outageStart < filterEnd && outageEnd > filterStart
-  })
-
-  const filteredOutages = dateFilteredOutages.filter((outage) => {
+  const filteredOutages = outages.filter((outage) => {
     if (statusFilter === 'ongoing') {
       return !outage.end_time.Valid
     }
@@ -532,6 +589,15 @@ const SubComponentDetails = () => {
                 Report Outage
               </ReportOutageButton>
             )}
+            {user && !isAdmin && subComponentStatus && !subComponentStatus.suspected_outage && (
+              <Button
+                variant="outlined"
+                startIcon={<ReportProblem />}
+                onClick={() => setReportDialogOpen(true)}
+              >
+                Report Issue
+              </Button>
+            )}
             <StyledButton
               variant="contained"
               onClick={() => navigate(`/${componentSlug}`)}
@@ -588,6 +654,16 @@ const SubComponentDetails = () => {
             </DocumentationButtonContainer>
           )}
         </StyledPaper>
+      )}
+
+      {subComponentStatus?.suspected_outage && (
+        <SuspectedReportsBanner
+          suspected={subComponentStatus.suspected_outage}
+          componentSlug={componentSlug || ''}
+          subComponentName={subComponentName}
+          hasUserReported={hasUserReported}
+          onReportClick={() => setReportDialogOpen(true)}
+        />
       )}
 
       <StyledPaper>
@@ -673,6 +749,68 @@ const SubComponentDetails = () => {
         componentName={componentName || ''}
         subComponentName={subComponentName || ''}
       />
+
+      <Dialog
+        open={reportDialogOpen}
+        onClose={() => {
+          setReportDialogOpen(false)
+          setReportError(null)
+        }}
+      >
+        <DialogTitle>Report Issue</DialogTitle>
+        <DialogContent>
+          {reportError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {reportError}
+            </Alert>
+          )}
+          <DialogContentText>
+            Report a suspected issue with {componentName} / {subComponentName}. If others have
+            already reported this, your report will be added to the existing one.
+          </DialogContentText>
+          {!hasSuspectedOutage && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="What are you experiencing? (optional)"
+              fullWidth
+              multiline
+              minRows={2}
+              maxRows={4}
+              value={reportDescription}
+              onChange={(e) => setReportDescription(e.target.value)}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setReportDialogOpen(false)
+              setReportError(null)
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleReportSuspectedSubmit}
+            variant="contained"
+            disabled={reportSubmitting}
+          >
+            {reportSubmitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={reportSuccess !== null}
+        autoHideDuration={4000}
+        onClose={() => setReportSuccess(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="success" onClose={() => setReportSuccess(null)} sx={{ width: '100%' }}>
+          {reportSuccess}
+        </Alert>
+      </Snackbar>
     </PageContainer>
   )
 }

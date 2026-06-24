@@ -26,7 +26,7 @@ func TestStatusFromOutages(t *testing.T) {
 			expected: StatusDown,
 		},
 		{
-			name: "single unconfirmed outage - down severity",
+			name: "single unconfirmed outage - down severity shows suspected",
 			outages: []Outage{
 				{Severity: SeverityDown, ConfirmedAt: unconfirmedTime},
 			},
@@ -35,9 +35,8 @@ func TestStatusFromOutages(t *testing.T) {
 		{
 			name: "multiple confirmed outages - highest severity wins",
 			outages: []Outage{
-				{Severity: SeveritySuspected, ConfirmedAt: confirmedTime},
-				{Severity: SeverityDown, ConfirmedAt: confirmedTime},
 				{Severity: SeverityDegraded, ConfirmedAt: confirmedTime},
+				{Severity: SeverityDown, ConfirmedAt: confirmedTime},
 			},
 			expected: StatusDown,
 		},
@@ -50,12 +49,19 @@ func TestStatusFromOutages(t *testing.T) {
 			expected: StatusDegraded,
 		},
 		{
-			name: "only unconfirmed outages - shows suspected",
+			name: "only unconfirmed non-degraded outages - shows suspected",
 			outages: []Outage{
 				{Severity: SeverityDown, ConfirmedAt: unconfirmedTime},
-				{Severity: SeverityDegraded, ConfirmedAt: unconfirmedTime},
+				{Severity: SeverityDown, ConfirmedAt: unconfirmedTime},
 			},
 			expected: StatusSuspected,
+		},
+		{
+			name: "unconfirmed degraded outage shows degraded not suspected",
+			outages: []Outage{
+				{Severity: SeverityDegraded, ConfirmedAt: unconfirmedTime},
+			},
+			expected: StatusDegraded,
 		},
 		{
 			name: "confirmed degraded with unconfirmed down - confirmed takes precedence",

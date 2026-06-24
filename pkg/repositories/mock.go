@@ -181,6 +181,18 @@ func (m *MockOutageRepository) GetAllActiveOutages() ([]types.Outage, error) {
 	return m.AllActiveOutages, nil
 }
 
+func (m *MockOutageRepository) GetActiveSuspectedOutages(componentSlug, subComponentSlug string) ([]types.Outage, error) {
+	return nil, nil
+}
+
+func (m *MockOutageRepository) GetActiveSuspectedOutagesForComponent(componentSlug string) ([]types.Outage, error) {
+	return nil, nil
+}
+
+func (m *MockOutageRepository) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
+	return nil, nil
+}
+
 func (m *MockOutageRepository) DeleteOutage(outage *types.Outage, user string) error {
 	outageCopy := *outage
 	m.DeletedOutages = append(m.DeletedOutages, &outageCopy)

@@ -73,18 +73,11 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 		}
 	}
 
-	unconfirmedOutage := func(sub string, sev types.Severity) types.Outage {
-		return types.Outage{
-			ComponentName:    "alpha",
-			SubComponentName: sub,
-			Severity:         sev,
-		}
-	}
-
 	tests := []struct {
-		name           string
-		outages        []types.Outage
-		expectedStatus types.Status
+		name             string
+		outages          []types.Outage
+		suspectedOutages []types.Outage
+		expectedStatus   types.Status
 	}{
 		{
 			name:           "critical sub-component down bypasses Partial",
@@ -97,8 +90,10 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 			expectedStatus: types.StatusDegraded,
 		},
 		{
-			name:           "unconfirmed critical sub-component shows Suspected",
-			outages:        []types.Outage{unconfirmedOutage("critical-one", types.SeverityDown)},
+			name: "suspected outage on critical sub-component shows Suspected",
+			suspectedOutages: []types.Outage{
+				{ComponentName: "alpha", SubComponentName: "critical-one", Severity: types.SeveritySuspected},
+			},
 			expectedStatus: types.StatusSuspected,
 		},
 		{
@@ -135,6 +130,9 @@ func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 			mockOM := &outage.MockOutageManager{}
 			mockOM.GetActiveOutagesForComponentFn = func(slug string) ([]types.Outage, error) {
 				return tt.outages, nil
+			}
+			mockOM.GetActiveSuspectedOutagesForComponentFn = func(slug string) ([]types.Outage, error) {
+				return tt.suspectedOutages, nil
 			}
 
 			h := newTestHandlers(t, cfg, mockOM)

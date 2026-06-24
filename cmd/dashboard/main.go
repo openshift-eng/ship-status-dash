@@ -128,11 +128,13 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.Dashbo
 		}
 	}
 
-	// We need to compute and store all the slugs to match by them later
 	for _, component := range cfg.Components {
 		component.Slug = utils.Slugify(component.Name)
 		for i := range component.Subcomponents {
 			component.Subcomponents[i].Slug = utils.Slugify(component.Subcomponents[i].Name)
+			if component.Subcomponents[i].ReportThreshold <= 0 {
+				component.Subcomponents[i].ReportThreshold = types.DefaultReportThreshold
+			}
 		}
 	}
 
@@ -165,6 +167,8 @@ func connectDatabase(log *logrus.Logger, dsn string) *gorm.DB {
 	log.Info("Connecting to PostgreSQL database")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
+		// Required for errors.Is checks against gorm.ErrDuplicatedKey to work
+		TranslateError: true,
 	})
 	if err != nil {
 		log.WithField("error", err).Fatal("Failed to connect to database")
@@ -286,6 +290,9 @@ func main() {
 
 	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)
+
+	suspectedExpiryChecker := NewSuspectedOutageExpiryChecker(outageManager, 30*time.Minute, log)
+	go suspectedExpiryChecker.Start(ctx)
 
 	addr := ":" + opts.Port
 	go func() {

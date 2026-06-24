@@ -48,6 +48,11 @@ type SubComponentListItem struct {
 	SubComponent
 }
 
+// ReportSuspectedOutageRequest represents the body of a community suspected-outage report.
+type ReportSuspectedOutageRequest struct {
+	Description string `json:"description"`
+}
+
 // OutageDayBucket holds aggregated outage data for a single calendar day.
 type OutageDayBucket struct {
 	Date               string  `json:"date"`                 // YYYY-MM-DD
