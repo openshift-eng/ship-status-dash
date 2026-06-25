@@ -102,8 +102,8 @@ server authenticates to the dashboard API via oauth-proxy using a service
 account Bearer token (the same mechanism the component-monitor uses).
 
 Chai-bot can also resolve Slack user IDs to Kerberos `uid` via its OrgData
-tool, which is used to verify user authorization via the maintainer-list
-endpoint before creating outages.
+tool, which is used to verify user authorization via the protected
+maintainer-list endpoint before creating outages.
 
 ### Service Account Authorization
 
@@ -132,8 +132,9 @@ The MCP server already documents this pattern for future write operations (see
 `cmd/dashboard/README.md`): mounting a service account Bearer token at
 `SHIP_STATUS_AUTH_TOKEN_FILE` and sending it to the oauth-proxy at
 `127.0.0.1:8443`. This follows the same mechanism the component-monitor uses.
-A K8s ServiceAccount for chai-bot in the `ship-status` namespace would be
-added to `dashboard-config.yaml` owners as a `service_account` entry, and
+A dedicated K8s ServiceAccount for chai-bot in the `ship-status` namespace
+will be created, following the same pattern as the component-monitor. It will
+be added to `dashboard-config.yaml` owners as a `service_account` entry, and
 the oauth-proxy validates the token via `TokenReview`.
 
 #### Outer layer: chai-bot to the MCP server
@@ -217,12 +218,15 @@ MCP server acts under its own SA identity, creating an unconfirmed outage.
 - The API must only trust `X-On-Behalf-Of` from explicitly allowed SAs
 - Audit logs would record both the SA and the delegated user
 
-#### Option B: New maintainer-list endpoint
+#### Option B: New protected maintainer-list endpoint
 
-We could add a new authenticated endpoint
-(`GET /api/components/{slug}/maintainers`) that expands `rover_group`s to
-individual users. Chai-bot would query this endpoint to check if the requesting
-user is a maintainer before making the outage creation request.
+Add a **protected** endpoint (`GET /api/components/{slug}/maintainers`) that
+expands each component's `rover_group` owners to individual Kerberos IDs.
+Chai-bot calls it (via the MCP server's SA Bearer token through oauth-proxy)
+to verify the requesting user is a maintainer before creating an outage.
+
+Like other write-related reads, it must be registered in `server.go` with
+`protected: true` (oauth-proxy + HMAC auth), not on the public ingress.
 
 - The data is already available -- `GroupMembershipCache.GetGroupMembers`
 exists in `groups.go` and returns the member list for a given group
@@ -257,7 +261,7 @@ component for any user with no server-side guardrails
 - Violates the principle that the system of record should enforce its own
 access control
 
-**(Updated - 6/23) We should have a separate maintainer-list endpoint. The
+**(Updated - 6/23) We should have a separate protected maintainer-list endpoint. The
 data is already available via `GroupMembershipCache.GetGroupMembers`, and
 exposing it as an endpoint lets chai-bot check authorization before acting.
 Chai-bot's SA is added as a trusted owner on all components (following the
@@ -315,7 +319,7 @@ trusted SAs, not all service accounts
 `IsUserAuthorizedForComponent` would be extended to accept
 `service_account` owners, but only for creating unconfirmed outages
 
-**(Updated - 6/23) We will probably need to extend** `IsUserAuthorizedForComponent` **to authorize SAs, following the pattern that** `ValidateRequest` **already uses for the component-monitor. Adding a** `service_account` **check to the existing function should be a minimal code change, and since chai-bot's SA is added as an owner on all components, the existing endpoints should work immediately. Chai-bot handles authorization client-side via the maintainer-list endpoint before creating outages, so the dashboard only needs to verify the SA is a recognized owner. An alternative would be to create a separate** `IsServiceAccountAuthorizedForComponent` **function and call both in the handlers, which keeps human and SA authorization separate but requires updating every handler that needs SA access.**
+**(Updated - 6/23) We will probably need to extend** `IsUserAuthorizedForComponent` **to authorize SAs, following the pattern that** `ValidateRequest` **already uses for the component-monitor. Adding a** `service_account` **check to the existing function should be a minimal code change, and since chai-bot's SA is added as an owner on all components, the existing endpoints should work immediately. Chai-bot handles authorization client-side via the protected maintainer-list endpoint before creating outages, so the dashboard only needs to verify the SA is a recognized owner. An alternative would be to create a separate** `IsServiceAccountAuthorizedForComponent` **function and call both in the handlers, which keeps human and SA authorization separate but requires updating every handler that needs SA access.**
 
 ## Solution Overview
 
@@ -325,8 +329,8 @@ trusted SAs, not all service accounts
 
 1. User asks chai-bot in Slack to create an outage
 2. Chai-bot resolves the user's Slack ID to Kerberos `uid` via OrgData
-3. Chai-bot calls the maintainer-list endpoint to verify the user is authorized
-  for the target component
+3. Chai-bot calls the protected maintainer-list endpoint to verify the user is
+  authorized for the target component
 4. If authorized, chai-bot calls `create_outage` on the SHIP Status MCP server
 5. MCP server calls the dashboard API with its SA Bearer token via oauth-proxy
 6. `IsUserAuthorizedForComponent` (extended) checks `service_account` owners
@@ -344,16 +348,25 @@ trusted SAs, not all service accounts
 3. MCP server calls the dashboard API with its SA Bearer token via oauth-proxy
 4. `IsUserAuthorizedForComponent` (extended) checks `service_account` owners
 5. Outage is created as unconfirmed with severity `Suspected`
-6. Team is notified via Slack
+6. Slack notification is sent automatically by the existing outage reporting
+   path (`pkg/outage/slack_report.go`)
 
-### Key Constraints
+### Requirements
 
 - Chai-bot must never create confirmed outages autonomously -- only
-unconfirmed/Suspected
-- Chai-bot must check the maintainer-list endpoint before creating user-initiated
-outages to verify the requesting user is authorized
-- Duplicate detection: check for existing active outages before creating
-- Slack notification deduplication: check if alerting is already active
+  unconfirmed/Suspected
+- Chai-bot must check the protected maintainer-list endpoint before creating
+  user-initiated outages to verify the requesting user is authorized
+- Before creating an outage, check for an existing active outage on the same
+  sub-component and return it instead of creating a duplicate
+
+Several other pieces chai-bot needs already exist and are reused unchanged:
+
+- Protected-route auth (oauth-proxy + HMAC) and the component-monitor SA pattern
+- MCP read tools in `mcp/api_server.py` -- use `get_infrastructure_status` for
+  component status and `get_component_outages` for active outages
+- Slack reporting in `pkg/outage/slack_report.go`, which runs when outages are
+  created or updated through the API and threads updates on the same alert
 
 ## Implementation Plan (Updated - 6/23)
 
@@ -361,8 +374,8 @@ outages to verify the requesting user is authorized
 
 **Kubernetes:**
 
-- Create a ServiceAccount for chai-bot in the `ship-status` namespace (or
-reuse the existing pod SA if appropriate) and mount a projected token
+- Create a dedicated ServiceAccount for chai-bot in the `ship-status`
+  namespace and mount a projected token
 - Ensure the oauth-proxy SA has `system:auth-delegator` ClusterRole to perform
 `TokenReview` for the new SA token
 
@@ -385,29 +398,28 @@ user identity.
 
 **Maintainer-list endpoint (`cmd/dashboard/handlers.go`):**
 
-- Add `GET /api/components/{componentName}/maintainers` (protected endpoint)
-- Expand each component's `rover_group` owners via
-`GroupMembershipCache.GetGroupMembers` and return the list of individual
-users authorized to manage the component
-- Chai-bot calls this endpoint before creating outages to verify the
-requesting user is a maintainer
+Add `GET /api/components/{componentName}/maintainers` as a **protected**
+endpoint (`protected: true` in `server.go` -- oauth-proxy + HMAC auth, not on
+the public ingress). It expands each component's `rover_group` owners via
+`GroupMembershipCache.GetGroupMembers` and returns the list of individual
+users authorized to manage the component. Chai-bot calls this endpoint before
+creating outages to verify the requesting user is a maintainer.
 
 **MCP write tools (in `mcp/`):**
 
 The MCP server already has plumbing for authenticated writes:
 `SHIP_STATUS_AUTH_TOKEN_FILE` for the SA Bearer token and
 `SHIP_STATUS_PROTECTED_API_URL` pointing at the oauth-proxy on
-`127.0.0.1:8443`. New write tools are added here. Chai-bot discovers them
-automatically via `tools/list` at startup.
+`127.0.0.1:8443`. Status and outage queries use the existing read tools
+(`get_infrastructure_status`, `get_component_outages`). This phase adds write
+tools; chai-bot discovers them automatically via `tools/list` at startup.
 
 - `create_outage` -- create an outage on a sub-component. Accepts severity
 and description.
 - `resolve_outage` -- set end_time on an active outage
 - `add_triage_note` -- add a triage note to an existing outage
-- `check_maintainers` -- call the maintainer-list endpoint to verify a user
-is authorized for a component
-- `get_component_status` -- query current status (already exists as read-only)
-- `list_active_outages` -- list active outages for a component/sub-component
+- `check_maintainers` -- call the protected maintainer-list endpoint to verify
+a user is authorized for a component
 
 **Bot-initiated safeguards:**
 
@@ -420,14 +432,11 @@ If one exists, return the existing outage instead of creating a duplicate.
 This is especially important for bot-initiated outages, where multiple probe
 failures could trigger rapid-fire creation attempts.
 
-### Phase 3: Slack Notification Integration
+### Phase 3: Slack Notifications
 
-**File: `pkg/outage/slack_report.go`**
-
-- Before sending a notification, check if the sub-component already has an
-active outage with Slack threads
-- If not already alerted, notify the component's configured Slack channel
-- Include context about what chai-bot detected and a link to the dashboard
+Outages chai-bot creates or updates go through the same API as the web UI.
+`pkg/outage/slack_report.go` handles notifications and threads updates on the
+existing alert. The duplicate-outage check in Phase 2 is sufficient here.
 
 ### Phase 4: Chai-bot Integration
 
@@ -475,8 +484,9 @@ suggest trying again later
 | Bot-initiated creates unconfirmed    | SA creates outage autonomously         | Outage created as Suspected, unconfirmed      |
 | Bot-initiated blocked from confirmed | SA creates outage with severity=Down   | Rejected or forced to Suspected               |
 | Duplicate detection                  | Active outage exists on sub-component  | Returns existing outage, no duplicate created |
-| Maintainer list returns members      | Component with `rover_group` owners    | Expanded list of individual users returned    |
-| Maintainer list unknown component    | Non-existent component slug            | 404 Not Found                                 |
+| Maintainer list returns members      | Protected request with SA token; component with `rover_group` owners | Expanded list of individual users returned    |
+| Maintainer list requires auth        | Unauthenticated request to maintainer-list endpoint                  | 401 Unauthorized                              |
+| Maintainer list unknown component    | Non-existent component slug                                          | 404 Not Found                                 |
 
 
 **MCP write tools (`mcp/`):**
@@ -486,7 +496,7 @@ suggest trying again later
 | --------------------------------- | ------------------------------------- | ---------------------------------- |
 | Write with valid SA token         | Valid SA auth + `create_outage` call  | Tool executes, calls dashboard API |
 | Write without SA token            | No auth + `create_outage` call        | Rejected by oauth-proxy            |
-| Read tools remain unauthenticated | No auth + `get_component_status` call | Tool executes normally             |
+| Read tools remain unauthenticated | No auth + `get_infrastructure_status` call | Tool executes normally             |
 | Check maintainers returns list    | `check_maintainers` call              | Returns list of authorized users   |
 
 
@@ -500,7 +510,8 @@ suggest trying again later
 | SA creates outage as owner  | Chai-bot SA creates outage on owned component    | Outage created, audit trail recorded         |
 | SA rejected on unowned comp | SA creates outage on component it doesn't own    | 403                                          |
 | Bot-initiated flow          | SA creates outage autonomously                   | Suspected severity, unconfirmed              |
-| Maintainer list endpoint    | Query maintainers for component with rover_group | Returns expanded member list                 |
+| Maintainer list endpoint (auth)     | Protected route with SA token; component with `rover_group` | Returns expanded member list                 |
+| Maintainer list endpoint (no auth)  | Unauthenticated request to maintainer-list endpoint         | 401 Unauthorized                             |
 | Outage lifecycle via SA     | Create, add triage note, resolve                 | All operations succeed, audit trail complete |
 
 
