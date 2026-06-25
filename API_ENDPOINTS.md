@@ -29,6 +29,11 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **GET** `/api/sub-components` - List sub-components; optional query parameters `componentName`, `tag`, and `team` (when more than one is given, a sub-component must match all of them)
   - **Public:** Yes
 
+### Component Maintainers
+
+- **GET** `/api/components/{componentName}/maintainers` - Get the list of users authorized to manage a component, expanding rover_group owners to individual users
+  - **Public:** No (requires authentication)
+
 ### Tags
 
 - **GET** `/api/tags` - Get the configured tag definitions

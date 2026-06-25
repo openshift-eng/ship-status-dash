@@ -49,6 +49,47 @@ func minimalDashboardConfig() *types.DashboardConfig {
 	}
 }
 
+func TestIsUserAuthorizedForComponent(t *testing.T) {
+	component := &types.Component{
+		Name: "Test", Slug: "test",
+		Owners: []types.Owner{
+			{User: "developer"},
+			{RoverGroup: "test-group"},
+			{ServiceAccount: "system:serviceaccount:ship-status:chai-bot"},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		user       string
+		authorized bool
+	}{
+		{
+			name:       "user owner is authorized",
+			user:       "developer",
+			authorized: true,
+		},
+		{
+			name:       "service account owner is authorized",
+			user:       "system:serviceaccount:ship-status:chai-bot",
+			authorized: true,
+		},
+		{
+			name:       "unlisted user is not authorized",
+			user:       "stranger",
+			authorized: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &types.DashboardConfig{Components: []*types.Component{component}}
+			h := newTestHandlers(t, cfg, &outage.MockOutageManager{})
+			assert.Equal(t, tt.authorized, h.IsUserAuthorizedForComponent(tt.user, component))
+		})
+	}
+}
+
 func TestGetComponentStatusJSON_CriticalSubComponent(t *testing.T) {
 	now := time.Now()
 	cfg := &types.DashboardConfig{

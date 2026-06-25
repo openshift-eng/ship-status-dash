@@ -111,7 +111,7 @@ type Monitoring struct {
 // Owner represents ownership information for a component, either via Rover group or service account.
 type Owner struct {
 	RoverGroup string `json:"rover_group,omitempty" yaml:"rover_group,omitempty"`
-	// ServiceAccount owners are used for the component-monitor.
+	// ServiceAccount owners are used for automated agents (component-monitor, chai-bot MCP server).
 	// In order to report the status of a sub-component, the service account must be an owner of the component.
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
 	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
