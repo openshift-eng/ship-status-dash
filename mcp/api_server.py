@@ -79,6 +79,126 @@ def list_sub_components() -> dict:
     return _api.list_sub_components()
 
 
+# Write tools (protected API)
+
+
+@mcp.tool()
+def check_maintainers(component_slug: str) -> dict:
+    """Users authorized to manage a component (expands rover_group owners). Use to verify a user before creating outages on their behalf."""
+    return _api.check_maintainers(component_slug)
+
+
+@mcp.tool()
+def create_outage(
+    component_slug: str,
+    sub_component_slug: str,
+    severity: str,
+    description: str,
+    start_time: str = "",
+    initial_triage_note: str = "",
+    bot_initiated: bool = False,
+) -> dict:
+    """Create an outage on a sub-component. Severity: Down, Degraded, Suspected, or CapacityExhausted. start_time is RFC3339 UTC (defaults to now). Set bot_initiated=true when creating autonomously (forces Suspected severity, unconfirmed, and checks for duplicates)."""
+    return _api.create_outage(
+        component_slug,
+        sub_component_slug,
+        severity=severity,
+        description=description,
+        start_time=start_time,
+        initial_triage_note=initial_triage_note,
+        bot_initiated=bot_initiated,
+    )
+
+
+@mcp.tool()
+def update_outage(
+    component_slug: str,
+    sub_component_slug: str,
+    outage_id: int,
+    severity: str = "",
+    description: str = "",
+    end_time: str = "",
+    confirmed: bool | None = None,
+) -> dict:
+    """Update an existing outage. Set end_time (RFC3339 UTC) to resolve it. All fields are optional — only provided fields are changed."""
+    return _api.update_outage(
+        component_slug,
+        sub_component_slug,
+        outage_id,
+        severity=severity,
+        description=description,
+        end_time=end_time,
+        confirmed=confirmed,
+    )
+
+
+@mcp.tool()
+def delete_outage(component_slug: str, sub_component_slug: str, outage_id: int) -> dict:
+    """Permanently delete an outage. Prefer resolving (update_outage with end_time) over deleting."""
+    return _api.delete_outage(component_slug, sub_component_slug, outage_id)
+
+
+@mcp.tool()
+def add_triage_note(component_slug: str, sub_component_slug: str, outage_id: int, body: str) -> dict:
+    """Add a triage note to an outage for incident documentation."""
+    return _api.add_triage_note(component_slug, sub_component_slug, outage_id, body)
+
+
+@mcp.tool()
+def update_triage_note(
+    component_slug: str, sub_component_slug: str, outage_id: int, note_id: int, body: str
+) -> dict:
+    """Update an existing triage note."""
+    return _api.update_triage_note(component_slug, sub_component_slug, outage_id, note_id, body)
+
+
+@mcp.tool()
+def delete_triage_note(
+    component_slug: str, sub_component_slug: str, outage_id: int, note_id: int
+) -> dict:
+    """Delete a triage note from an outage."""
+    return _api.delete_triage_note(component_slug, sub_component_slug, outage_id, note_id)
+
+
+@mcp.tool()
+def add_outage_link(
+    component_slug: str,
+    sub_component_slug: str,
+    outage_id: int,
+    url: str,
+    link_type: str = "other",
+    description: str = "",
+) -> dict:
+    """Attach a link to an outage. link_type: incident_channel_thread, rca, or other. description is only used for 'other'."""
+    return _api.add_outage_link(
+        component_slug, sub_component_slug, outage_id, url, link_type=link_type, description=description
+    )
+
+
+@mcp.tool()
+def update_outage_link(
+    component_slug: str,
+    sub_component_slug: str,
+    outage_id: int,
+    link_id: int,
+    url: str,
+    link_type: str = "other",
+    description: str = "",
+) -> dict:
+    """Update an existing outage link."""
+    return _api.update_outage_link(
+        component_slug, sub_component_slug, outage_id, link_id, url, link_type=link_type, description=description
+    )
+
+
+@mcp.tool()
+def delete_outage_link(
+    component_slug: str, sub_component_slug: str, outage_id: int, link_id: int
+) -> dict:
+    """Delete a link from an outage."""
+    return _api.delete_outage_link(component_slug, sub_component_slug, outage_id, link_id)
+
+
 def main() -> None:
     transport = os.environ.get("MCP_TRANSPORT", "stdio").strip() or "stdio"
     if transport == "stdio":
