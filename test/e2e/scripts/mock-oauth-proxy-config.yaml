@@ -18,3 +18,7 @@ users:
 service_accounts:
   - name: system:serviceaccount:ship-status:component-monitor
     token: component-monitor-sa-token
+  - name: system:serviceaccount:ship-status:chai-bot
+    token: chai-bot-sa-token
+  - name: system:serviceaccount:ship-status:chai-bot
+    token: chai-bot-sa-token

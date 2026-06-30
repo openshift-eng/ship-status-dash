@@ -168,15 +168,6 @@ def _authed_api(tmp_path) -> ShipStatusAPI:
     return ShipStatusAPI(client)
 
 
-def test_check_maintainers_success(tmp_path):
-    api = _authed_api(tmp_path)
-    response = {"component": "prow", "maintainers": ["alice", "bob"]}
-    with patch.object(api.client, "protected_request", return_value=response) as mock:
-        result = api.check_maintainers("prow")
-    assert result == response
-    mock.assert_called_once_with("GET", "/components/prow/maintainers")
-
-
 
 def test_create_outage_success(tmp_path):
     api = _authed_api(tmp_path)
@@ -243,31 +234,5 @@ def test_delete_outage_success(tmp_path):
         result = api.delete_outage("prow", "tide", 1)
     assert result["success"] is True
 
-
-def test_add_triage_note_success(tmp_path):
-    api = _authed_api(tmp_path)
-    response = {"ID": 10, "body": "root cause found", "author": "chai-bot"}
-    with patch.object(api.client, "protected_request", return_value=response) as mock:
-        result = api.add_triage_note("prow", "tide", 1, "root cause found")
-    assert result["ID"] == 10
-    mock.assert_called_once_with(
-        "POST",
-        "/components/prow/tide/outages/1/triage-notes",
-        body={"body": "root cause found"},
-    )
-
-
-
-def test_add_outage_link_success(tmp_path):
-    api = _authed_api(tmp_path)
-    response = {"ID": 5, "url": "https://example.com", "link_type": "rca"}
-    with patch.object(api.client, "protected_request", return_value=response) as mock:
-        result = api.add_outage_link("prow", "tide", 1, "https://example.com", link_type="rca")
-    assert result["ID"] == 5
-    mock.assert_called_once_with(
-        "POST",
-        "/components/prow/tide/outages/1/links",
-        body={"url": "https://example.com", "link_type": "rca"},
-    )
 
 

@@ -22,6 +22,7 @@ import (
 const (
 	prowComponentName       = "Prow"
 	componentMonitorSAToken = "component-monitor-sa-token"
+	chaiBotSAToken          = "chai-bot-sa-token"
 )
 
 func TestE2E_Dashboard(t *testing.T) {
@@ -60,6 +61,8 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 	t.Run("TriageNotes", testTriageNotes(client))
 	t.Run("OutageLinks", testOutageLinks(client))
+	t.Run("ServiceAccountOutages", testServiceAccountOutages(client))
+	t.Run("ComponentMaintainers", testComponentMaintainers(client))
 	t.Run("AbsentReport", testAbsentReport(client))
 	t.Run("CommunityReport", testCommunityReport(client))
 	// ConfigHotReload should be tested at the end, it attempts to clean up after itself, but due to the nature of timing,
@@ -2934,6 +2937,93 @@ func testOutageLinks(client *TestHTTPClient) func(*testing.T) {
 				}
 			}
 			assert.True(t, found, "expected link to appear in outage GET response")
+		})
+	}
+}
+
+func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("SA creates outage on owned component", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "SA-created outage",
+				"discovered_from": "chai-bot",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				payloadBytes, chaiBotSAToken,
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var outage types.Outage
+			err = json.NewDecoder(resp.Body).Decode(&outage)
+			require.NoError(t, err)
+
+			assert.NotZero(t, outage.ID)
+			assert.Equal(t, "system:serviceaccount:ship-status:chai-bot", outage.CreatedBy)
+			assert.Equal(t, "chai-bot", outage.DiscoveredFrom)
+			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
+
+			deleteOutage(t, client, "Prow", "Tide", outage.ID)
+		})
+
+		t.Run("SA rejected on unowned component", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Should be rejected",
+				"discovered_from": "chai-bot",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Build Farm"), utils.Slugify("Build01")),
+				payloadBytes, chaiBotSAToken,
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+		})
+	}
+}
+
+func testComponentMaintainers(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		t.Run("returns maintainers for component", func(t *testing.T) {
+			resp, err := client.Get(
+				fmt.Sprintf("/api/components/%s/maintainers", utils.Slugify("Prow")),
+				true,
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			var result struct {
+				Component   string   `json:"component"`
+				Maintainers []string `json:"maintainers"`
+			}
+			err = json.NewDecoder(resp.Body).Decode(&result)
+			require.NoError(t, err)
+
+			assert.Equal(t, utils.Slugify("Prow"), result.Component)
+			assert.Contains(t, result.Maintainers, "developer")
+			assert.Contains(t, result.Maintainers, "editor")
+		})
+
+		t.Run("returns 404 for unknown component", func(t *testing.T) {
+			expect404(t, client, fmt.Sprintf("/api/components/%s/maintainers", "nonexistent"), true)
 		})
 	}
 }
