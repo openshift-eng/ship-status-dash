@@ -448,6 +448,8 @@ class ShipStatusAPI:
         if bot_initiated:
             existing = self._find_active_outage(component_slug, sub_component_slug)
             if existing:
+                if initial_triage_note and existing.get("ID"):
+                    self.add_triage_note(component_slug, sub_component_slug, existing["ID"], initial_triage_note)
                 return _truncate_json({
                     "existing_outage": True,
                     "message": "Active outage already exists for this sub-component.",

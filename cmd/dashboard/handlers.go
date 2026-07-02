@@ -118,7 +118,7 @@ func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Re
 	}
 
 	seen := make(map[string]bool)
-	var maintainers []string
+	maintainers := []string{}
 	for _, owner := range component.Owners {
 		if owner.User != "" && !seen[owner.User] {
 			seen[owner.User] = true
