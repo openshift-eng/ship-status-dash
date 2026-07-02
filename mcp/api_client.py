@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -119,7 +120,10 @@ class DashboardClient:
         try:
             req = Request(url, data=data, headers=req_headers, method=method)
             with urlopen(req, timeout=self.timeout) as response:
-                return json.loads(response.read().decode())
+                raw = response.read().decode()
+                if not raw:
+                    return None
+                return json.loads(raw)
         except HTTPError as e:
             try:
                 body = e.read().decode()
@@ -401,3 +405,227 @@ class ShipStatusAPI:
         if isinstance(data, dict) and "error" in data:
             return data
         return _truncate_json({"sub_components": data})
+
+    # Write operations (protected API)
+
+    def _protected_error(self, data: dict | list | None, fallback: str) -> dict[str, Any] | None:
+        """Return an error dict if the response indicates failure, or None on success."""
+        if data is None:
+            return {"error": fallback}
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return None
+
+    def check_maintainers(self, component_slug: str) -> dict[str, Any]:
+        data = self.client.protected_request("GET", f"/components/{component_slug}/maintainers")
+        if err := self._protected_error(data, f"Failed to retrieve maintainers for '{component_slug}'."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from maintainers endpoint."}
+        return data
+
+    def _find_active_outage(self, component_slug: str, sub_component_slug: str) -> dict[str, Any] | None:
+        """Return the first active outage for a sub-component, or None if there are no active outages."""
+        path = f"/components/{component_slug}/{sub_component_slug}/outages"
+        data = self.client.public_get(path)
+        if not isinstance(data, list):
+            return None
+        for entry in data:
+            if isinstance(entry, dict) and _outage_is_active(entry):
+                return entry
+        return None
+
+    def create_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        severity: str,
+        description: str,
+        start_time: str = "",
+        initial_triage_note: str = "",
+        bot_initiated: bool = False,
+    ) -> dict[str, Any]:
+        if bot_initiated:
+            existing = self._find_active_outage(component_slug, sub_component_slug)
+            if existing:
+                if initial_triage_note and existing.get("ID"):
+                    self.add_triage_note(component_slug, sub_component_slug, existing["ID"], initial_triage_note)
+                return _truncate_json({
+                    "existing_outage": True,
+                    "message": "Active outage already exists for this sub-component.",
+                    "outage": existing,
+                })
+            severity = "Suspected"
+            confirmed = False
+            discovered_from = "chai-bot"
+        else:
+            confirmed = True
+            discovered_from = "chai-bot-user"
+
+        body: dict[str, Any] = {
+            "severity": severity,
+            "description": description,
+            "discovered_from": discovered_from,
+            "confirmed": confirmed,
+            "start_time": start_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        if initial_triage_note:
+            body["initial_triage_note"] = initial_triage_note
+
+        path = f"/components/{component_slug}/{sub_component_slug}/outages"
+        data = self.client.protected_request("POST", path, body=body)
+        if err := self._protected_error(data, "Failed to create outage."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from create outage endpoint."}
+        return _truncate_json(data)
+
+    def update_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        severity: str = "",
+        description: str = "",
+        start_time: str = "",
+        end_time: str = "",
+        confirmed: bool | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if severity:
+            body["severity"] = severity
+        if description:
+            body["description"] = description
+        if start_time:
+            body["start_time"] = start_time
+        if end_time:
+            body["end_time"] = {"Time": end_time, "Valid": True}
+        if confirmed is not None:
+            body["confirmed"] = confirmed
+
+        if not body:
+            return {"error": "No fields to update. Provide at least one of: severity, description, start_time, end_time, confirmed."}
+
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
+        data = self.client.protected_request("PATCH", path, body=body)
+        if err := self._protected_error(data, f"Failed to update outage {outage_id}."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from update outage endpoint."}
+        return _truncate_json(data)
+
+    def delete_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
+        data = self.client.protected_request("DELETE", path)
+        if data is None:
+            return {"success": True, "message": f"Outage {outage_id} deleted."}
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return {"success": True, "message": f"Outage {outage_id} deleted."}
+
+    def add_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        body: str,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes"
+        data = self.client.protected_request("POST", path, body={"body": body})
+        if err := self._protected_error(data, f"Failed to add triage note to outage {outage_id}."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from add triage note endpoint."}
+        return data
+
+    def update_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        note_id: int,
+        body: str,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
+        data = self.client.protected_request("PATCH", path, body={"body": body})
+        if err := self._protected_error(data, f"Failed to update triage note {note_id}."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from update triage note endpoint."}
+        return data
+
+    def delete_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        note_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
+        data = self.client.protected_request("DELETE", path)
+        if data is None:
+            return {"success": True, "message": f"Triage note {note_id} deleted."}
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return {"success": True, "message": f"Triage note {note_id} deleted."}
+
+    def add_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        url: str,
+        link_type: str = "other",
+        description: str = "",
+    ) -> dict[str, Any]:
+        link_body: dict[str, Any] = {"url": url, "link_type": link_type}
+        if description:
+            link_body["description"] = description
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links"
+        data = self.client.protected_request("POST", path, body=link_body)
+        if err := self._protected_error(data, f"Failed to add link to outage {outage_id}."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from add outage link endpoint."}
+        return data
+
+    def update_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        link_id: int,
+        url: str,
+        link_type: str = "other",
+        description: str = "",
+    ) -> dict[str, Any]:
+        link_body: dict[str, Any] = {"url": url, "link_type": link_type}
+        if description:
+            link_body["description"] = description
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
+        data = self.client.protected_request("PATCH", path, body=link_body)
+        if err := self._protected_error(data, f"Failed to update link {link_id}."):
+            return err
+        if not isinstance(data, dict):
+            return {"error": "Unexpected response shape from update outage link endpoint."}
+        return data
+
+    def delete_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        link_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
+        data = self.client.protected_request("DELETE", path)
+        if data is None:
+            return {"success": True, "message": f"Link {link_id} deleted."}
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return {"success": True, "message": f"Link {link_id} deleted."}

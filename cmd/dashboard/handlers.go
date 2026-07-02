@@ -76,15 +76,16 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 }
 
 // IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
-// A user is authorized if they match any Owner.User field, or if they are a member of at least one rover_group configured for the component.
-// Note that this does not check ServiceAccounts.
+// A user is authorized if they match any Owner.User, Owner.ServiceAccount, or are a member of at least
+// one rover_group configured for the component.
 func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
 	for _, owner := range component.Owners {
-		// Check if user matches the Owner.User field (for development/testing)
 		if owner.User != "" && owner.User == user {
 			return true
 		}
-		// Check if user is in any of the component's rover_groups
+		if owner.ServiceAccount != "" && owner.ServiceAccount == user {
+			return true
+		}
 		if owner.RoverGroup != "" {
 			if h.groupCache.IsUserInGroup(user, owner.RoverGroup) {
 				return true
@@ -102,6 +103,41 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().UTC().Format(time.RFC3339),
 	}
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+// GetComponentMaintainersJSON returns the list of users authorized to manage a component,
+// expanding rover_group owners to individual users.
+func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	seen := make(map[string]bool)
+	maintainers := []string{}
+	for _, owner := range component.Owners {
+		if owner.User != "" && !seen[owner.User] {
+			seen[owner.User] = true
+			maintainers = append(maintainers, owner.User)
+		}
+		if owner.RoverGroup != "" {
+			for _, member := range h.groupCache.GetGroupMembers(owner.RoverGroup) {
+				if !seen[member] {
+					seen[member] = true
+					maintainers = append(maintainers, member)
+				}
+			}
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"component":   componentName,
+		"maintainers": maintainers,
+	})
 }
 
 // GetComponentsJSON returns the list of configured components.
