@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -444,8 +445,6 @@ class ShipStatusAPI:
         initial_triage_note: str = "",
         bot_initiated: bool = False,
     ) -> dict[str, Any]:
-        from datetime import datetime, timezone
-
         if bot_initiated:
             existing = self._find_active_outage(component_slug, sub_component_slug)
             if existing:
@@ -486,6 +485,7 @@ class ShipStatusAPI:
         outage_id: int,
         severity: str = "",
         description: str = "",
+        start_time: str = "",
         end_time: str = "",
         confirmed: bool | None = None,
     ) -> dict[str, Any]:
@@ -494,13 +494,15 @@ class ShipStatusAPI:
             body["severity"] = severity
         if description:
             body["description"] = description
+        if start_time:
+            body["start_time"] = start_time
         if end_time:
             body["end_time"] = {"Time": end_time, "Valid": True}
         if confirmed is not None:
             body["confirmed"] = confirmed
 
         if not body:
-            return {"error": "No fields to update. Provide at least one of: severity, description, end_time, confirmed."}
+            return {"error": "No fields to update. Provide at least one of: severity, description, start_time, end_time, confirmed."}
 
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
         data = self.client.protected_request("PATCH", path, body=body)

@@ -117,6 +117,7 @@ def update_outage(
     outage_id: int,
     severity: str = "",
     description: str = "",
+    start_time: str = "",
     end_time: str = "",
     confirmed: bool | None = None,
 ) -> dict:
@@ -127,6 +128,7 @@ def update_outage(
         outage_id,
         severity=severity,
         description=description,
+        start_time=start_time,
         end_time=end_time,
         confirmed=confirmed,
     )
