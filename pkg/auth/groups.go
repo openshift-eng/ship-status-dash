@@ -95,3 +95,10 @@ func (c *GroupMembershipCache) GetGroupMembers(groupName string) []string {
 	}
 	return users
 }
+
+// SetGroupMembers populates the cache for a group without requiring a k8s client.
+func (c *GroupMembershipCache) SetGroupMembers(groupName string, members []string) {
+	c.mu.Lock()
+	c.groups[groupName] = members
+	c.mu.Unlock()
+}

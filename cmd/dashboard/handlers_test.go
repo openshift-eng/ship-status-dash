@@ -75,6 +75,11 @@ func TestIsUserAuthorizedForComponent(t *testing.T) {
 			authorized: true,
 		},
 		{
+			name:       "rover group member is authorized",
+			user:       "groupuser",
+			authorized: true,
+		},
+		{
 			name:       "unlisted user is not authorized",
 			user:       "stranger",
 			authorized: false,
@@ -85,6 +90,7 @@ func TestIsUserAuthorizedForComponent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &types.DashboardConfig{Components: []*types.Component{component}}
 			h := newTestHandlers(t, cfg, &outage.MockOutageManager{})
+			h.groupCache.SetGroupMembers("test-group", []string{"groupuser", "anotheruser"})
 			assert.Equal(t, tt.authorized, h.IsUserAuthorizedForComponent(tt.user, component))
 		})
 	}

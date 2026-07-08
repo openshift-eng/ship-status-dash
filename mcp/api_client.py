@@ -416,13 +416,27 @@ class ShipStatusAPI:
             return data
         return None
 
-    def check_maintainers(self, component_slug: str) -> dict[str, Any]:
-        data = self.client.protected_request("GET", f"/components/{component_slug}/maintainers")
-        if err := self._protected_error(data, f"Failed to retrieve maintainers for '{component_slug}'."):
+    def _dict_request(
+        self, method: str, path: str, body: dict[str, Any] | None, fallback_msg: str, truncate: bool = False
+    ) -> dict[str, Any]:
+        """Issue a protected request expecting a dict response. Returns error dict on failure."""
+        data = self.client.protected_request(method, path, body=body) if body is not None else self.client.protected_request(method, path)
+        if err := self._protected_error(data, fallback_msg):
             return err
         if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from maintainers endpoint."}
-        return data
+            return {"error": f"Unexpected response shape from {method} {path}."}
+        return _truncate_json(data) if truncate else data
+
+    def _delete_request(self, path: str, success_msg: str) -> dict[str, Any]:
+        """Issue a protected DELETE request. None or non-error response means success."""
+        data = self.client.protected_request("DELETE", path)
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return {"success": True, "message": success_msg}
+
+    def check_maintainers(self, component_slug: str) -> dict[str, Any]:
+        return self._dict_request("GET", f"/components/{component_slug}/maintainers", None,
+                                  f"Failed to retrieve maintainers for '{component_slug}'.")
 
     def _find_active_outage(self, component_slug: str, sub_component_slug: str) -> dict[str, Any] | None:
         """Return the first active outage for a sub-component, or None if there are no active outages."""
@@ -455,6 +469,8 @@ class ShipStatusAPI:
                     "message": "Active outage already exists for this sub-component.",
                     "outage": existing,
                 })
+            if severity != "Suspected":
+                logger.warning("Overriding caller severity %r to 'Suspected' for bot-initiated outage", severity)
             severity = "Suspected"
             confirmed = False
             discovered_from = "chai-bot"
@@ -473,12 +489,7 @@ class ShipStatusAPI:
             body["initial_triage_note"] = initial_triage_note
 
         path = f"/components/{component_slug}/{sub_component_slug}/outages"
-        data = self.client.protected_request("POST", path, body=body)
-        if err := self._protected_error(data, "Failed to create outage."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from create outage endpoint."}
-        return _truncate_json(data)
+        return self._dict_request("POST", path, body, "Failed to create outage.", truncate=True)
 
     def update_outage(
         self,
@@ -507,12 +518,7 @@ class ShipStatusAPI:
             return {"error": "No fields to update. Provide at least one of: severity, description, start_time, end_time, confirmed."}
 
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
-        data = self.client.protected_request("PATCH", path, body=body)
-        if err := self._protected_error(data, f"Failed to update outage {outage_id}."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from update outage endpoint."}
-        return _truncate_json(data)
+        return self._dict_request("PATCH", path, body, f"Failed to update outage {outage_id}.", truncate=True)
 
     def delete_outage(
         self,
@@ -521,12 +527,7 @@ class ShipStatusAPI:
         outage_id: int,
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
-        data = self.client.protected_request("DELETE", path)
-        if data is None:
-            return {"success": True, "message": f"Outage {outage_id} deleted."}
-        if isinstance(data, dict) and "error" in data:
-            return data
-        return {"success": True, "message": f"Outage {outage_id} deleted."}
+        return self._delete_request(path, f"Outage {outage_id} deleted.")
 
     def add_triage_note(
         self,
@@ -536,12 +537,7 @@ class ShipStatusAPI:
         body: str,
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes"
-        data = self.client.protected_request("POST", path, body={"body": body})
-        if err := self._protected_error(data, f"Failed to add triage note to outage {outage_id}."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from add triage note endpoint."}
-        return data
+        return self._dict_request("POST", path, {"body": body}, f"Failed to add triage note to outage {outage_id}.")
 
     def update_triage_note(
         self,
@@ -552,12 +548,7 @@ class ShipStatusAPI:
         body: str,
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
-        data = self.client.protected_request("PATCH", path, body={"body": body})
-        if err := self._protected_error(data, f"Failed to update triage note {note_id}."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from update triage note endpoint."}
-        return data
+        return self._dict_request("PATCH", path, {"body": body}, f"Failed to update triage note {note_id}.")
 
     def delete_triage_note(
         self,
@@ -567,12 +558,7 @@ class ShipStatusAPI:
         note_id: int,
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
-        data = self.client.protected_request("DELETE", path)
-        if data is None:
-            return {"success": True, "message": f"Triage note {note_id} deleted."}
-        if isinstance(data, dict) and "error" in data:
-            return data
-        return {"success": True, "message": f"Triage note {note_id} deleted."}
+        return self._delete_request(path, f"Triage note {note_id} deleted.")
 
     def add_outage_link(
         self,
@@ -587,12 +573,7 @@ class ShipStatusAPI:
         if description:
             link_body["description"] = description
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links"
-        data = self.client.protected_request("POST", path, body=link_body)
-        if err := self._protected_error(data, f"Failed to add link to outage {outage_id}."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from add outage link endpoint."}
-        return data
+        return self._dict_request("POST", path, link_body, f"Failed to add link to outage {outage_id}.")
 
     def update_outage_link(
         self,
@@ -608,12 +589,7 @@ class ShipStatusAPI:
         if description:
             link_body["description"] = description
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
-        data = self.client.protected_request("PATCH", path, body=link_body)
-        if err := self._protected_error(data, f"Failed to update link {link_id}."):
-            return err
-        if not isinstance(data, dict):
-            return {"error": "Unexpected response shape from update outage link endpoint."}
-        return data
+        return self._dict_request("PATCH", path, link_body, f"Failed to update link {link_id}.")
 
     def delete_outage_link(
         self,
@@ -623,9 +599,4 @@ class ShipStatusAPI:
         link_id: int,
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
-        data = self.client.protected_request("DELETE", path)
-        if data is None:
-            return {"success": True, "message": f"Link {link_id} deleted."}
-        if isinstance(data, dict) and "error" in data:
-            return data
-        return {"success": True, "message": f"Link {link_id} deleted."}
+        return self._delete_request(path, f"Link {link_id} deleted.")

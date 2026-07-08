@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -75,25 +76,35 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 	})
 }
 
-// IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
-// A user is authorized if they match any Owner.User, Owner.ServiceAccount, or are a member of at least
-// one rover_group configured for the component.
-func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
+// collectAuthorizedIdentities returns all identities authorized for a component:
+// Owner.User values, Owner.ServiceAccount values, and expanded RoverGroup members.
+func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
+	seen := make(map[string]bool)
+	identities := []string{}
 	for _, owner := range component.Owners {
-		if owner.User != "" && owner.User == user {
-			return true
+		if owner.User != "" && !seen[owner.User] {
+			seen[owner.User] = true
+			identities = append(identities, owner.User)
 		}
-		if owner.ServiceAccount != "" && owner.ServiceAccount == user {
-			return true
+		if owner.ServiceAccount != "" && !seen[owner.ServiceAccount] {
+			seen[owner.ServiceAccount] = true
+			identities = append(identities, owner.ServiceAccount)
 		}
 		if owner.RoverGroup != "" {
-			if h.groupCache.IsUserInGroup(user, owner.RoverGroup) {
-				return true
+			for _, member := range h.groupCache.GetGroupMembers(owner.RoverGroup) {
+				if !seen[member] {
+					seen[member] = true
+					identities = append(identities, member)
+				}
 			}
 		}
 	}
+	return identities
+}
 
-	return false
+// IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
+func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
+	return slices.Contains(h.collectAuthorizedIdentities(component), user)
 }
 
 // HealthJSON returns the health status of the dashboard service.
@@ -117,22 +128,7 @@ func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	seen := make(map[string]bool)
-	maintainers := []string{}
-	for _, owner := range component.Owners {
-		if owner.User != "" && !seen[owner.User] {
-			seen[owner.User] = true
-			maintainers = append(maintainers, owner.User)
-		}
-		if owner.RoverGroup != "" {
-			for _, member := range h.groupCache.GetGroupMembers(owner.RoverGroup) {
-				if !seen[member] {
-					seen[member] = true
-					maintainers = append(maintainers, member)
-				}
-			}
-		}
-	}
+	maintainers := h.collectAuthorizedIdentities(component)
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"component":   componentName,

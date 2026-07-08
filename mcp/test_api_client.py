@@ -201,11 +201,13 @@ def test_create_outage_bot_initiated_returns_existing(tmp_path):
     api = _authed_api(tmp_path)
     active_outage = {"ID": 99, "severity": "Down", "end_time": None}
     with patch.object(api.client, "public_get", return_value=[active_outage]):
-        result = api.create_outage(
-            "prow", "tide", severity="Down", description="bot detected", bot_initiated=True
-        )
+        with patch.object(api.client, "protected_request") as mock_protected:
+            result = api.create_outage(
+                "prow", "tide", severity="Down", description="bot detected", bot_initiated=True
+            )
     assert result["existing_outage"] is True
     assert result["outage"]["ID"] == 99
+    mock_protected.assert_not_called()
 
 
 def test_update_outage_resolve(tmp_path):
@@ -239,5 +241,70 @@ def test_delete_outage_success(tmp_path):
     api = _authed_api(tmp_path)
     with patch.object(api.client, "protected_request", return_value=None):
         result = api.delete_outage("prow", "tide", 1)
+    assert result["success"] is True
+
+
+def test_check_maintainers_success(tmp_path):
+    api = _authed_api(tmp_path)
+    response = {"component": "prow", "maintainers": ["ameduri", "smg247"]}
+    with patch.object(api.client, "protected_request", return_value=response) as mock:
+        result = api.check_maintainers("prow")
+    assert result["maintainers"] == ["ameduri", "smg247"]
+    mock.assert_called_once_with("GET", "/components/prow/maintainers")
+
+
+def test_add_triage_note_success(tmp_path):
+    api = _authed_api(tmp_path)
+    response = {"ID": 10, "OutageID": 1, "Body": "investigating", "Author": "chai-bot"}
+    with patch.object(api.client, "protected_request", return_value=response) as mock:
+        result = api.add_triage_note("prow", "tide", 1, "investigating")
+    assert result["ID"] == 10
+    body = mock.call_args.kwargs["body"]
+    assert body["body"] == "investigating"
+
+
+def test_update_triage_note_success(tmp_path):
+    api = _authed_api(tmp_path)
+    response = {"ID": 10, "OutageID": 1, "Body": "updated note"}
+    with patch.object(api.client, "protected_request", return_value=response) as mock:
+        result = api.update_triage_note("prow", "tide", 1, 10, "updated note")
+    assert result["Body"] == "updated note"
+    body = mock.call_args.kwargs["body"]
+    assert body["body"] == "updated note"
+
+
+def test_delete_triage_note_success(tmp_path):
+    api = _authed_api(tmp_path)
+    with patch.object(api.client, "protected_request", return_value=None):
+        result = api.delete_triage_note("prow", "tide", 1, 10)
+    assert result["success"] is True
+
+
+def test_add_outage_link_success(tmp_path):
+    api = _authed_api(tmp_path)
+    response = {"ID": 5, "OutageID": 1, "URL": "https://example.com", "LinkType": "jira"}
+    with patch.object(api.client, "protected_request", return_value=response) as mock:
+        result = api.add_outage_link("prow", "tide", 1, "https://example.com", link_type="jira")
+    assert result["ID"] == 5
+    body = mock.call_args.kwargs["body"]
+    assert body["url"] == "https://example.com"
+    assert body["link_type"] == "jira"
+
+
+def test_update_outage_link_success(tmp_path):
+    api = _authed_api(tmp_path)
+    response = {"ID": 5, "OutageID": 1, "URL": "https://updated.com", "LinkType": "other"}
+    with patch.object(api.client, "protected_request", return_value=response) as mock:
+        result = api.update_outage_link("prow", "tide", 1, 5, "https://updated.com", description="updated")
+    assert result["URL"] == "https://updated.com"
+    body = mock.call_args.kwargs["body"]
+    assert body["url"] == "https://updated.com"
+    assert body["description"] == "updated"
+
+
+def test_delete_outage_link_success(tmp_path):
+    api = _authed_api(tmp_path)
+    with patch.object(api.client, "protected_request", return_value=None):
+        result = api.delete_outage_link("prow", "tide", 1, 5)
     assert result["success"] is True
 

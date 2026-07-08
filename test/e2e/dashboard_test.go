@@ -2949,6 +2949,7 @@ func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "SA-created outage",
 				"discovered_from": "chai-bot",
+				"confirmed":       true,
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -2971,6 +2972,7 @@ func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, "system:serviceaccount:ship-status:chai-bot", outage.CreatedBy)
 			assert.Equal(t, "chai-bot", outage.DiscoveredFrom)
 			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
+			assert.True(t, outage.ConfirmedAt.Valid, "outage should be confirmed when confirmed=true is sent")
 
 			deleteOutage(t, client, "Prow", "Tide", outage.ID)
 		})
