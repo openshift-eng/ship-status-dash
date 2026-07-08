@@ -210,6 +210,19 @@ def test_create_outage_bot_initiated_returns_existing(tmp_path):
     mock_protected.assert_not_called()
 
 
+def test_create_outage_user_initiated_returns_existing(tmp_path):
+    api = _authed_api(tmp_path)
+    active_outage = {"ID": 99, "severity": "Down", "end_time": None}
+    with patch.object(api.client, "public_get", return_value=[active_outage]):
+        with patch.object(api.client, "protected_request") as mock_protected:
+            result = api.create_outage(
+                "prow", "tide", severity="Down", description="user reported", bot_initiated=False
+            )
+    assert result["existing_outage"] is True
+    assert result["outage"]["ID"] == 99
+    mock_protected.assert_not_called()
+
+
 def test_update_outage_resolve(tmp_path):
     api = _authed_api(tmp_path)
     response = {"ID": 1, "end_time": {"Time": "2026-06-29T14:00:00Z", "Valid": True}}
