@@ -469,9 +469,10 @@ class ShipStatusAPI:
                 "outage": existing,
             })
 
+        warning = ""
         if bot_initiated:
             if severity != "Suspected":
-                logger.warning("Overriding caller severity %r to 'Suspected' for bot-initiated outage", severity)
+                warning = f"Severity overridden from {severity!r} to 'Suspected' for bot-initiated outage."
             severity = "Suspected"
             confirmed = False
             discovered_from = "chai-bot"
@@ -490,7 +491,10 @@ class ShipStatusAPI:
             body["initial_triage_note"] = initial_triage_note
 
         path = f"/components/{component_slug}/{sub_component_slug}/outages"
-        return self._dict_request("POST", path, body, "Failed to create outage.", truncate=True)
+        result = self._dict_request("POST", path, body, "Failed to create outage.", truncate=True)
+        if warning and "error" not in result:
+            result["warning"] = warning
+        return result
 
     def update_outage(
         self,

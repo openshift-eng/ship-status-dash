@@ -25,19 +25,17 @@ type Server struct {
 	handlers      *Handlers
 	corsOrigin    string
 	hmacSecret    []byte
-	groupCache    *auth.GroupMembershipCache
 	httpServer    *http.Server
 }
 
 // NewServer creates a new Server instance
-func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache *auth.GroupMembershipCache, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository) *Server {
+func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache auth.GroupMembershipProvider, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository) *Server {
 	return &Server{
 		logger:        logger,
 		configManager: configManager,
 		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, triageNoteRepo, outageLinkRepo, groupCache),
 		corsOrigin:    corsOrigin,
 		hmacSecret:    hmacSecret,
-		groupCache:    groupCache,
 	}
 }
 

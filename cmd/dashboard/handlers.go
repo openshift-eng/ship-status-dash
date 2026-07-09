@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/config"
@@ -33,13 +34,13 @@ type Handlers struct {
 	pingRepo               repositories.ComponentPingRepository
 	triageNoteRepo         repositories.TriageNoteRepository
 	outageLinkRepo         repositories.OutageLinkRepository
-	groupCache             *auth.GroupMembershipCache
+	groupCache             auth.GroupMembershipProvider
 	monitorReportProcessor *ComponentMonitorReportProcessor
 	externalPageCaches     map[string]*ExternalPageCache
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache auth.GroupMembershipProvider) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		configManager:          configManager,
@@ -79,27 +80,19 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 // collectAuthorizedIdentities returns all identities authorized for a component:
 // Owner.User values, Owner.ServiceAccount values, and expanded RoverGroup members.
 func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
-	seen := make(map[string]bool)
-	identities := []string{}
+	identities := sets.NewString()
 	for _, owner := range component.Owners {
-		if owner.User != "" && !seen[owner.User] {
-			seen[owner.User] = true
-			identities = append(identities, owner.User)
+		if owner.User != "" {
+			identities.Insert(owner.User)
 		}
-		if owner.ServiceAccount != "" && !seen[owner.ServiceAccount] {
-			seen[owner.ServiceAccount] = true
-			identities = append(identities, owner.ServiceAccount)
+		if owner.ServiceAccount != "" {
+			identities.Insert(owner.ServiceAccount)
 		}
 		if owner.RoverGroup != "" {
-			for _, member := range h.groupCache.GetGroupMembers(owner.RoverGroup) {
-				if !seen[member] {
-					seen[member] = true
-					identities = append(identities, member)
-				}
-			}
+			identities.Insert(h.groupCache.GetGroupMembers(owner.RoverGroup)...)
 		}
 	}
-	return identities
+	return identities.UnsortedList()
 }
 
 // IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.

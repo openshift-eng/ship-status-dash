@@ -13,6 +13,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// GroupMembershipProvider resolves group names to member lists.
+type GroupMembershipProvider interface {
+	GetGroupMembers(groupName string) []string
+}
+
 // GroupMembershipCache stores the mapping of rover_group names to their member users.
 type GroupMembershipCache struct {
 	mu     sync.RWMutex
@@ -94,11 +99,4 @@ func (c *GroupMembershipCache) GetGroupMembers(groupName string) []string {
 		return nil
 	}
 	return users
-}
-
-// SetGroupMembers populates the cache for a group without requiring a k8s client.
-func (c *GroupMembershipCache) SetGroupMembers(groupName string, members []string) {
-	c.mu.Lock()
-	c.groups[groupName] = members
-	c.mu.Unlock()
 }
