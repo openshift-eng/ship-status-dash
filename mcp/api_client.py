@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -119,7 +120,10 @@ class DashboardClient:
         try:
             req = Request(url, data=data, headers=req_headers, method=method)
             with urlopen(req, timeout=self.timeout) as response:
-                return json.loads(response.read().decode())
+                raw = response.read().decode()
+                if not raw:
+                    return None
+                return json.loads(raw)
         except HTTPError as e:
             try:
                 body = e.read().decode()
@@ -401,3 +405,203 @@ class ShipStatusAPI:
         if isinstance(data, dict) and "error" in data:
             return data
         return _truncate_json({"sub_components": data})
+
+    # Write operations (protected API)
+
+    def _protected_error(self, data: dict | list | None, fallback: str) -> dict[str, Any] | None:
+        """Return an error dict if the response indicates failure, or None on success."""
+        if data is None:
+            return {"error": fallback}
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return None
+
+    def _dict_request(
+        self, method: str, path: str, body: dict[str, Any] | None, fallback_msg: str, truncate: bool = False
+    ) -> dict[str, Any]:
+        """Issue a protected request expecting a dict response. Returns error dict on failure."""
+        data = self.client.protected_request(method, path, body=body) if body is not None else self.client.protected_request(method, path)
+        if err := self._protected_error(data, fallback_msg):
+            return err
+        if not isinstance(data, dict):
+            return {"error": f"Unexpected response shape from {method} {path}."}
+        return _truncate_json(data) if truncate else data
+
+    def _delete_request(self, path: str, success_msg: str) -> dict[str, Any]:
+        """Issue a protected DELETE request. None or non-error response means success."""
+        data = self.client.protected_request("DELETE", path)
+        if isinstance(data, dict) and "error" in data:
+            return data
+        return {"success": True, "message": success_msg}
+
+    def check_maintainers(self, component_slug: str) -> dict[str, Any]:
+        return self._dict_request("GET", f"/components/{component_slug}/maintainers", None,
+                                  f"Failed to retrieve maintainers for '{component_slug}'.")
+
+    def _find_active_outage(self, component_slug: str, sub_component_slug: str) -> dict[str, Any] | None:
+        """Return the first active outage for a sub-component, or None if there are no active outages."""
+        path = f"/components/{component_slug}/{sub_component_slug}/outages"
+        data = self.client.public_get(path)
+        if not isinstance(data, list):
+            return None
+        for entry in data:
+            if isinstance(entry, dict) and _outage_is_active(entry):
+                return entry
+        return None
+
+    def create_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        severity: str,
+        description: str,
+        start_time: str = "",
+        initial_triage_note: str = "",
+        bot_initiated: bool = False,
+    ) -> dict[str, Any]:
+        existing = self._find_active_outage(component_slug, sub_component_slug)
+        if existing:
+            if initial_triage_note and existing.get("ID"):
+                self.add_triage_note(component_slug, sub_component_slug, existing["ID"], initial_triage_note)
+            return _truncate_json({
+                "existing_outage": True,
+                "message": "Active outage already exists for this sub-component.",
+                "outage": existing,
+            })
+
+        warning = ""
+        if bot_initiated:
+            if severity != "Suspected":
+                warning = f"Severity overridden from {severity!r} to 'Suspected' for bot-initiated outage."
+            severity = "Suspected"
+            confirmed = False
+            discovered_from = "chai-bot"
+        else:
+            confirmed = True
+            discovered_from = "chai-bot-user"
+
+        body: dict[str, Any] = {
+            "severity": severity,
+            "description": description,
+            "discovered_from": discovered_from,
+            "confirmed": confirmed,
+            "start_time": start_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        if initial_triage_note:
+            body["initial_triage_note"] = initial_triage_note
+
+        path = f"/components/{component_slug}/{sub_component_slug}/outages"
+        result = self._dict_request("POST", path, body, "Failed to create outage.", truncate=True)
+        if warning and "error" not in result:
+            result["warning"] = warning
+        return result
+
+    def update_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        severity: str = "",
+        description: str = "",
+        start_time: str = "",
+        end_time: str = "",
+        confirmed: bool | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if severity:
+            body["severity"] = severity
+        if description:
+            body["description"] = description
+        if start_time:
+            body["start_time"] = start_time
+        if end_time:
+            body["end_time"] = {"Time": end_time, "Valid": True}
+        if confirmed is not None:
+            body["confirmed"] = confirmed
+
+        if not body:
+            return {"error": "No fields to update. Provide at least one of: severity, description, start_time, end_time, confirmed."}
+
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
+        return self._dict_request("PATCH", path, body, f"Failed to update outage {outage_id}.", truncate=True)
+
+    def delete_outage(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
+        return self._delete_request(path, f"Outage {outage_id} deleted.")
+
+    def add_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        body: str,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes"
+        return self._dict_request("POST", path, {"body": body}, f"Failed to add triage note to outage {outage_id}.")
+
+    def update_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        note_id: int,
+        body: str,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
+        return self._dict_request("PATCH", path, {"body": body}, f"Failed to update triage note {note_id}.")
+
+    def delete_triage_note(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        note_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
+        return self._delete_request(path, f"Triage note {note_id} deleted.")
+
+    def add_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        url: str,
+        link_type: str = "other",
+        description: str = "",
+    ) -> dict[str, Any]:
+        link_body: dict[str, Any] = {"url": url, "link_type": link_type}
+        if description:
+            link_body["description"] = description
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links"
+        return self._dict_request("POST", path, link_body, f"Failed to add link to outage {outage_id}.")
+
+    def update_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        link_id: int,
+        url: str,
+        link_type: str = "other",
+        description: str = "",
+    ) -> dict[str, Any]:
+        link_body: dict[str, Any] = {"url": url, "link_type": link_type}
+        if description:
+            link_body["description"] = description
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
+        return self._dict_request("PATCH", path, link_body, f"Failed to update link {link_id}.")
+
+    def delete_outage_link(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        link_id: int,
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
+        return self._delete_request(path, f"Link {link_id} deleted.")

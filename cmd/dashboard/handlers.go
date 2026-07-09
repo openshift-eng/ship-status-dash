@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"ship-status-dash/pkg/auth"
 	"ship-status-dash/pkg/config"
@@ -32,13 +34,13 @@ type Handlers struct {
 	pingRepo               repositories.ComponentPingRepository
 	triageNoteRepo         repositories.TriageNoteRepository
 	outageLinkRepo         repositories.OutageLinkRepository
-	groupCache             *auth.GroupMembershipCache
+	groupCache             auth.GroupMembershipProvider
 	monitorReportProcessor *ComponentMonitorReportProcessor
 	externalPageCaches     map[string]*ExternalPageCache
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache *auth.GroupMembershipCache) *Handlers {
+func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache auth.GroupMembershipProvider) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		configManager:          configManager,
@@ -75,24 +77,27 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 	})
 }
 
-// IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
-// A user is authorized if they match any Owner.User field, or if they are a member of at least one rover_group configured for the component.
-// Note that this does not check ServiceAccounts.
-func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
+// collectAuthorizedIdentities returns all identities authorized for a component:
+// Owner.User values, Owner.ServiceAccount values, and expanded RoverGroup members.
+func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
+	identities := sets.NewString()
 	for _, owner := range component.Owners {
-		// Check if user matches the Owner.User field (for development/testing)
-		if owner.User != "" && owner.User == user {
-			return true
+		if owner.User != "" {
+			identities.Insert(owner.User)
 		}
-		// Check if user is in any of the component's rover_groups
+		if owner.ServiceAccount != "" {
+			identities.Insert(owner.ServiceAccount)
+		}
 		if owner.RoverGroup != "" {
-			if h.groupCache.IsUserInGroup(user, owner.RoverGroup) {
-				return true
-			}
+			identities.Insert(h.groupCache.GetGroupMembers(owner.RoverGroup)...)
 		}
 	}
+	return identities.UnsortedList()
+}
 
-	return false
+// IsUserAuthorizedForComponent checks if a user is authorized to perform mutating actions on a component.
+func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Component) bool {
+	return slices.Contains(h.collectAuthorizedIdentities(component), user)
 }
 
 // HealthJSON returns the health status of the dashboard service.
@@ -102,6 +107,26 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().UTC().Format(time.RFC3339),
 	}
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+// GetComponentMaintainersJSON returns the list of users authorized to manage a component,
+// expanding rover_group owners to individual users.
+func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	maintainers := h.collectAuthorizedIdentities(component)
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"component":   componentName,
+		"maintainers": maintainers,
+	})
 }
 
 // GetComponentsJSON returns the list of configured components.

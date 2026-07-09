@@ -19,8 +19,13 @@ import (
 	"ship-status-dash/pkg/types"
 )
 
-// newTestHandlers returns Handlers backed by cfg, the given outage manager, mock pings, and an empty group cache.
+// newTestHandlers returns Handlers backed by cfg, the given outage manager, mock pings, and a mock group cache.
 func newTestHandlers(t *testing.T, cfg *types.DashboardConfig, om outage.OutageManager) *Handlers {
+	return newTestHandlersWithGroups(t, cfg, om, nil)
+}
+
+// newTestHandlersWithGroups is like newTestHandlers but pre-populates group membership.
+func newTestHandlersWithGroups(t *testing.T, cfg *types.DashboardConfig, om outage.OutageManager, groups map[string][]string) *Handlers {
 	t.Helper()
 	cfgManager, err := config.NewManager("", func(string) (*types.DashboardConfig, error) {
 		return cfg, nil
@@ -31,7 +36,7 @@ func newTestHandlers(t *testing.T, cfg *types.DashboardConfig, om outage.OutageM
 	pingRepo := &repositories.MockComponentPingRepository{}
 	triageNoteRepo := &repositories.MockTriageNoteRepository{}
 	outageLinkRepo := &repositories.MockOutageLinkRepository{}
-	cache := auth.NewGroupMembershipCache(logrus.New())
+	cache := &auth.MockGroupMembershipProvider{Groups: groups}
 	return NewHandlers(logrus.New(), cfgManager, om, pingRepo, triageNoteRepo, outageLinkRepo, cache)
 }
 
@@ -46,6 +51,53 @@ func minimalDashboardConfig() *types.DashboardConfig {
 				},
 			},
 		},
+	}
+}
+
+func TestIsUserAuthorizedForComponent(t *testing.T) {
+	component := &types.Component{
+		Name: "Test", Slug: "test",
+		Owners: []types.Owner{
+			{User: "developer"},
+			{RoverGroup: "test-group"},
+			{ServiceAccount: "system:serviceaccount:ship-status:chai-bot"},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		user       string
+		authorized bool
+	}{
+		{
+			name:       "user owner is authorized",
+			user:       "developer",
+			authorized: true,
+		},
+		{
+			name:       "service account owner is authorized",
+			user:       "system:serviceaccount:ship-status:chai-bot",
+			authorized: true,
+		},
+		{
+			name:       "rover group member is authorized",
+			user:       "groupuser",
+			authorized: true,
+		},
+		{
+			name:       "unlisted user is not authorized",
+			user:       "stranger",
+			authorized: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &types.DashboardConfig{Components: []*types.Component{component}}
+			groups := map[string][]string{"test-group": {"groupuser", "anotheruser"}}
+			h := newTestHandlersWithGroups(t, cfg, &outage.MockOutageManager{}, groups)
+			assert.Equal(t, tt.authorized, h.IsUserAuthorizedForComponent(tt.user, component))
+		})
 	}
 }
 

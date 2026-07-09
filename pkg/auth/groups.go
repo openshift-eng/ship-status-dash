@@ -13,6 +13,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// GroupMembershipProvider resolves group names to member lists.
+type GroupMembershipProvider interface {
+	GetGroupMembers(groupName string) []string
+}
+
 // GroupMembershipCache stores the mapping of rover_group names to their member users.
 type GroupMembershipCache struct {
 	mu     sync.RWMutex
