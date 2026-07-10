@@ -25,7 +25,7 @@ mcp-test-api:
 mcp-test-dev:
 	@ship-status-dev/.venv/bin/pytest ship-status-dev/ -q
 
-lint: npm
+lint: npm verify-apm
 	@./hack/go-lint.sh --timeout 10m run ./...
 	@cd frontend && npm run lint
 	@cd frontend && npm audit --omit=dev
@@ -50,8 +50,8 @@ component-monitor-dry-run:
 
 apm:
 	@command -v uvx >/dev/null || (echo "uvx not found; install uv (see .devcontainer/Dockerfile)" >&2 && exit 1)
-	uvx --from apm-cli@0.11.0 apm install
-	uvx --from apm-cli@0.11.0 apm compile
+	uvx --from apm-cli@0.13.0 apm install
+	uvx --from apm-cli@0.13.0 apm compile
 
 verify-apm: apm
 	@if ! git diff --quiet HEAD -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; then \
