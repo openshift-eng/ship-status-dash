@@ -18,7 +18,7 @@ The goal is to enable chai-bot to:
 2. Create unconfirmed outages autonomously when it discovers issues (bot-initiated)
 3. Manage the full outage lifecycle via MCP tools
 
-## Current System Architecture
+## System Architecture
 
 ### Dual-Ingress Auth Model
 
@@ -76,7 +76,7 @@ owners:
   - user: "developer" # Dev/testing only
 ```
 
-### Existing Component-Monitor Auth Flow
+### Component-Monitor Auth Flow
 
 The component-monitor follows this flow:
 
@@ -89,21 +89,53 @@ The component-monitor follows this flow:
   sub-component config
 6. Outages are created/resolved based on probe results
 
-### Existing Chai-bot Integration
+### Chai-bot Integration
 
-Chai-bot runs on a separate OpenShift cluster from SHIP Status. Rather than
-calling the REST API directly, it integrates through an external MCP endpoint (`mcp.ship-status.ci.openshift.org/mcp`) using `streamable_http`
-transport.
-Tools are discovered dynamically via `tools/list` at startup -- if new tools
-are added to the MCP server, chai-bot picks them up automatically.
+Chai-bot runs on a separate OpenShift cluster (mp-plus) from the dashboard
+(app.ci). Rather than calling the REST API directly, it integrates through an
+external MCP endpoint (`mcp.ship-status.ci.openshift.org/mcp`) using
+`streamable_http` transport. Tools are discovered dynamically via `tools/list`
+at startup -- if new tools are added to the MCP server, chai-bot picks them up
+automatically.
 
-The current MCP endpoint is unauthenticated. For write operations, the MCP
-server authenticates to the dashboard API via oauth-proxy using a service
-account Bearer token (the same mechanism the component-monitor uses).
+The MCP endpoint is unauthenticated for read operations (read tools are
+intentionally public). Currently, only read tools exist. This design adds
+write tools with authentication described below.
 
 Chai-bot can also resolve Slack user IDs to Kerberos `uid` via its OrgData
-tool, which is used to verify user authorization via the protected
-maintainer-list endpoint before creating outages.
+tool, which is used to verify user authorization before creating outages.
+
+### MCP Write Authentication (New)
+
+Since the MCP endpoint is publicly reachable, write operations require the
+caller to authenticate. The MCP server acts as a stateless passthrough -- it
+holds no credentials itself. The flow:
+
+```
+Chai (mp-plus)
+  |
+  | Authorization: Bearer <chai-bot SA token>
+  v
+MCP server (mcp.ship-status.ci.openshift.org:8090)
+  |
+  | extracts token, forwards unchanged
+  v
+oauth-proxy (127.0.0.1:8443)
+  |
+  | TokenReview + SAR on app.ci
+  | sets X-Forwarded-User + GAP-Signature
+  v
+dashboard (127.0.0.1:8080)
+  |
+  | verifies HMAC, checks component owners
+  v
+request authorized (or rejected)
+```
+
+The chai-bot SA token is stored in Vault and provisioned to Chai's pod on
+mp-plus as a mounted secret. A dedicated ServiceAccount (`chai-bot`) in the
+`ship-status` namespace on app.ci is set up in openshift/release#81417 (SA,
+RBAC, and dashboard-config owner entries).
 
 ### Service Account Authorization
 
@@ -113,120 +145,28 @@ The existing outage CRUD endpoints
 `Owner.ServiceAccount`**. Chai-bot's service account (SA) cannot use these
 endpoints without auth changes. This is the central design challenge.
 
-## Design Options
+## Design Decisions
 
-There are three distinct problems here.
+### How does chai-bot authenticate for write operations?
 
-### Problem 1: How does chai-bot authenticate for write operations?
+The MCP server acts as a stateless passthrough. Chai-bot includes its SA
+Bearer token in the `Authorization` header when calling MCP tools. The MCP
+server extracts the token and forwards it to the oauth-proxy at
+`127.0.0.1:8443`, which validates it via TokenReview. This follows the same
+validation mechanism the component-monitor uses, but with the token originating
+from the caller rather than being mounted in the MCP sidecar.
 
-Since chai-bot communicates via the external MCP endpoint (not directly to the
-dashboard API), there are two auth layers to consider:
+This approach was chosen because the MCP endpoint is publicly accessible. If
+the MCP server held its own token and used it unconditionally, any caller who
+could reach the endpoint would have their write requests authenticated as
+chai-bot, bypassing the dashboard's authorization model entirely.
 
-1. **Outer layer**: chai-bot to the MCP server (over external HTTPS)
-2. **Inner layer**: MCP server to the dashboard API (over loopback via
-  oauth-proxy)
+### How does chai-bot verify a user is authorized?
 
-#### Inner layer: MCP server to dashboard API
-
-The MCP server already documents this pattern for future write operations (see
-`cmd/dashboard/README.md`): mounting a service account Bearer token at
-`SHIP_STATUS_AUTH_TOKEN_FILE` and sending it to the oauth-proxy at
-`127.0.0.1:8443`. This follows the same mechanism the component-monitor uses.
-A dedicated K8s ServiceAccount for chai-bot in the `ship-status` namespace
-will be created, following the same pattern as the component-monitor. It will
-be added to `dashboard-config.yaml` owners as a `service_account` entry, and
-the oauth-proxy validates the token via `TokenReview`.
-
-#### Outer layer: chai-bot to the MCP server
-
-The current MCP endpoint is unauthenticated (fine for read-only tools). For write operations, the question is whether the MCP server itself needs to authenticate its callers. **(Updated - 6/23) The MCP server can instead authenticate directly to the dashboard API using the inner layer (SA Bearer token via oauth-proxy), making the options below unnecessary.** 
-
-#### ~~Option A: Bearer token on the MCP endpoint~~
-
-Add a shared secret or API key to the MCP server that chai-bot presents as a
-Bearer token on write tool calls. The MCP server validates the token before
-proxying writes to the dashboard API.
-
-- Simple to implement -- the MCP server already runs as a Python process and
-can check a header
-- Adding an auth header to chai-bot's MCP client is a small change
-- Requires a shared secret to be provisioned and rotated
-
-#### ~~Option B: Route the MCP endpoint through oauth-proxy for writes~~
-
-Add a second, protected MCP route (e.g.,
-`protected.mcp.ship-status.ci.openshift.org`) that goes through the existing
-oauth-proxy. Chai-bot would present a K8s SA Bearer token to this route.
-
-- Reuses the existing oauth-proxy infrastructure
-- Requires chai-bot to have a K8s SA token for the app.ci cluster -- it
-already has kubeconfigs for app.ci mounted for other tools, so this is
-feasible
-- More infrastructure setup (new Route, oauth-proxy config)
-
-#### ~~Option C: Unauthenticated MCP endpoint, rely on dashboard-level auth~~
-
-Skip MCP-level auth entirely. Write tools accept an `on_behalf_of` parameter,
-and the MCP server passes it to the dashboard API as `X-On-Behalf-Of`. The
-dashboard still checks whether the on-behalf-of user is authorized for the
-component.
-
-- Simplest option -- no new auth on the MCP layer
-- Anyone who can reach the MCP endpoint could call write tools and claim to
-be any user. The dashboard would reject unauthorized users, but the caller
-could impersonate an authorized one.
-- Acceptable only if the MCP endpoint is network-restricted (e.g., only
-reachable from trusted clusters)
-
-**(Updated - 6/23) We should follow what was done for the component-monitor
-by creating a service account for chai-bot and authenticating to the dashboard
-API via oauth-proxy using a Bearer token (the same mechanism the
-component-monitor already uses with `POST /api/component-monitor/report`).
-This avoids adding a new auth layer on the MCP server -- the MCP server
-proxies write requests to the dashboard API with the SA Bearer token through
-oauth-proxy, and read-only tools continue to use the public endpoint as they
-do today.**
-
-### Problem 2: How does chai-bot verify a user is authorized?
-
-When a user says "create an outage on Sippy", chai-bot needs to confirm they're
-a Sippy maintainer. Owners are defined as `rover_group`s (not individual users),
-and group membership is resolved via the OpenShift Groups API cache in the
-dashboard backend.
-
-#### ~~Option A: On-behalf-of delegation~~
-
-The first option would be to have chai-bot pass the requesting user's identity
-with the outage creation request. The SHIP Status API itself checks group
-membership using its existing `GroupMembershipCache` and
-`IsUserAuthorizedForComponent`.
-
-The flow:
-
-1. User in Slack: "create an outage on Sippy"
-2. Chai-bot resolves Slack user to Kerberos `uid` via OrgData
-3. Chai-bot calls the `create_outage` MCP tool with `on_behalf_of: <uid>`
-4. MCP server passes the identity to the dashboard API as `X-On-Behalf-Of`
-5. Dashboard runs `IsUserAuthorizedForComponent` against the on-behalf-of user
-6. Outage is created and attributed to the requesting user (not the MCP SA)
-
-For autonomous detection, chai-bot omits the `on_behalf_of` parameter and the
-MCP server acts under its own SA identity, creating an unconfirmed outage.
-
-- Authorization stays in the SHIP Status system where it already lives
-- Leverages the existing `GroupMembershipCache` -- no new group resolution needed
-- The API must only trust `X-On-Behalf-Of` from explicitly allowed SAs
-- Audit logs would record both the SA and the delegated user
-
-#### Option B: New protected maintainer-list endpoint
-
-Add a **protected** endpoint (`GET /api/components/{slug}/maintainers`) that
-expands each component's `rover_group` owners to individual Kerberos IDs.
-Chai-bot calls it (via the MCP server's SA Bearer token through oauth-proxy)
-to verify the requesting user is a maintainer before creating an outage.
-
-Like other write-related reads, it must be registered in `server.go` with
-`protected: true` (oauth-proxy + HMAC auth), not on the public ingress.
+A **protected** endpoint (`GET /api/components/{slug}/maintainers`) expands
+each component's `rover_group` owners to individual Kerberos IDs. Chai-bot
+calls it (via its SA Bearer token through oauth-proxy) to verify the
+requesting user is a maintainer before creating an outage.
 
 - The data is already available -- `GroupMembershipCache.GetGroupMembers`
 exists in `groups.go` and returns the member list for a given group
@@ -236,90 +176,19 @@ client-side, and the dashboard trusts the SA as a recognized owner
 - Also useful as a general-purpose endpoint (e.g., for "who owns this
 component?" queries)
 
-#### ~~Option C: Chai-bot queries OpenShift Groups API directly~~
+### How does a SA use the outage CRUD endpoints?
 
-Another option would be having chai-bot resolve Slack user to Kerberos ID to
-OpenShift Group membership itself, then compare against `dashboard-config.yaml`
-to determine if the user is a component owner.
+`IsUserAuthorizedForComponent` is extended to also check
+`Owner.ServiceAccount`, following the pattern that `ValidateRequest` already
+uses for the component-monitor. This is a minimal change -- add a loop over
+owners checking the `ServiceAccount` field against the authenticated user
+identity.
 
-- No SHIP Status API changes needed -- chai-bot handles everything
-- Duplicates the authorization logic entirely outside the SHIP Status system
-- Requires chai-bot to have its own OpenShift API access and group caching
-- Risk of drift -- if the dashboard's `GroupMembershipCache` and chai-bot's
-cache disagree on group membership, behavior becomes inconsistent
-
-#### ~~Option D: Trust chai-bot entirely~~
-
-We could also add chai-bot's SA as an owner on all components in
-`dashboard-config.yaml` and let it handle access control internally in its own
-logic.
-
-- Simplest API-side implementation -- no new auth concepts or endpoints
-- All authorization lives in chai-bot, not in the data system
-- If chai-bot has a bug or misconfiguration, it could create outages on any
-component for any user with no server-side guardrails
-- Violates the principle that the system of record should enforce its own
-access control
-
-**(Updated - 6/23) We should have a separate protected maintainer-list endpoint. The
-data is already available via `GroupMembershipCache.GetGroupMembers`, and
-exposing it as an endpoint lets chai-bot check authorization before acting.
-Chai-bot's SA is added as a trusted owner on all components (following the
-same pattern as the component-monitor), so the dashboard trusts chai-bot to
-have performed the maintainer check before creating the outage.**
-
-### Problem 3: How does a SA use the outage CRUD endpoints?
-
-The existing outage endpoints use `IsUserAuthorizedForComponent`, which only
-checks `Owner.User` and `Owner.RoverGroup`. Even if chai-bot's SA is listed
-as a `service_account` owner in the config, this function won't recognize it
-and the request will be rejected.
-
-#### Option A: Extend `IsUserAuthorizedForComponent` to check service accounts
-
-The first option would be to add a `ServiceAccount` check to the existing
-authorization function so SA identities can use the same endpoints as human
-users.
-
-- Minimal code change -- add one `if` clause to check `Owner.ServiceAccount`
-in `IsUserAuthorizedForComponent`
-- All existing outage endpoints (create, update, delete, triage notes, links)
-would work for SAs immediately with no other changes
-- Blurs the boundary between human and machine authorization -- the function
-was deliberately designed to exclude SAs
-- Making it accept SAs for all operations removes the ability to enforce
-different constraints on bot actions (e.g., forcing unconfirmed severity
-for autonomous outages)
-
-#### ~~Option B: Create a dedicated endpoint for chai-bot~~
-
-We could give chai-bot its own endpoint (e.g., `POST /api/chai-bot/outage`),
-similar to how component-monitor has `POST /api/component-monitor/report`.
-
-- Clean separation of concerns -- human endpoints stay unchanged
-- Can have its own validation logic (e.g., require `X-On-Behalf-Of` for
-user-initiated actions, force unconfirmed for bot-initiated)
-- Duplicates the outage creation logic that already exists in the handlers
-(`CreateOutageJSON`, `UpdateOutageJSON`, etc.)
-- Requires maintaining a parallel API surface for what is essentially the
-same set of operations
-
-#### ~~Option C: Delegation middleware for trusted service accounts~~
-
-Another option would be to add middleware that, for trusted SAs like the MCP
-server's, processes `X-On-Behalf-Of` and replaces the request context user with the
-delegated identity before the request reaches existing handlers.
-
-- Existing handlers work unchanged -- they see a normal user identity
-- Authorization and audit logging work exactly as they do for human users
-- The middleware layer handles the SA trust and identity delegation
-- Requires careful implementation -- must only activate for explicitly
-trusted SAs, not all service accounts
-- For bot-initiated actions (no `X-On-Behalf-Of`),
-`IsUserAuthorizedForComponent` would be extended to accept
-`service_account` owners, but only for creating unconfirmed outages
-
-**(Updated - 6/23) We will probably need to extend** `IsUserAuthorizedForComponent` **to authorize SAs, following the pattern that** `ValidateRequest` **already uses for the component-monitor. Adding a** `service_account` **check to the existing function should be a minimal code change, and since chai-bot's SA is added as an owner on all components, the existing endpoints should work immediately. Chai-bot handles authorization client-side via the protected maintainer-list endpoint before creating outages, so the dashboard only needs to verify the SA is a recognized owner. An alternative would be to create a separate** `IsServiceAccountAuthorizedForComponent` **function and call both in the handlers, which keeps human and SA authorization separate but requires updating every handler that needs SA access.**
+Chai-bot's SA is added as an owner on all components in
+`dashboard-config.yaml`, so the existing endpoints work immediately. Chai-bot
+handles authorization client-side via the protected maintainer-list endpoint
+before creating outages, so the dashboard only needs to verify the SA is a
+recognized owner.
 
 ## Solution Overview
 
@@ -331,8 +200,9 @@ trusted SAs, not all service accounts
 2. Chai-bot resolves the user's Slack ID to Kerberos `uid` via OrgData
 3. Chai-bot calls the protected maintainer-list endpoint to verify the user is
   authorized for the target component
-4. If authorized, chai-bot calls `create_outage` on the SHIP Status MCP server
-5. MCP server calls the dashboard API with its SA Bearer token via oauth-proxy
+4. If authorized, chai-bot calls `create_outage` on the SHIP Status MCP server,
+  including its SA Bearer token in the `Authorization` header
+5. MCP server forwards the token to the oauth-proxy at `127.0.0.1:8443`
 6. `IsUserAuthorizedForComponent` (extended) checks `service_account` owners
   and confirms the SA is a recognized owner
 7. Outage is created and attributed to chai-bot's SA. The requesting user's
@@ -343,9 +213,9 @@ trusted SAs, not all service accounts
 **Bot-initiated** (autonomous detection):
 
 1. Chai-bot detects an issue on its own
-2. Chai-bot calls `create_outage` on the SHIP Status MCP server (no user
-  involved)
-3. MCP server calls the dashboard API with its SA Bearer token via oauth-proxy
+2. Chai-bot calls `create_outage` on the SHIP Status MCP server, including its
+  SA Bearer token in the `Authorization` header
+3. MCP server forwards the token to the oauth-proxy at `127.0.0.1:8443`
 4. `IsUserAuthorizedForComponent` (extended) checks `service_account` owners
 5. Outage is created as unconfirmed with severity `Suspected`
 6. Slack notification is sent automatically by the existing outage reporting
@@ -368,7 +238,7 @@ Several other pieces chai-bot needs already exist and are reused unchanged:
 - Slack reporting in `pkg/outage/slack_report.go`, which runs when outages are
   created or updated through the API and threads updates on the same alert
 
-## Implementation Plan (Updated - 6/23)
+## Implementation Plan
 
 ### Phase 1: Service Account and Auth Infrastructure
 
@@ -394,6 +264,16 @@ reusing the same logic that `ValidateRequest` already uses in
 over owners checking the `ServiceAccount` field against the authenticated
 user identity.
 
+**Token provisioning:**
+
+- Store the chai-bot SA token in Vault and configure `ci-secret-bootstrap` to
+sync it to Chai's namespace on mp-plus
+- Chai's pod mounts the token as a file and reads it at runtime to include in
+requests to the MCP server
+- The MCP sidecar needs `SHIP_STATUS_PROTECTED_API_URL=http://127.0.0.1:8443/api`
+set (removed by the security revert in openshift/release#81712). Do NOT
+re-add any token mount to the MCP sidecar.
+
 ### Phase 2: Maintainer-List Endpoint and Write Tools
 
 **Maintainer-list endpoint (`cmd/dashboard/handlers.go`):**
@@ -407,12 +287,13 @@ creating outages to verify the requesting user is a maintainer.
 
 **MCP write tools (in `mcp/`):**
 
-The MCP server already has plumbing for authenticated writes:
-`SHIP_STATUS_AUTH_TOKEN_FILE` for the SA Bearer token and
-`SHIP_STATUS_PROTECTED_API_URL` pointing at the oauth-proxy on
-`127.0.0.1:8443`. Status and outage queries use the existing read tools
-(`get_infrastructure_status`, `get_component_outages`). This phase adds write
-tools; chai-bot discovers them automatically via `tools/list` at startup.
+The MCP server uses `SHIP_STATUS_PROTECTED_API_URL` pointing at the
+oauth-proxy on `127.0.0.1:8443` for write operations. The Bearer token is
+extracted from the caller's `Authorization` header and forwarded with each
+protected request. Status and outage queries use the existing read tools
+(`get_infrastructure_status`, `get_component_outages`) via the public API.
+This phase adds write tools; chai-bot discovers them automatically via
+`tools/list` at startup.
 
 - `create_outage` -- create an outage on a sub-component. Accepts severity
 and description.
@@ -420,6 +301,20 @@ and description.
 - `add_triage_note` -- add a triage note to an existing outage
 - `check_maintainers` -- call the protected maintainer-list endpoint to verify
 a user is authorized for a component
+
+**MCP server auth implementation (`mcp/api_server.py`, `mcp/api_client.py`):**
+
+- Add FastMCP middleware that reads `Authorization` from incoming HTTP headers
+  using `get_http_headers(include={"authorization"})` (authorization is
+  stripped by default) and stores the Bearer token in a `ContextVar`
+- `DashboardClient.protected_request()` uses the context token when available,
+  falling back to `SHIP_STATUS_AUTH_TOKEN_FILE` for local dev only
+
+**Chai-bot MCP client (`ship_help_bot/tools/ship_status/client.py`):**
+
+- Add `extra_headers` callback to `StreamableHttpMcpClient` that reads the
+  token from a mounted file and returns `{"Authorization": "Bearer <token>"}`
+- Follows the same pattern as the Product Pages MCP client
 
 **Bot-initiated safeguards:**
 
@@ -494,10 +389,10 @@ suggest trying again later
 
 | Test Case                         | Input                                 | Expected                           |
 | --------------------------------- | ------------------------------------- | ---------------------------------- |
-| Write with valid SA token         | Valid SA auth + `create_outage` call  | Tool executes, calls dashboard API |
-| Write without SA token            | No auth + `create_outage` call        | Rejected by oauth-proxy            |
+| Write with valid SA token         | Caller includes valid Bearer token    | Tool executes, calls dashboard API |
+| Write without token               | No Authorization header               | Rejected (no token to forward)     |
 | Read tools remain unauthenticated | No auth + `get_infrastructure_status` call | Tool executes normally             |
-| Check maintainers returns list    | `check_maintainers` call              | Returns list of authorized users   |
+| Check maintainers returns list    | `check_maintainers` call with valid token | Returns list of authorized users   |
 
 
 ### E2E Tests
@@ -530,105 +425,7 @@ check, which does not affect existing human user authorization flows.
   `Suspected`, or should chai-bot be able to set `Degraded`/`Down` when it
    has high-confidence signals (e.g., confirmed by multiple probes)?
   > **A:** Always `Suspected`.
+3. **Secret store.** Which secret store (Vault or Bitwarden) should hold the
+  chai-bot SA token for provisioning to Chai's pod?
 
 (Will add more here as they come up during implementation.)
-
----
-
-## Updated: MCP Write Authentication (7/9/26)
-
-### Problem
-
-The MCP server runs as a sidecar on the dashboard pod and is exposed publicly
-at `mcp.ship-status.ci.openshift.org`. There is no authentication between
-callers and the MCP server (read tools are intentionally public, but this
-means write tools are also reachable by anyone).
-
-The original design mounted the chai-bot SA token directly in the MCP sidecar
-and used it unconditionally for all protected API requests. This means any
-caller who can reach the public MCP endpoint would have their write requests
-authenticated as chai-bot, bypassing the dashboard's authorization model
-entirely. The token mount was reverted in openshift/release#81712.
-
-### Updated Approach
-
-Chai sends the Bearer token directly to the MCP server, and the MCP server
-passes it along to the dashboard without modification.
-
-The token is no longer mounted in the MCP sidecar. Instead:
-
-1. The chai-bot SA token is stored in Vault/Bitwarden and provisioned to
-   Chai's pod on mp-plus as a mounted secret
-2. Chai includes the token in the `Authorization` header when calling the MCP
-   server over HTTPS
-3. The MCP server extracts the token from the incoming request and forwards it
-   to the oauth-proxy at `http://127.0.0.1:8443/api`
-4. oauth-proxy validates it via TokenReview + SAR against app.ci, then sets
-   `X-Forwarded-User` and `GAP-Signature` as normal
-
-This way, only callers who possess a valid token can perform writes. The MCP
-server itself holds no credentials.
-
-### Request Path
-
-```
-Chai (mp-plus)
-  |
-  | Authorization: Bearer <chai-bot SA token>
-  v
-MCP server (mcp.ship-status.ci.openshift.org:8090)
-  |
-  | extracts token, forwards unchanged
-  v
-oauth-proxy (127.0.0.1:8443)
-  |
-  | TokenReview + SAR on app.ci
-  | sets X-Forwarded-User + GAP-Signature
-  v
-dashboard (127.0.0.1:8080)
-  |
-  | verifies HMAC, checks component owners
-  v
-request authorized (or rejected)
-```
-
-### Implementation Changes
-
-**`openshift-eng/ship-status-dash` — MCP server (`mcp/api_server.py`, `mcp/api_client.py`):**
-
-- Add FastMCP middleware that reads `Authorization` from incoming HTTP headers
-  using `get_http_headers(include={"authorization"})` (authorization is
-  stripped by default) and stores the Bearer token in a `ContextVar`
-- Modify `DashboardClient.protected_request()` to use the context token when
-  available, falling back to `SHIP_STATUS_AUTH_TOKEN_FILE` for local dev
-
-**`openshift-eng/ship-help-bot` — MCP client (`ship_help_bot/tools/ship_status/client.py`):**
-
-- Add `extra_headers` callback to `StreamableHttpMcpClient` that reads the
-  token from a mounted file and returns `{"Authorization": "Bearer <token>"}`
-- Follows the same pattern as the Product Pages MCP client
-
-**`openshift/release` — Deployment and infrastructure:**
-
-- MCP sidecar: re-add `SHIP_STATUS_PROTECTED_API_URL=http://127.0.0.1:8443/api`
-  (removed by the security revert). Do NOT re-add the token mount
-- Chai pod (mp-plus): mount the chai-bot SA token from Vault/Bitwarden as a
-  file, set an env var pointing to it (e.g., `SHIP_STATUS_MCP_AUTH_TOKEN_FILE`)
-- The chai-bot SA, token secret, RBAC, and dashboard-config owner entries from
-  openshift/release#81417 remain in place on app.ci (only the sidecar mount
-  was reverted in #81712)
-- Store the token value in Vault/Bitwarden and configure `ci-secret-bootstrap`
-  to sync it to Chai's namespace on mp-plus
-
-### Already In Place (No Changes Needed)
-
-- Read tools remain unauthenticated (public API, no token needed)
-- The dashboard's auth middleware, HMAC validation, and component owner
-  authorization are unchanged
-- The MCP server still uses `SHIP_STATUS_PUBLIC_API_URL` for read operations
-- `SHIP_STATUS_AUTH_TOKEN_FILE` remains in the code as a local dev fallback
-
-### Open Questions
-
-1. Which secret store (Vault or Bitwarden) should hold the chai-bot SA token
-   for provisioning to Chai's pod?
