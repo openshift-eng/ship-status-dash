@@ -8,4 +8,4 @@ applyTo: "**/*.go"
 * Use GORM conventions for database models and queries.
 * Authentication uses HMAC signature verification -- never bypass `SKIP_AUTH` in production paths.
 * Outage modifications must go through the audit logging system (`outage_audit_logs` table).
-* All mutating endpoints (create, update, delete) must enforce authentication. Never expose write operations on the public (unauthenticated) API route. The dashboard application is the single enforcement point for auth -- do not rely on proxy layers or clients to gate access.
+* All mutating endpoints (create, update, delete) must be served exclusively on the protected route. The oauth-proxy is the bearer-token authentication boundary; the dashboard is the sole application-level enforcement point for HMAC validation and authorization on all write operations.
