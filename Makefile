@@ -54,8 +54,8 @@ apm:
 	uvx --from apm-cli@0.13.0 apm compile
 
 verify-apm: apm
-	@if ! git diff --quiet HEAD -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; then \
+	@if [ -n "$$(git status --porcelain -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md)" ]; then \
 		echo "ERROR: Generated APM files are out of date. Run 'make apm' and commit the results."; \
-		git diff --stat HEAD -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; \
+		git status --short -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; \
 		exit 1; \
 	fi
