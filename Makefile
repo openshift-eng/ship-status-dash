@@ -48,11 +48,11 @@ build-component-monitor:
 component-monitor-dry-run:
 	@./hack/component-monitor-dry-run/create-job.sh
 
-_uvx_flags = $(if $(filter true,$(CI)),--no-cache)
+_uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
 apm:
 	@command -v uvx >/dev/null || (echo "uvx not found; install uv (see .devcontainer/Dockerfile)" >&2 && exit 1)
-	uvx $(_uvx_flags) --from apm-cli@0.13.0 apm install
-	uvx $(_uvx_flags) --from apm-cli@0.13.0 apm compile
+	$(_uvx_env) uvx --from apm-cli@0.13.0 apm install
+	$(_uvx_env) uvx --from apm-cli@0.13.0 apm compile
 
 verify-apm: apm
 	@if [ -n "$$(git status --porcelain -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md)" ]; then \
