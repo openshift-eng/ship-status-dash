@@ -532,3 +532,103 @@ check, which does not affect existing human user authorization flows.
   > **A:** Always `Suspected`.
 
 (Will add more here as they come up during implementation.)
+
+---
+
+## Updated: MCP Write Authentication (7/9/26)
+
+### Problem
+
+The MCP server runs as a sidecar on the dashboard pod and is exposed publicly
+at `mcp.ship-status.ci.openshift.org`. There is no authentication between
+callers and the MCP server (read tools are intentionally public, but this
+means write tools are also reachable by anyone).
+
+The original design mounted the chai-bot SA token directly in the MCP sidecar
+and used it unconditionally for all protected API requests. This means any
+caller who can reach the public MCP endpoint would have their write requests
+authenticated as chai-bot, bypassing the dashboard's authorization model
+entirely. The token mount was reverted in openshift/release#81712.
+
+### Updated Approach
+
+Chai sends the Bearer token directly to the MCP server, and the MCP server
+passes it along to the dashboard without modification.
+
+The token is no longer mounted in the MCP sidecar. Instead:
+
+1. The chai-bot SA token is stored in Vault/Bitwarden and provisioned to
+   Chai's pod on mp-plus as a mounted secret
+2. Chai includes the token in the `Authorization` header when calling the MCP
+   server over HTTPS
+3. The MCP server extracts the token from the incoming request and forwards it
+   to the oauth-proxy at `http://127.0.0.1:8443/api`
+4. oauth-proxy validates it via TokenReview + SAR against app.ci, then sets
+   `X-Forwarded-User` and `GAP-Signature` as normal
+
+This way, only callers who possess a valid token can perform writes. The MCP
+server itself holds no credentials.
+
+### Request Path
+
+```
+Chai (mp-plus)
+  |
+  | Authorization: Bearer <chai-bot SA token>
+  v
+MCP server (mcp.ship-status.ci.openshift.org:8090)
+  |
+  | extracts token, forwards unchanged
+  v
+oauth-proxy (127.0.0.1:8443)
+  |
+  | TokenReview + SAR on app.ci
+  | sets X-Forwarded-User + GAP-Signature
+  v
+dashboard (127.0.0.1:8080)
+  |
+  | verifies HMAC, checks component owners
+  v
+request authorized (or rejected)
+```
+
+### Implementation Changes
+
+**`openshift-eng/ship-status-dash` — MCP server (`mcp/api_server.py`, `mcp/api_client.py`):**
+
+- Add FastMCP middleware that reads `Authorization` from incoming HTTP headers
+  using `get_http_headers(include={"authorization"})` (authorization is
+  stripped by default) and stores the Bearer token in a `ContextVar`
+- Modify `DashboardClient.protected_request()` to use the context token when
+  available, falling back to `SHIP_STATUS_AUTH_TOKEN_FILE` for local dev
+
+**`openshift-eng/ship-help-bot` — MCP client (`ship_help_bot/tools/ship_status/client.py`):**
+
+- Add `extra_headers` callback to `StreamableHttpMcpClient` that reads the
+  token from a mounted file and returns `{"Authorization": "Bearer <token>"}`
+- Follows the same pattern as the Product Pages MCP client
+
+**`openshift/release` — Deployment and infrastructure:**
+
+- MCP sidecar: re-add `SHIP_STATUS_PROTECTED_API_URL=http://127.0.0.1:8443/api`
+  (removed by the security revert). Do NOT re-add the token mount
+- Chai pod (mp-plus): mount the chai-bot SA token from Vault/Bitwarden as a
+  file, set an env var pointing to it (e.g., `SHIP_STATUS_MCP_AUTH_TOKEN_FILE`)
+- The chai-bot SA, token secret, RBAC, and dashboard-config owner entries from
+  openshift/release#81417 remain in place on app.ci (only the sidecar mount
+  was reverted in #81712)
+- Store the token value in Vault/Bitwarden and configure `ci-secret-bootstrap`
+  to sync it to Chai's namespace on mp-plus
+
+### Already In Place (No Changes Needed)
+
+- Read tools remain unauthenticated (public API, no token needed)
+- The dashboard's auth middleware, HMAC validation, and component owner
+  authorization are unchanged
+- The MCP server still uses `SHIP_STATUS_PUBLIC_API_URL` for read operations
+- `SHIP_STATUS_AUTH_TOKEN_FILE` remains in the code as a local dev fallback
+
+### Open Questions
+
+1. Which secret store (Vault or Bitwarden) should hold the chai-bot SA token
+   for provisioning to Chai's pod?
