@@ -132,7 +132,7 @@ dashboard (127.0.0.1:8080)
 request authorized (or rejected)
 ```
 
-The chai-bot SA token is stored in Vault and provisioned to Chai's pod on
+The chai-bot SA token is stored in Bitwarden and provisioned to Chai's pod on
 mp-plus as a mounted secret. A dedicated ServiceAccount (`chai-bot`) in the
 `ship-status` namespace on app.ci is set up in openshift/release#81417 (SA,
 RBAC, and dashboard-config owner entries).
@@ -153,8 +153,8 @@ The MCP server acts as a stateless passthrough. Chai-bot includes its SA
 Bearer token in the `Authorization` header when calling MCP tools. The MCP
 server extracts the token and forwards it to the oauth-proxy at
 `127.0.0.1:8443`, which validates it via TokenReview. This follows the same
-validation mechanism the component-monitor uses, but with the token originating
-from the caller rather than being mounted in the MCP sidecar.
+validation mechanism the component-monitor uses, but with the token coming
+from the caller rather than being stored on the MCP server.
 
 This approach was chosen because the MCP endpoint is publicly accessible. If
 the MCP server held its own token and used it unconditionally, any caller who
@@ -266,7 +266,7 @@ user identity.
 
 **Token provisioning:**
 
-- Store the chai-bot SA token in Vault and configure `ci-secret-bootstrap` to
+- Store the chai-bot SA token in Bitwarden and configure `ci-secret-generator` to
 sync it to Chai's namespace on mp-plus
 - Chai's pod mounts the token as a file and reads it at runtime to include in
 requests to the MCP server
@@ -427,5 +427,4 @@ check, which does not affect existing human user authorization flows.
   > **A:** Always `Suspected`.
 3. **Secret store.** Which secret store (Vault or Bitwarden) should hold the
   chai-bot SA token for provisioning to Chai's pod?
-
-(Will add more here as they come up during implementation.)
+  > **A:** Bitwarden (TRT collection). The token will be synced to chai-bot's namespace via `ci-secret-generator`.
