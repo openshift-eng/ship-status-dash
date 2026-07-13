@@ -6,5 +6,6 @@ applyTo: "**/*.go"
 * Follow idiomatic Go practices.
 * After making changes, always run `gofmt -w` on modified files to ensure proper formatting.
 * Use GORM conventions for database models and queries.
-* Authentication uses HMAC signature verification — never bypass `SKIP_AUTH` in production paths.
+* Authentication uses HMAC signature verification -- never bypass `SKIP_AUTH` in production paths.
 * Outage modifications must go through the audit logging system (`outage_audit_logs` table).
+* All mutating endpoints (create, update, delete) must be served exclusively on the protected route. The oauth-proxy is the bearer-token authentication boundary; the dashboard is the sole application-level enforcement point for HMAC validation and authorization on all write operations.

@@ -25,7 +25,7 @@ mcp-test-api:
 mcp-test-dev:
 	@ship-status-dev/.venv/bin/pytest ship-status-dev/ -q
 
-lint: npm
+lint: npm verify-apm
 	@./hack/go-lint.sh --timeout 10m run ./...
 	@cd frontend && npm run lint
 	@cd frontend && npm audit --omit=dev
@@ -48,14 +48,15 @@ build-component-monitor:
 component-monitor-dry-run:
 	@./hack/component-monitor-dry-run/create-job.sh
 
+_uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
 apm:
 	@command -v uvx >/dev/null || (echo "uvx not found; install uv (see .devcontainer/Dockerfile)" >&2 && exit 1)
-	uvx --from apm-cli@0.11.0 apm install
-	uvx --from apm-cli@0.11.0 apm compile
+	$(_uvx_env) uvx --from apm-cli@0.13.0 apm install
+	$(_uvx_env) uvx --from apm-cli@0.13.0 apm compile
 
 verify-apm: apm
-	@if ! git diff --quiet HEAD -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; then \
+	@if [ -n "$$(git status --porcelain -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md)" ]; then \
 		echo "ERROR: Generated APM files are out of date. Run 'make apm' and commit the results."; \
-		git diff --stat HEAD -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; \
+		git status --short -- .apm apm.lock.yaml .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md; \
 		exit 1; \
 	fi
