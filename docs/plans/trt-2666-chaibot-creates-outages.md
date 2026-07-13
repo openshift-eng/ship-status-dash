@@ -25,12 +25,12 @@ The goal is to enable chai-bot to:
 The dashboard pod runs on app.ci with two ingress routes:
 
 - **Public** (`ship-status.ci.openshift.org`) -- unauthenticated read-only
-  endpoints
+endpoints
 - **Protected** (`protected.ship-status.ci.openshift.org`) -- routes through
-  an oauth-proxy sidecar that validates the caller's token via TokenReview,
-  sets `X-Forwarded-User`, and signs the request with HMAC
-  (`GAP-Signature`). The dashboard auth middleware validates the HMAC
-  signature and extracts the user identity.
+an oauth-proxy sidecar that validates the caller's token via TokenReview,
+sets `X-Forwarded-User`, and signs the request with HMAC
+(`GAP-Signature`). The dashboard auth middleware validates the HMAC
+signature and extracts the user identity.
 
 ### Owner Model
 
@@ -46,14 +46,14 @@ owners:
 Authorization depends on the type of caller:
 
 - **Human users** are checked by `IsUserAuthorizedForComponent`
-  (`handlers.go`), which matches the authenticated identity against
-  `Owner.User` (exact string) or `Owner.RoverGroup` (resolved to individual
-  members via `GroupMembershipCache` and the OpenShift Groups API). This
-  function does **not** check `Owner.ServiceAccount`.
+(`handlers.go`), which matches the authenticated identity against
+`Owner.User` (exact string) or `Owner.RoverGroup` (resolved to individual
+members via `GroupMembershipCache` and the OpenShift Groups API). This
+function does **not** check `Owner.ServiceAccount`.
 - **Service accounts** are checked by `ValidateRequest`
-  (`component_monitoring_report.go`), which matches
-  `Owner.ServiceAccount`. This is only used for the component-monitor's
-  dedicated endpoint (`POST /api/component-monitor/report`).
+(`component_monitoring_report.go`), which matches
+`Owner.ServiceAccount`. This is only used for the component-monitor's
+dedicated endpoint (`POST /api/component-monitor/report`).
 
 These paths are completely separate -- a service account cannot pass human
 authorization checks, and vice versa.
@@ -75,9 +75,9 @@ means write tools cannot be added to it without exposing unauthenticated write
 access. The proposed design splits MCP into two servers:
 
 - A **read-only MCP** (the existing server with mutating tools removed)
-  remains publicly accessible for status queries and outage lookups.
+remains publicly accessible for status queries and outage lookups.
 - An **authenticated MCP** sits behind an oauth-proxy and serves write tools
-  only. Only callers with a valid SA token (chai-bot) can reach it.
+only. Only callers with a valid SA token (chai-bot) can reach it.
 
 The authenticated MCP has its own dedicated SA on app.ci. When it needs to
 call the dashboard's protected API, it sends its SA Bearer token through the
@@ -128,10 +128,10 @@ the MCP SA only needs to exist in one cluster.
 Every write tool on the authenticated MCP accepts an `acting-for` argument:
 
 - **User-initiated:** Chai-bot resolves the Slack user's Kerberos `uid` and
-  sends it as `acting-for`. The dashboard checks if that user is authorized
-  for the target component.
+sends it as `acting-for`. The dashboard checks if that user is authorized
+for the target component.
 - **Bot-initiated:** Chai-bot sends `"chai-bot"` as `acting-for` when acting
-  autonomously (e.g., detecting an outage on its own).
+autonomously (e.g., detecting an outage on its own).
 
 The `acting-for` value is included in the request body to the dashboard. Since
 HMAC covers the full request body, it cannot be tampered with in transit.
@@ -153,7 +153,7 @@ This means:
 - Chai-bot does not check authorization client-side
 - No maintainer-list endpoint or `check_maintainers` tool is needed
 - Chai-bot receives a 4xx when the user lacks permissions and communicates
-  that to the user
+that to the user
 
 ### Two Modes of Operation
 
@@ -162,12 +162,12 @@ This means:
 1. User asks chai-bot in Slack to create an outage
 2. Chai-bot resolves the user's Slack ID to Kerberos `uid` via OrgData
 3. Chai-bot calls `create_outage` on the authenticated MCP with
-   `acting-for: "<uid>"` and its SA Bearer token
+  `acting-for: "<uid>"` and its SA Bearer token
 4. oauth-proxy validates chai-bot's token, forwards to the MCP
 5. MCP calls the dashboard's oauth-proxy with its own SA token, including
-   `acting-for` in the request body
+  `acting-for` in the request body
 6. Dashboard validates HMAC, checks if the `acting-for` user is authorized,
-   creates outage or returns 403
+  creates outage or returns 403
 7. Audit log records the `acting-for` identity with `discovered_from: "mcp"`
 
 **Bot-initiated:**
@@ -183,9 +183,9 @@ This means:
 These are enforced in the authenticated MCP before calling the dashboard:
 
 - Bot-initiated outages (`acting-for: "chai-bot"`) are always forced to
-  severity `Suspected` with `ConfirmedAt` null
+severity `Suspected` with `ConfirmedAt` null
 - Before creating an outage, check for an existing active outage on the same
-  sub-component. If one exists, return it instead of creating a duplicate.
+sub-component. If one exists, return it instead of creating a duplicate.
 
 ## Implementation Plan
 
@@ -194,38 +194,38 @@ These are enforced in the authenticated MCP before calling the dashboard:
 **Read-only MCP:**
 
 - Remove mutating tools from the existing MCP server (stays public,
-  unauthenticated)
+unauthenticated)
 
 **Authenticated MCP:**
 
 - Deploy the authenticated MCP as a new container in the dashboard pod
-  (e.g., port 8091)
+(e.g., port 8091)
 - Add a second upstream to the existing oauth-proxy:
-  `--upstream=http://127.0.0.1:8091/mcp/` (path-based routing)
+`--upstream=http://127.0.0.1:8091/mcp/` (path-based routing)
 - Create a dedicated SA for the MCP to use when calling the dashboard
-  through the oauth-proxy (same cluster, app.ci only)
+through the oauth-proxy (same cluster, app.ci only)
 
 **Dashboard changes (`cmd/dashboard/`):**
 
 - Add support for `discovered_from: "mcp"` in the outage creation flow
 - When `discovered_from` is `"mcp"`, verify `X-Forwarded-User` matches the
-  trusted MCP SA identity, then read `acting-for` from the request body and
-  use it for authorization checks and audit logging
+trusted MCP SA identity, then read `acting-for` from the request body and
+use it for authorization checks and audit logging
 - Add the MCP SA as a trusted caller identity in config (not as a component
-  owner — it is not itself authorized to act on components, it just forwards
-  requests on behalf of the `acting-for` identity)
+owner — it is not itself authorized to act on components, it just forwards
+requests on behalf of the `acting-for` identity)
 
 **Chai-bot SA provisioning:**
 
 - Chai-bot SA on app.ci is set up in openshift/release#81417 (SA, RBAC)
 - Store the token in Bitwarden (TRT collection), sync to Chai's namespace on
-  mp-plus via `ci-secret-generator`
+mp-plus via `ci-secret-generator`
 - Chai mounts the token and includes it in requests to the authenticated MCP
 
 **Component ownership:**
 
 - Add `"chai-bot"` as a `user` on all components in
-  `dashboard-config.yaml` for bot-initiated outages
+`dashboard-config.yaml` for bot-initiated outages
 
 ### Phase 2: Write Tools
 
@@ -246,9 +246,9 @@ dashboard checks authorization against the `acting-for` identity.
 - Middleware reads `Authorization` from headers (confirms oauth-proxy auth)
 - Reads `acting-for` from tool arguments
 - Calls the dashboard's oauth-proxy with the MCP SA Bearer token, including
-  `acting-for` in the request body
+`acting-for` in the request body
 - Enforces safeguards before calling the dashboard (bot-initiated severity
-  override, duplicate detection)
+override, duplicate detection)
 - Passes through 4xx errors to the caller
 
 Outages created via MCP go through the same API as the web UI, so Slack
@@ -259,7 +259,7 @@ notifications (`pkg/outage/slack_report.go`) work automatically.
 **Client configuration (`ship_help_bot/tools/ship_status/client.py`):**
 
 - Connect to both MCP servers (read-only for queries, authenticated for
-  writes)
+writes)
 - `extra_headers` callback sends SA Bearer token to the authenticated MCP
 
 **Identity resolution:** Chai-bot resolves Slack user IDs to Kerberos `uid`
@@ -284,23 +284,27 @@ autonomously.
 Tests the dashboard's handling of MCP-originated requests (trusted caller
 verification, acting-for authorization, audit logging).
 
-| Test Case                           | Input                                            | Expected                    |
-| ----------------------------------- | ------------------------------------------------ | --------------------------- |
-| Trusted MCP SA + authorized user    | MCP SA caller, acting-for is component owner     | 201 Created                 |
-| Trusted MCP SA + unauthorized user  | MCP SA caller, acting-for not in owners          | 403 Forbidden               |
-| Unknown SA rejected                 | Non-MCP SA caller with discovered_from: "mcp"   | 403 Forbidden               |
-| Audit log records acting-for        | MCP SA caller, acting-for: "jdoe"                | Audit log user = "jdoe"     |
+
+| Test Case                          | Input                                         | Expected                |
+| ---------------------------------- | --------------------------------------------- | ----------------------- |
+| Trusted MCP SA + authorized user   | MCP SA caller, acting-for is component owner  | 201 Created             |
+| Trusted MCP SA + unauthorized user | MCP SA caller, acting-for not in owners       | 403 Forbidden           |
+| Unknown SA rejected                | Non-MCP SA caller with discovered_from: "mcp" | 403 Forbidden           |
+| Audit log records acting-for       | MCP SA caller, acting-for: "jdoe"             | Audit log user = "jdoe" |
+
 
 **MCP (`mcp/`):**
 
 Tests the authenticated MCP's tool logic, safeguards, and error passthrough.
 
-| Test Case                           | Input                                | Expected                          |
-| ----------------------------------- | ------------------------------------ | --------------------------------- |
-| Missing acting-for rejected         | Valid token, no acting-for argument  | Error returned to caller          |
-| Bot-initiated forced to Suspected   | acting-for: "chai-bot", severity=Down| Severity overridden to Suspected  |
-| Duplicate outage returns existing   | Active outage on same sub-component  | Existing outage returned          |
-| Dashboard 403 passed through        | acting-for user not authorized       | 403 returned to caller            |
+
+| Test Case                         | Input                                 | Expected                         |
+| --------------------------------- | ------------------------------------- | -------------------------------- |
+| Missing acting-for rejected       | Valid token, no acting-for argument   | Error returned to caller         |
+| Bot-initiated forced to Suspected | acting-for: "chai-bot", severity=Down | Severity overridden to Suspected |
+| Duplicate outage returns existing | Active outage on same sub-component   | Existing outage returned         |
+| Dashboard 403 passed through      | acting-for user not authorized        | 403 returned to caller           |
+
 
 ### E2E Tests
 
@@ -308,13 +312,15 @@ Tests the authenticated MCP's tool logic, safeguards, and error passthrough.
 
 End-to-end tests through the full auth chain (oauth-proxy → MCP → dashboard).
 
-| Test Case              | Input                                  | Expected                               |
-| ---------------------- | -------------------------------------- | -------------------------------------- |
-| User-initiated outage  | acting-for authorized user via MCP     | Created, audit records acting-for user |
-| Unauthorized user      | acting-for not in owners               | 403                                    |
-| Bot-initiated flow     | acting-for: "chai-bot", severity=Down  | Suspected, unconfirmed                 |
-| Outage lifecycle       | Create, triage note, resolve via MCP   | All succeed, audit trail complete      |
-| Duplicate detection    | Create when active outage exists       | Returns existing outage                |
+
+| Test Case             | Input                                 | Expected                               |
+| --------------------- | ------------------------------------- | -------------------------------------- |
+| User-initiated outage | acting-for authorized user via MCP    | Created, audit records acting-for user |
+| Unauthorized user     | acting-for not in owners              | 403                                    |
+| Bot-initiated flow    | acting-for: "chai-bot", severity=Down | Suspected, unconfirmed                 |
+| Outage lifecycle      | Create, triage note, resolve via MCP  | All succeed, audit trail complete      |
+| Duplicate detection   | Create when active outage exists      | Returns existing outage                |
+
 
 ### Regression
 
@@ -324,22 +330,23 @@ dashboard's existing protected routes (oauth-proxy + HMAC) are unaffected.
 ## Open Questions
 
 1. **Chai-bot autonomous authorization.** When chai-bot acts autonomously, it
-   sends `"chai-bot"` in `acting-for`. This identity needs to pass
+  sends `"chai-bot"` in `acting-for`. This identity needs to pass
    `IsUserAuthorizedForComponent`. How should this be handled?
-   > **A:** Add `"chai-bot"` as a `user` on every component in
-   > `dashboard-config.yaml`. Alternatives (system account bypass, dedicated
-   > bot role) could be explored if this becomes a maintenance burden.
+  > **A:** Add `"chai-bot"` as a `user` on every component in
+  > `dashboard-config.yaml`. Alternatives (system account bypass, dedicated
+  > bot role) could be explored if this becomes a maintenance burden.
 2. **Scope of MCP tools.** Should chai-bot also update outage severity, or
-   only create and resolve? Should it manage outage links?
-   > **A:** Chai-bot should be able to do anything a human can do through the
-   > web UI. Need to identify the full set of operations.
+  only create and resolve? Should it manage outage links?
+  > **A:** Chai-bot should be able to do anything a human can do through the
+  > web UI. Need to identify the full set of operations.
 3. **Bot-initiated severity.** Should bot-initiated outages always be
-   `Suspected`, or should chai-bot be able to set `Degraded`/`Down` with
+  `Suspected`, or should chai-bot be able to set `Degraded`/`Down` with
    high-confidence signals?
-   > **A:** Always `Suspected`.
+  > **A:** Always `Suspected`.
 4. **Secret store.** Which secret store should hold the chai-bot SA token?
-   > **A:** Bitwarden (TRT collection). Synced via `ci-secret-generator`.
+  > **A:** Bitwarden (TRT collection). Synced via `ci-secret-generator`.
 5. **Authenticated MCP deployment.**
-   > **A:** The existing oauth-proxy supports path-based routing with multiple
-   > upstreams. The authenticated MCP runs as a new container in the dashboard
-   > pod and is accessible via the protected domain at `/mcp/...`.
+  > **A:** The existing oauth-proxy supports path-based routing with multiple
+  > upstreams. The authenticated MCP runs as a new container in the dashboard
+  > pod and is accessible via the protected domain at `/mcp/...`.
+
