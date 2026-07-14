@@ -40,7 +40,7 @@ func NewAbsentMonitoredComponentReportChecker(configManager *config.Manager[type
 
 // Start begins the absent report checker.
 func (a *AbsentMonitoredComponentReportChecker) Start(ctx context.Context) {
-	initialDelay := 3 * a.checkInterval
+	initialDelay := 5 * a.checkInterval
 	a.logger.WithFields(logrus.Fields{
 		"check_interval": a.checkInterval,
 		"initial_delay":  initialDelay,
@@ -72,7 +72,7 @@ func (a *AbsentMonitoredComponentReportChecker) Start(ctx context.Context) {
 }
 
 // checkForAbsentReports iterates through all configured sub-components,
-// checking if they have been pinged within 3x their configured frequency.
+// checking if they have been pinged within 5x their configured frequency.
 func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 	logger := a.logger.WithField("check", "absent_report")
 	logger.Info("Checking for absent monitored component reports")
@@ -95,7 +95,7 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				continue
 			}
 
-			threshold := 3 * frequency
+			threshold := 5 * frequency
 			lastPingTime, err := a.pingRepo.GetLastPingTime(component.Slug, subComponent.Slug)
 			if err != nil {
 				componentLogger.WithField("error", err).Error("Failed to get last ping time")

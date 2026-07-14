@@ -129,8 +129,8 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 				},
 			},
 			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
-				// Last ping was 20 minutes ago (threshold is 15 minutes for 5m frequency)
-				pastTime := time.Now().Add(-20 * time.Minute)
+				// Last ping was 30 minutes ago (threshold is 25 minutes for 5m frequency)
+				pastTime := time.Now().Add(-30 * time.Minute)
 				repo.LastPingTimes = map[string]*time.Time{
 					"test-component/test-subcomponent": &pastTime,
 				}
@@ -163,7 +163,7 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 				},
 			},
 			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
-				// Last ping was 5 minutes ago (threshold is 15 minutes for 5m frequency)
+				// Last ping was 5 minutes ago (threshold is 25 minutes for 5m frequency)
 				pastTime := time.Now().Add(-5 * time.Minute)
 				repo.LastPingTimes = map[string]*time.Time{
 					"test-component/test-subcomponent": &pastTime,
