@@ -204,11 +204,11 @@ func testPrometheusComponentMonitorProbe(client *TestHTTPClient, mockMonitoredCo
 
 			// Wait for component-monitor to attempt probing (which will fail due to query error)
 			// Then wait for absent report checker to detect missing report and create outage
-			// The absent report checker runs every 15s in e2e tests, and threshold is 3x frequency (30s)
-			// So we need to wait at least 45s for the absent report checker to create an outage
+			// The absent report checker runs every 15s in e2e tests, and threshold is 5x frequency (50s)
+			// So we need to wait at least 65s for the absent report checker to create an outage
 			var absentReportOutage *types.Outage
 			ctx := context.Background()
-			err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 60*time.Second, true, func(ctx context.Context) (bool, error) {
+			err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
 				outages := getOutages(t, client, componentName, subComponentName)
 				for i := range outages {
 					if outages[i].DiscoveredFrom == "absent-monitored-component-report" && !outages[i].EndTime.Valid {
