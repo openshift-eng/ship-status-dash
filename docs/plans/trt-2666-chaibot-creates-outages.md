@@ -298,10 +298,10 @@ autonomously.
 
 ### Unit Tests
 
-**Dashboard (**`cmd/dashboard/handlers_test.go`**):**
+**Dashboard auth middleware (`cmd/dashboard/`):**
 
-Tests the dashboard's handling of MCP-originated requests (trusted caller
-verification, acting-for authorization, audit logging).
+Tests trusted caller verification, acting-for authorization, and audit
+logging for MCP-originated requests.
 
 
 | Test Case                          | Input                                         | Expected                |
@@ -338,7 +338,6 @@ End-to-end tests through the full auth chain (oauth-proxy → MCP → dashboard)
 | Unauthorized user     | acting-for not in owners              | 403                                    |
 | Bot-initiated flow    | acting-for: "chai-bot", severity=Down | Suspected, unconfirmed                 |
 | Outage lifecycle      | Create, triage note, resolve via MCP  | All succeed, audit trail complete      |
-| Duplicate detection   | Create when active outage exists      | Returns existing outage                |
 
 
 ## Open Questions
