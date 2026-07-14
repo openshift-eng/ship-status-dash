@@ -77,7 +77,10 @@ access. The proposed design splits MCP into two servers:
 - A **read-only MCP** (the existing server with mutating tools removed)
 remains publicly accessible for status queries and outage lookups.
 - An **authenticated MCP** sits behind an oauth-proxy and serves write tools
-only. Only callers with a valid SA token (chai-bot) can reach it.
+only. Any caller who can authenticate via the oauth-proxy (chai-bot, other
+service accounts, or human users) can reach it. Authorization is enforced
+per-request — the dashboard returns 403 if the `acting-for` identity is not
+a maintainer of the target component.
 
 The authenticated MCP has its own dedicated SA on app.ci. When it needs to
 call the dashboard's protected API, it sends its SA Bearer token through the
@@ -88,20 +91,30 @@ would invalidate the signature. Instead, the MCP makes its own authenticated
 request with `acting-for` in the body, where it is covered by the HMAC
 signature.
 
-### Auth Chain
+### Request Flow
+
+There are two protected subdomains, each with its own oauth-proxy:
+
+- `protected-mcp.ship-status.ci.openshift.org` — authenticated MCP (write tools)
+- `protected.ship-status.ci.openshift.org` — dashboard API (existing)
+
+Since oauth-proxy only supports [path-based routing](https://github.com/openshift/oauth-proxy/#upstream-configuration)
+(not hostname-based), each subdomain requires its own oauth-proxy container,
+Route, and Service. Both run in the same pod on app.ci, so the MCP SA only
+needs to exist in one cluster.
 
 ```
 Chai (mp-plus)
   | Bearer: <chai-bot SA token>
   v
-oauth-proxy (in front of authenticated MCP)
+oauth-proxy @ protected-mcp.ship-status.ci.openshift.org
   | validates chai-bot token, sets X-Forwarded-User, HMAC signs
   v
 Authenticated MCP
   | reads acting-for from tool arguments
   | Bearer: <MCP SA token>
   v
-oauth-proxy (same instance, path-based routing to dashboard)
+oauth-proxy @ protected.ship-status.ci.openshift.org
   | validates MCP SA token, sets X-Forwarded-User, HMAC signs
   v
 Dashboard
@@ -113,15 +126,6 @@ Dashboard
   v
 authorized or 403
 ```
-
-The OpenShift oauth-proxy supports [multiple upstreams with path-based
-routing](https://github.com/openshift/oauth-proxy/#upstream-configuration).
-The existing dashboard oauth-proxy can be configured with a second upstream
-for the authenticated MCP (e.g., `--upstream=http://127.0.0.1:8091/mcp/`).
-Both the dashboard and the authenticated MCP are accessible through the same
-protected domain (`protected.ship-status.ci.openshift.org`), with the MCP
-tools reachable at `/mcp/...`. Since both the MCP and dashboard run on app.ci,
-the MCP SA only needs to exist in one cluster.
 
 ### acting-for Identity
 
@@ -200,26 +204,34 @@ unauthenticated)
 
 - Deploy the authenticated MCP as a new container in the dashboard pod
 (e.g., port 8091)
-- Add a second upstream to the existing oauth-proxy:
-`--upstream=http://127.0.0.1:8091/mcp/` (path-based routing)
+- Add a new oauth-proxy container (`oauth-proxy-mcp`) configured with
+`--upstream=http://localhost:8091` for `protected-mcp.ship-status.ci.openshift.org`
+- Add a new Route and Service for the `protected-mcp` subdomain
 - Create a dedicated SA for the MCP to use when calling the dashboard
-through the oauth-proxy (same cluster, app.ci only)
+through the dashboard's oauth-proxy (same cluster, app.ci only)
 
 **Dashboard changes (`cmd/dashboard/`):**
 
-- Add support for `discovered_from: "mcp"` in the outage creation flow
-- When `discovered_from` is `"mcp"`, verify `X-Forwarded-User` matches the
-trusted MCP SA identity, then read `acting-for` from the request body and
-use it for authorization checks and audit logging
-- Add the MCP SA as a trusted caller identity in config (not as a component
-owner — it is not itself authorized to act on components, it just forwards
-requests on behalf of the `acting-for` identity)
+- Add a `trusted_delegators` field to `DashboardConfig`:
+  ```yaml
+  trusted_delegators:
+    - "system:serviceaccount:ship-status:mcp-server"
+  ```
+- When a request has `discovered_from: "mcp"`:
+  1. Check if `X-Forwarded-User` is in `config.TrustedDelegators`. If not,
+     return 403.
+  2. Read `acting-for` from the request body.
+  3. Run `IsUserAuthorizedForComponent` against the `acting-for` identity.
+     If not authorized, return 403.
+  4. Create the outage, recording `acting-for` as the user in audit logs.
+- The MCP SA is never a component owner. It only needs to be in
+  `trusted_delegators`.
 
 **Chai-bot SA provisioning:**
 
 - Chai-bot SA on app.ci is set up in openshift/release#81417 (SA, RBAC)
-- Store the token in Bitwarden (TRT collection), sync to Chai's namespace on
-mp-plus via `ci-secret-generator`
+- Store the token in Bitwarden
+- Provision the secret to chai-bot's namespace on mp-plus
 - Chai mounts the token and includes it in requests to the authenticated MCP
 
 **Component ownership:**
@@ -231,17 +243,24 @@ mp-plus via `ci-secret-generator`
 
 **Authenticated MCP tools:**
 
-Each tool accepts `acting-for`. The MCP calls the dashboard's oauth-proxy with
-its SA Bearer token, including `acting-for` in the request body. The
-oauth-proxy sets `X-Forwarded-User` to the MCP SA and signs with HMAC. The
-dashboard checks authorization against the `acting-for` identity.
+The write tools are already implemented (merged in PR #120) on the current
+public MCP. Phase 2 moves them to the authenticated MCP and adds `acting-for`
+to each tool. The MCP calls the dashboard's oauth-proxy with its SA Bearer
+token, including `acting-for` in the request body. The oauth-proxy sets
+`X-Forwarded-User` to the MCP SA and signs with HMAC. The dashboard checks
+authorization against the `acting-for` identity.
+
+Existing write tools to move to the authenticated MCP:
 
 - `create_outage` -- create an outage on a sub-component
-- `update_outage` -- update severity, description, or end_time
-- `resolve_outage` -- set end_time on an active outage
-- `add_triage_note` -- add a triage note to an existing outage
+- `update_outage` -- update severity, description, end_time, or start_time
+(resolving an outage is done by setting `end_time`)
+- `delete_outage` -- permanently delete an outage created in error
+- `add_triage_note` / `update_triage_note` -- manage triage notes
+- `add_outage_link` / `update_outage_link` / `delete_outage_link` -- manage
+outage links
 
-**MCP server (`mcp/api_server.py`, `mcp/api_client.py`):**
+**MCP server (**`mcp/api_server.py`**,** `mcp/api_client.py`**):**
 
 - Middleware reads `Authorization` from headers (confirms oauth-proxy auth)
 - Reads `acting-for` from tool arguments
@@ -256,7 +275,7 @@ notifications (`pkg/outage/slack_report.go`) work automatically.
 
 ### Phase 3: Chai-bot Integration
 
-**Client configuration (`ship_help_bot/tools/ship_status/client.py`):**
+**Client configuration (**`ship_help_bot/tools/ship_status/client.py`**):**
 
 - Connect to both MCP servers (read-only for queries, authenticated for
 writes)
@@ -279,7 +298,7 @@ autonomously.
 
 ### Unit Tests
 
-**Dashboard (`cmd/dashboard/handlers_test.go`):**
+**Dashboard (**`cmd/dashboard/handlers_test.go`**):**
 
 Tests the dashboard's handling of MCP-originated requests (trusted caller
 verification, acting-for authorization, audit logging).
@@ -293,7 +312,7 @@ verification, acting-for authorization, audit logging).
 | Audit log records acting-for       | MCP SA caller, acting-for: "jdoe"             | Audit log user = "jdoe" |
 
 
-**MCP (`mcp/`):**
+**MCP (**`mcp/`**):**
 
 Tests the authenticated MCP's tool logic, safeguards, and error passthrough.
 
@@ -308,7 +327,7 @@ Tests the authenticated MCP's tool logic, safeguards, and error passthrough.
 
 ### E2E Tests
 
-**`test/e2e/dashboard_test.go`:**
+`test/e2e/dashboard_test.go`**:**
 
 End-to-end tests through the full auth chain (oauth-proxy → MCP → dashboard).
 
@@ -322,31 +341,30 @@ End-to-end tests through the full auth chain (oauth-proxy → MCP → dashboard)
 | Duplicate detection   | Create when active outage exists      | Returns existing outage                |
 
 
-### Regression
-
-Existing test suites must continue to pass. The read-only MCP and the
-dashboard's existing protected routes (oauth-proxy + HMAC) are unaffected.
-
 ## Open Questions
 
-1. **Chai-bot autonomous authorization.** When chai-bot acts autonomously, it
-  sends `"chai-bot"` in `acting-for`. This identity needs to pass
-   `IsUserAuthorizedForComponent`. How should this be handled?
+1. **Token provisioning to mp-plus.** The chai-bot SA token will be stored
+   in Bitwarden. What is the best way to get it provisioned to chai-bot's
+   namespace on mp-plus? 
+
+### Answered
+
+1. **Authenticated MCP deployment.** oauth-proxy only supports path-based
+  routing, so a separate subdomain requires its own oauth-proxy instance.
+  > **A:** Use a dedicated subdomain (`protected-mcp.ship-status.ci.openshift.org`)
+  > with its own oauth-proxy container.
+2. **Chai-bot autonomous authorization.** `"chai-bot"` needs to pass
+  `IsUserAuthorizedForComponent` for bot-initiated outages.
   > **A:** Add `"chai-bot"` as a `user` on every component in
-  > `dashboard-config.yaml`. Alternatives (system account bypass, dedicated
-  > bot role) could be explored if this becomes a maintenance burden.
-2. **Scope of MCP tools.** Should chai-bot also update outage severity, or
+  > `dashboard-config.yaml`.
+3. **Scope of MCP tools.** Should chai-bot also update outage severity, or
   only create and resolve? Should it manage outage links?
   > **A:** Chai-bot should be able to do anything a human can do through the
-  > web UI. Need to identify the full set of operations.
-3. **Bot-initiated severity.** Should bot-initiated outages always be
+  > web UI. The full set of tools is implemented in PR #120.
+4. **Bot-initiated severity.** Should bot-initiated outages always be
   `Suspected`, or should chai-bot be able to set `Degraded`/`Down` with
    high-confidence signals?
   > **A:** Always `Suspected`.
-4. **Secret store.** Which secret store should hold the chai-bot SA token?
-  > **A:** Bitwarden (TRT collection). Synced via `ci-secret-generator`.
-5. **Authenticated MCP deployment.**
-  > **A:** The existing oauth-proxy supports path-based routing with multiple
-  > upstreams. The authenticated MCP runs as a new container in the dashboard
-  > pod and is accessible via the protected domain at `/mcp/...`.
+5. **Secret store.** Which secret store should hold the chai-bot SA token?
+  > **A:** Bitwarden.
 
