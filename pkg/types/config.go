@@ -2,8 +2,9 @@ package types
 
 // DashboardConfig contains the dashboardapplication configuration including component definitions.
 type DashboardConfig struct {
-	Components []*Component `json:"components" yaml:"components"`
-	Tags       []Tag        `json:"tags" yaml:"tags"`
+	Components        []*Component `json:"components" yaml:"components"`
+	Tags              []Tag        `json:"tags" yaml:"tags"`
+	TrustedDelegators []string     `json:"trusted_delegators,omitempty" yaml:"trusted_delegators,omitempty"`
 }
 
 func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {

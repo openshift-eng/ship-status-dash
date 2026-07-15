@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -8,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -334,3 +337,252 @@ func TestParseStatusFilters(t *testing.T) {
 		})
 	}
 }
+
+			mockOM := &outage.MockOutageManager{}
+			h := newTestHandlers(t, cfg, mockOM)
+
+			bodyBytes, err := json.Marshal(tt.body)
+			require.NoError(t, err)
+
+			req := requestWithUser(http.MethodPost, "/api/components/alpha/sub-components/one/outages", bodyBytes, tt.user)
+			req = mux.SetURLVars(req, map[string]string{
+				"componentName":    "alpha",
+				"subComponentName": "one",
+			})
+
+			rec := httptest.NewRecorder()
+			h.CreateOutageJSON(rec, req)
+
+			assert.Equal(t, tt.wantCode, rec.Code)
+
+			if tt.wantCreatedBy != "" {
+				require.Len(t, mockOM.CreatedOutages, 1)
+				assert.Equal(t, tt.wantCreatedBy, mockOM.CreatedOutages[0].Outage.CreatedBy)
+			}
+			if tt.wantDiscovered != "" {
+				require.Len(t, mockOM.CreatedOutages, 1)
+				assert.Equal(t, tt.wantDiscovered, mockOM.CreatedOutages[0].Outage.DiscoveredFrom)
+			}
+		})
+	}
+}
+
+func TestUpdateOutageJSON_Delegation(t *testing.T) {
+	const (
+		mcpSA      = "system:serviceaccount:ship-status:mcp-server"
+		authorUser = "jdoe"
+	)
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name: "Alpha", Slug: "alpha",
+				Subcomponents: []types.SubComponent{
+					{Name: "One", Slug: "one"},
+				},
+				Owners: []types.Owner{{User: authorUser}},
+			},
+		},
+		TrustedDelegators: []string{mcpSA},
+	}
+
+	existingOutage := &types.Outage{
+		ComponentName:    "alpha",
+		SubComponentName: "one",
+		Severity:         types.SeverityDown,
+		Description:      "existing outage",
+		DiscoveredFrom:   "manual",
+		CreatedBy:        authorUser,
+		StartTime:        time.Now().Add(-time.Hour),
+	}
+	existingOutage.ID = 42
+
+	tests := []struct {
+		name          string
+		user          string
+		body          types.UpsertOutageRequest
+		wantCode      int
+		wantAuditUser string
+	}{
+		{
+			name: "trusted delegator with authorized acting_for can update",
+			user: mcpSA,
+			body: types.UpsertOutageRequest{
+				Severity:  strPtr("Degraded"),
+				ActingFor: strPtr(authorUser),
+			},
+			wantCode:      http.StatusOK,
+			wantAuditUser: authorUser,
+		},
+		{
+			name: "trusted delegator with unauthorized acting_for gets 403",
+			user: mcpSA,
+			body: types.UpsertOutageRequest{
+				Severity:  strPtr("Degraded"),
+				ActingFor: strPtr("stranger"),
+			},
+			wantCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var auditUser string
+			mockOM := &outage.MockOutageManager{}
+			mockOM.GetOutageByIDFn = func(comp, sub string, id uint) (*types.Outage, error) {
+				outageCopy := *existingOutage
+				return &outageCopy, nil
+			}
+			mockOM.UpdateOutageFn = func(o *types.Outage, user string) error {
+				auditUser = user
+				return nil
+			}
+			h := newTestHandlers(t, cfg, mockOM)
+
+			bodyBytes, err := json.Marshal(tt.body)
+			require.NoError(t, err)
+
+			req := requestWithUser(http.MethodPut, "/api/components/alpha/sub-components/one/outages/42", bodyBytes, tt.user)
+			req = mux.SetURLVars(req, map[string]string{
+				"componentName":    "alpha",
+				"subComponentName": "one",
+				"outageId":         "42",
+			})
+
+			rec := httptest.NewRecorder()
+			h.UpdateOutageJSON(rec, req)
+
+			assert.Equal(t, tt.wantCode, rec.Code)
+			if tt.wantAuditUser != "" {
+				assert.Equal(t, tt.wantAuditUser, auditUser)
+			}
+		})
+	}
+}
+
+func TestDeleteOutage_Delegation(t *testing.T) {
+	const (
+		mcpSA      = "system:serviceaccount:ship-status:mcp-server"
+		authorUser = "jdoe"
+	)
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name: "Alpha", Slug: "alpha",
+				Subcomponents: []types.SubComponent{
+					{Name: "One", Slug: "one"},
+				},
+				Owners: []types.Owner{{User: authorUser}},
+			},
+		},
+		TrustedDelegators: []string{mcpSA},
+	}
+
+	existingOutage := &types.Outage{
+		ComponentName:    "alpha",
+		SubComponentName: "one",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Now().Add(-time.Hour),
+	}
+	existingOutage.ID = 42
+
+	tests := []struct {
+		name     string
+		user     string
+		body     *types.DelegatedActionRequest
+		wantCode int
+	}{
+		{
+			name:     "trusted delegator with authorized acting_for can delete",
+			user:     mcpSA,
+			body:     &types.DelegatedActionRequest{ActingFor: strPtr(authorUser)},
+			wantCode: http.StatusNoContent,
+		},
+		{
+			name:     "trusted delegator without acting_for gets 400",
+			user:     mcpSA,
+			body:     nil,
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockOM := &outage.MockOutageManager{}
+			mockOM.GetOutageByIDFn = func(comp, sub string, id uint) (*types.Outage, error) {
+				return existingOutage, nil
+			}
+			mockOM.DeleteOutageFn = func(o *types.Outage, user string) error {
+				return nil
+			}
+			h := newTestHandlers(t, cfg, mockOM)
+
+			var bodyBytes []byte
+			if tt.body != nil {
+				bodyBytes, _ = json.Marshal(tt.body)
+			}
+
+			req := requestWithUser(http.MethodDelete, "/api/components/alpha/sub-components/one/outages/42", bodyBytes, tt.user)
+			req = mux.SetURLVars(req, map[string]string{
+				"componentName":    "alpha",
+				"subComponentName": "one",
+				"outageId":         "42",
+			})
+
+			rec := httptest.NewRecorder()
+			h.DeleteOutage(rec, req)
+
+			assert.Equal(t, tt.wantCode, rec.Code)
+		})
+	}
+}
+
+func TestResolveActingUser(t *testing.T) {
+	const mcpSA = "system:serviceaccount:ship-status:mcp-server"
+	cfg := &types.DashboardConfig{
+		Components:        []*types.Component{},
+		TrustedDelegators: []string{mcpSA},
+	}
+
+	h := newTestHandlers(t, cfg, &outage.MockOutageManager{})
+	logger := logrus.NewEntry(logrus.New())
+
+	t.Run("non-delegator returns self", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		user, delegated, ok := h.resolveActingUser(rec, "regular-user", nil, logger)
+		assert.True(t, ok)
+		assert.False(t, delegated)
+		assert.Equal(t, "regular-user", user)
+	})
+
+	t.Run("trusted delegator with acting_for returns acting_for", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		user, delegated, ok := h.resolveActingUser(rec, mcpSA, strPtr("target-user"), logger)
+		assert.True(t, ok)
+		assert.True(t, delegated)
+		assert.Equal(t, "target-user", user)
+	})
+
+	t.Run("trusted delegator without acting_for returns error", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		_, _, ok := h.resolveActingUser(rec, mcpSA, nil, logger)
+		assert.False(t, ok)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("trusted delegator with empty acting_for returns error", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		_, _, ok := h.resolveActingUser(rec, mcpSA, strPtr("  "), logger)
+		assert.False(t, ok)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("acting_for is trimmed", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		user, _, ok := h.resolveActingUser(rec, mcpSA, strPtr(" target-user "), logger)
+		assert.True(t, ok)
+		assert.Equal(t, "target-user", user)
+	})
+}
+
+func strPtr(s string) *string        { return &s }
+func timePtr(t time.Time) *time.Time { return &t }

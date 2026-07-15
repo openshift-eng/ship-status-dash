@@ -14,18 +14,27 @@ type UpsertOutageRequest struct {
 	DiscoveredFrom    *string       `json:"discovered_from,omitempty"`
 	Confirmed         *bool         `json:"confirmed,omitempty"`
 	InitialTriageNote *string       `json:"initial_triage_note,omitempty"`
+	ActingFor         *string       `json:"acting_for,omitempty"`
 }
 
 // TriageNoteBodyRequest represents the body of a request to add or update a triage note.
 type TriageNoteBodyRequest struct {
-	Body string `json:"body"`
+	Body      string  `json:"body"`
+	ActingFor *string `json:"acting_for,omitempty"`
 }
 
 // OutageLinkRequest represents the body of a request to add or update an outage link.
 type OutageLinkRequest struct {
-	URL         string `json:"url"`
-	LinkType    string `json:"link_type,omitempty"`
-	Description string `json:"description,omitempty"`
+	URL         string  `json:"url"`
+	LinkType    string  `json:"link_type,omitempty"`
+	Description string  `json:"description,omitempty"`
+	ActingFor   *string `json:"acting_for,omitempty"`
+}
+
+// DelegatedActionRequest is a minimal body for requests that normally have no body
+// (e.g., DELETE) but need to carry acting_for for delegated operations.
+type DelegatedActionRequest struct {
+	ActingFor *string `json:"acting_for,omitempty"`
 }
 
 // ComponentMonitorReportRequest represents a report from a component monitor.
