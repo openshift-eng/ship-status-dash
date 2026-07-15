@@ -23,6 +23,8 @@ type MockOutageManager struct {
 	// Mock functions
 	CreateOutageFn                          func(*types.Outage, []types.Reason, string) error
 	UpdateOutageFn                          func(*types.Outage, string) error
+	DeleteOutageFn                          func(*types.Outage, string) error
+	GetOutageByIDFn                         func(string, string, uint) (*types.Outage, error)
 	GetActiveOutagesCreatedByFn             func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesDiscoveredFromFn        func(string, string, string) ([]types.Outage, error)
 	GetActiveOutagesForComponentFn          func(string) ([]types.Outage, error)
@@ -78,8 +80,11 @@ func (m *MockOutageManager) UpdateOutage(outage *types.Outage, user string) erro
 	return nil
 }
 
-// GetOutageByID is not used by ComponentMonitorReportProcessor but included for interface completeness.
+// GetOutageByID returns a mock outage by ID.
 func (m *MockOutageManager) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+	if m.GetOutageByIDFn != nil {
+		return m.GetOutageByIDFn(componentSlug, subComponentSlug, outageID)
+	}
 	return nil, nil
 }
 
@@ -160,8 +165,11 @@ func (m *MockOutageManager) GetOutageAuditLogs(outageID uint) ([]types.OutageAud
 	return nil, nil
 }
 
-// DeleteOutage is not used by ComponentMonitorReportProcessor but included for interface completeness.
+// DeleteOutage removes an outage.
 func (m *MockOutageManager) DeleteOutage(outage *types.Outage, user string) error {
+	if m.DeleteOutageFn != nil {
+		return m.DeleteOutageFn(outage, user)
+	}
 	return nil
 }
 

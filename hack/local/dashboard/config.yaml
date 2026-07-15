@@ -116,3 +116,6 @@ tags:
   - name: "GCP"
     description: "Components running on GCP infrastructure"
     color: "#03A9F4"
+
+trusted_delegators:
+  - "system:serviceaccount:ship-status:mcp-server"
