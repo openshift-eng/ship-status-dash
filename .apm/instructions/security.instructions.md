@@ -14,9 +14,9 @@ The oauth-proxy is the bearer-token authentication boundary. The dashboard (`cmd
 
 ### Credential placement
 
-Services that proxy or relay requests (including the MCP server) MUST NOT hold authentication credentials. The caller supplies their own bearer token; the proxy forwards it unmodified to the oauth-proxy, which authenticates the token and signs the request before it reaches the dashboard.
+Never mount secret tokens (service account tokens, API keys) on containers that accept unauthenticated inbound traffic. If a container is publicly accessible, it must not have access to credentials that grant write access to other services.
 
-Never mount secret tokens (service account tokens, API keys) on containers that expose unauthenticated endpoints. If a container accepts unauthenticated inbound traffic, it must not have access to credentials that grant write access to other services.
+Services behind oauth-proxy (not publicly accessible) may hold credentials needed for downstream authenticated calls. This is acceptable because oauth-proxy ensures only authenticated callers can reach the service. Services that accept unauthenticated traffic must remain stateless and credential-free; the caller supplies their own bearer token, which is forwarded unmodified to oauth-proxy for authentication.
 
 ### Write endpoint authorization
 
