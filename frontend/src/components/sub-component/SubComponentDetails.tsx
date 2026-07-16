@@ -267,6 +267,7 @@ const SubComponentDetails = () => {
     setTimeout(() => {
       setLoading(true)
       setError(null)
+      setShipTeam(null)
 
       Promise.all([
         fetch(outagesEndpoint),
@@ -318,6 +319,7 @@ const SubComponentDetails = () => {
         })
         .catch(() => {
           setError('Failed to fetch data')
+          setShipTeam(null)
         })
         .finally(() => {
           setLoading(false)

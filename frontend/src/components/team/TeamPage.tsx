@@ -1,5 +1,6 @@
 import { ArrowBack } from '@mui/icons-material'
 import { Button, Container, Paper, styled, Typography } from '@mui/material'
+import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { getTeamColor } from '../../utils/teamColor'
@@ -44,11 +45,11 @@ const TeamTitle = styled(Typography)(({ theme }) => ({
 const TeamPage = () => {
   const navigate = useNavigate()
   const { team } = useParams<{ team: string }>()
+  const decodedTeam = team ? decodeURIComponent(team) : ''
+  const teamColor = decodedTeam ? getTeamColor(decodedTeam) : undefined
+  const filters = useMemo(() => ({ team: decodedTeam }), [decodedTeam])
 
   if (!team) return null
-
-  const decodedTeam = decodeURIComponent(team)
-  const teamColor = getTeamColor(decodedTeam)
 
   return (
     <StyledContainer maxWidth="lg">
@@ -60,7 +61,7 @@ const TeamPage = () => {
         <TeamTitle>{decodedTeam} Sub Components</TeamTitle>
       </TeamHeader>
 
-      <SubComponentList filters={{ team: decodedTeam }} />
+      <SubComponentList filters={filters} />
     </StyledContainer>
   )
 }

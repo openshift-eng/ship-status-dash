@@ -20,15 +20,19 @@ For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
 ## Dashboard Component
 
 The dashboard is a web application for viewing and managing component status, availability, and outages. It consists of:
+
 - Backend: Go server (`cmd/dashboard`)
 - Frontend: React application (`frontend/`)
+
+Frontend views include a team page at `/team/:team`, which lists sub-components owned by that SHIP team. The `:team` path segment is the URL-encoded team name (for example `/team/TRT`).
 
 For detailed documentation, see [`cmd/dashboard/README.md`](cmd/dashboard/README.md).
 
 ## Component Monitor
 
 The component-monitor is a service that periodically probes sub-components to detect outages and report their status to the dashboard API.
-  - Go service (`cmd/component-monitor`)
-  - Supports HTTP, Prometheus, and JUnit monitoring
+
+- Go service (`cmd/component-monitor`)
+- Supports HTTP, Prometheus, and JUnit monitoring
 
 For detailed documentation, see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md).

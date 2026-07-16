@@ -10,7 +10,7 @@ const StyledTeamChip = styled(Chip)<{ size?: 'small' | 'medium'; teamColor: stri
   teamColor,
 }) => {
   const isDark = theme.palette.mode === 'dark'
-  const textColor = isDark ? lighten(teamColor, 0.4) : teamColor
+  const textColor = isDark ? lighten(teamColor, 0.4) : theme.palette.text.primary
 
   return {
     backgroundColor: `${teamColor}${isDark ? '25' : '15'}`,
