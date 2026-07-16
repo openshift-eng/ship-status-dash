@@ -1,5 +1,5 @@
 import { Alert, Box, Card, CardContent, styled, Typography } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import type { Status, SubComponent, SubComponentListItem } from '../../types'
 import { getListSubComponentsEndpoint } from '../../utils/endpoints'
@@ -90,7 +90,7 @@ interface UnhealthyWellProps {
   onHasOutagesChange?: (hasOutages: boolean) => void
 }
 
-const UnhealthyWell = ({ onHasOutagesChange }: UnhealthyWellProps) => {
+const UnhealthyWell: React.FC<UnhealthyWellProps> = ({ onHasOutagesChange }) => {
   const [items, setItems] = useState<SubComponentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

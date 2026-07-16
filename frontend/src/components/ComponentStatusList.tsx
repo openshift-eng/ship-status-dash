@@ -1,5 +1,5 @@
 import { Alert, Box, CircularProgress, Container, styled, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import type { Component } from '../types'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
@@ -63,7 +63,7 @@ const getLogoSrc = (isDarkMode: boolean, inOutage: boolean) => {
   return isDarkMode ? '/logo-dark.svg' : '/logo.svg'
 }
 
-const ComponentStatusList = () => {
+const ComponentStatusList: React.FC = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

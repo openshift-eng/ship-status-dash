@@ -317,6 +317,7 @@ func TestParseStatusFilters(t *testing.T) {
 			want: []types.Status{types.StatusDown, types.StatusDegraded, types.StatusSuspected},
 		},
 		{name: "invalid", raw: []string{"Nope"}, wantErr: "invalid status: Nope"},
+		{name: "partial rejected", raw: []string{"Partial"}, wantErr: "invalid status: Partial"},
 		{name: "blank only", raw: []string{", ,"}, wantErr: "status filter must include at least one status"},
 	}
 

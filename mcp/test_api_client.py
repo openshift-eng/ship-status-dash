@@ -99,6 +99,13 @@ def test_list_sub_components_status_filter(api: ShipStatusAPI):
     mock_get.assert_called_once_with("/sub-components?status=Down&status=Degraded")
 
 
+def test_list_sub_components_malformed_status_filter(api: ShipStatusAPI):
+    with patch.object(api.client, "public_get") as mock_get:
+        result = api.list_sub_components(status=", ,")
+    assert result == {"error": "status filter must include at least one status"}
+    mock_get.assert_not_called()
+
+
 def test_get_infrastructure_status(api: ShipStatusAPI):
     with patch.object(api.client, "public_get", return_value=[{"component_name": "Prow", "status": "Healthy", "active_outages": []}]):
         result = api.get_infrastructure_status()

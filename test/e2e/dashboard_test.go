@@ -1415,6 +1415,13 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		})
 
+		t.Run("status=Partial returns 400", func(t *testing.T) {
+			resp, err := client.Get("/api/sub-components?status=Partial", false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
 	}
 }
 

@@ -403,8 +403,9 @@ class ShipStatusAPI:
         status_s = (status or "").strip()
         if status_s:
             statuses = [s.strip() for s in status_s.split(",") if s.strip()]
-            if statuses:
-                path = f"/sub-components?{urlencode([('status', s) for s in statuses])}"
+            if not statuses:
+                return {"error": "status filter must include at least one status"}
+            path = f"/sub-components?{urlencode([('status', s) for s in statuses])}"
         data = self.client.public_get(path)
         if data is None:
             return {"error": "Failed to retrieve sub-components list."}

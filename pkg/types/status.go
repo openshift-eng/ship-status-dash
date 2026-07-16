@@ -23,6 +23,17 @@ func IsValidStatus(s string) bool {
 	}
 }
 
+// IsValidSubComponentStatus reports whether s is a status that can be derived for a
+// single sub-component. Partial is component-level only and is excluded.
+func IsValidSubComponentStatus(s string) bool {
+	switch Status(s) {
+	case StatusHealthy, StatusDegraded, StatusDown, StatusCapacityExhausted, StatusSuspected:
+		return true
+	default:
+		return false
+	}
+}
+
 // ToSeverity converts a Status to a Severity. Returns an empty string if the status cannot be converted to a severity.
 func (s Status) ToSeverity() Severity {
 	switch s {
