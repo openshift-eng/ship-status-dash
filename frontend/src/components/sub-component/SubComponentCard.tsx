@@ -14,6 +14,8 @@ import OutageHistoryBar from '../OutageHistoryBar'
 import { StatusChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
 
+import MonitoredChip from './MonitoredChip'
+
 const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1.5),
   ...(theme.palette.mode === 'dark' && { backgroundColor: theme.palette.grey[900] }),
@@ -83,6 +85,11 @@ const HistoryBarWrapper = styled(Box)(({ theme }) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
 }))
 
+const MonitoredChipRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  marginTop: theme.spacing(1),
+}))
+
 const TagsContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexWrap: 'wrap',
@@ -99,6 +106,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   const navigate = useNavigate()
   const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
+  const [lastPingTime, setLastPingTime] = useState<string | undefined>()
   const [loading, setLoading] = useState(true)
   const { buckets: historyBuckets, loading: historyLoading } = useOutageHistory(
     componentName,
@@ -115,6 +123,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           status: subStatus.status,
           active_outages: subStatus.active_outages,
         })
+        setLastPingTime(subStatus.last_ping_time)
       })
       .finally(() => {
         setLoading(false)
@@ -166,6 +175,15 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
               ))}
             </TagsContainer>
           </CardFooter>
+        )}
+        {subComponent.monitoring && (
+          <MonitoredChipRow>
+            <MonitoredChip
+              monitoring={subComponent.monitoring}
+              lastPingTime={lastPingTime}
+              size="small"
+            />
+          </MonitoredChipRow>
         )}
         <HistoryBarWrapper>
           <OutageHistoryBar

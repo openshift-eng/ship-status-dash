@@ -51,6 +51,7 @@ import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
 
+import MonitoredChip from './MonitoredChip'
 import SuspectedReportsBanner from './SuspectedReportsBanner'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
@@ -153,9 +154,12 @@ const PageContainer = styled(Container)(({ theme }) => ({
   marginBottom: theme.spacing(4),
 }))
 
-const LastCheckedText = styled(Typography)(({ theme }) => ({
+const HeaderMeta = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: theme.spacing(1),
   marginTop: theme.spacing(1),
-  opacity: 0.8,
 }))
 
 const HeaderActionsRow = styled(Box)(({ theme }) => ({
@@ -570,12 +574,14 @@ const SubComponentDetails = () => {
             <Typography variant="h4">
               {componentName} / {subComponentName} - Outages
             </Typography>
-            {subComponentStatus?.last_ping_time && subComponent?.monitoring?.frequency && (
-              <LastCheckedText variant="body2">
-                Last Checked:{' '}
-                {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())} · Expected
-                Frequency: {subComponent.monitoring.frequency}
-              </LastCheckedText>
+            {subComponent?.monitoring && (
+              <HeaderMeta>
+                <MonitoredChip
+                  monitoring={subComponent.monitoring}
+                  lastPingTime={subComponentStatus?.last_ping_time}
+                  size="small"
+                />
+              </HeaderMeta>
             )}
           </Box>
           <HeaderActionsRow>
