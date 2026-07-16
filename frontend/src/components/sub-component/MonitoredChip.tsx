@@ -1,5 +1,5 @@
 import { Sensors } from '@mui/icons-material'
-import { Chip, Tooltip, styled } from '@mui/material'
+import { Box, Chip, Tooltip, styled } from '@mui/material'
 
 import type { Monitoring } from '../../types'
 import { relativeTime } from '../../utils/helpers'
@@ -10,28 +10,37 @@ const StyledMonitoredChip = styled(Chip)<{ size?: 'small' | 'medium' }>(({ theme
   color: theme.palette.mode === 'dark' ? theme.palette.info.light : theme.palette.info.dark,
   border: `1px solid ${theme.palette.info.main}40`,
   ...(size === 'small' && {
-    fontSize: '0.65rem',
-    height: '20px',
+    fontSize: theme.typography.caption.fontSize,
+    height: theme.spacing(2.5),
     '& .MuiChip-label': {
-      padding: '0 8px',
+      padding: `0 ${theme.spacing(1)}`,
     },
     '& .MuiChip-icon': {
-      fontSize: '0.875rem',
-      marginLeft: '4px',
+      fontSize: theme.typography.body2.fontSize,
+      marginLeft: theme.spacing(0.5),
     },
   }),
 }))
 
+const ChipGuard = styled(Box)({
+  display: 'inline-flex',
+})
+
 interface MonitoredChipProps {
   monitoring: Monitoring
-  lastPingTime?: string
+  /** Confirmed ping time, `null` when absent after a successful status fetch, `undefined` while unresolved. */
+  lastPingTime?: string | null
   size?: 'small' | 'medium'
 }
 
 const MonitoredChip = ({ monitoring, lastPingTime, size = 'small' }: MonitoredChipProps) => {
-  const pingLabel = lastPingTime
+  const hasConfirmedPing = lastPingTime != null
+  const pingConfirmedAbsent = lastPingTime === null
+  const pingLabel = hasConfirmedPing
     ? relativeTime(new Date(lastPingTime), new Date())
-    : 'awaiting first ping'
+    : pingConfirmedAbsent
+      ? 'awaiting first ping'
+      : 'checking'
 
   const tooltip = [
     'This sub-component is automatically monitored.',
@@ -41,13 +50,14 @@ const MonitoredChip = ({ monitoring, lastPingTime, size = 'small' }: MonitoredCh
 
   return (
     <Tooltip title={tooltip} arrow placement="top">
-      <StyledMonitoredChip
-        icon={<Sensors />}
-        label={lastPingTime ? `Monitored · ${pingLabel}` : 'Monitored'}
-        size={size}
-        data-tour="subcomponent-monitored"
-        onClick={(e) => e.stopPropagation()}
-      />
+      <ChipGuard onClick={(e) => e.stopPropagation()}>
+        <StyledMonitoredChip
+          icon={<Sensors />}
+          label={hasConfirmedPing ? `Monitored · ${pingLabel}` : 'Monitored'}
+          size={size}
+          data-tour="subcomponent-monitored"
+        />
+      </ChipGuard>
     </Tooltip>
   )
 }
