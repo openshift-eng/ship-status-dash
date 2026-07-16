@@ -50,6 +50,7 @@ import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
+import TeamChip from '../team/TeamChip'
 
 import SuspectedReportsBanner from './SuspectedReportsBanner'
 
@@ -158,6 +159,14 @@ const LastCheckedText = styled(Typography)(({ theme }) => ({
   opacity: 0.8,
 }))
 
+const HeaderMeta = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: theme.spacing(1),
+  marginTop: theme.spacing(1),
+}))
+
 const HeaderActionsRow = styled(Box)(({ theme }) => ({
   display: 'flex',
   gap: theme.spacing(2),
@@ -223,6 +232,7 @@ const SubComponentDetails = () => {
   const [reportSuccess, setReportSuccess] = useState<string | null>(null)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
+  const [shipTeam, setShipTeam] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
   const dateStart = searchParams.get('start')
@@ -257,6 +267,7 @@ const SubComponentDetails = () => {
     setTimeout(() => {
       setLoading(true)
       setError(null)
+      setShipTeam(null)
 
       Promise.all([
         fetch(outagesEndpoint),
@@ -296,6 +307,7 @@ const SubComponentDetails = () => {
               setSubComponentStatus(statusData)
             }
             if (componentData) {
+              setShipTeam(componentData.ship_team || null)
               const foundSubComponent = componentData.sub_components.find(
                 (sub: SubComponent) => sub.slug === subComponentSlug,
               )
@@ -307,6 +319,7 @@ const SubComponentDetails = () => {
         })
         .catch(() => {
           setError('Failed to fetch data')
+          setShipTeam(null)
         })
         .finally(() => {
           setLoading(false)
@@ -570,6 +583,11 @@ const SubComponentDetails = () => {
             <Typography variant="h4">
               {componentName} / {subComponentName} - Outages
             </Typography>
+            {shipTeam && (
+              <HeaderMeta>
+                <TeamChip team={shipTeam} size="small" />
+              </HeaderMeta>
+            )}
             {subComponentStatus?.last_ping_time && subComponent?.monitoring?.frequency && (
               <LastCheckedText variant="body2">
                 Last Checked:{' '}

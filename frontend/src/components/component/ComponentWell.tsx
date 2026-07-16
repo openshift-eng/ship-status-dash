@@ -7,6 +7,7 @@ import { slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
+import TeamChip from '../team/TeamChip'
 
 const ComponentWell = styled(Card)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 2),
@@ -32,6 +33,14 @@ const HeaderBox = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(3),
   paddingBottom: theme.spacing(2),
   borderBottom: `1px solid ${theme.palette.divider}`,
+}))
+
+const TitleGroup = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: theme.spacing(0.75),
+  minWidth: 0,
 }))
 
 const FooterBox = styled(Box)(({ theme }) => ({
@@ -87,7 +96,10 @@ const ComponentWellComponent = ({ component }: ComponentWellProps) => {
     <ComponentWell status={component.status || 'Unknown'} data-tour="component-well">
       <CardContent>
         <HeaderBox>
-          <ComponentTitle>{component.name}</ComponentTitle>
+          <TitleGroup>
+            <ComponentTitle>{component.name}</ComponentTitle>
+            {component.ship_team && <TeamChip team={component.ship_team} size="small" />}
+          </TitleGroup>
           <StatusChip
             label={formatStatusSeverityText(component.status || 'Unknown')}
             status={component.status || 'Unknown'}

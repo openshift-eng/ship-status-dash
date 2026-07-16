@@ -23,6 +23,7 @@ import { deslugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
 import { StatusChip } from '../StatusColors'
 import SubComponentCard from '../sub-component/SubComponentCard'
+import TeamChip from '../team/TeamChip'
 
 const SERVICE_ACCOUNT_PREFIX = 'system:serviceaccount:'
 const trimServiceAccountPrefix = (value: string): string =>
@@ -231,7 +232,11 @@ const ComponentDetailsPage = () => {
               <InfoCard>
                 <CardContent>
                   <InfoTitle>SHIP Team</InfoTitle>
-                  <InfoValue>{component.ship_team}</InfoValue>
+                  {component.ship_team ? (
+                    <TeamChip team={component.ship_team} />
+                  ) : (
+                    <InfoValue>No team specified</InfoValue>
+                  )}
                 </CardContent>
               </InfoCard>
               {component.slack_reporting && component.slack_reporting.length > 0 && (
