@@ -25,7 +25,9 @@ function getRouteType(pathname: string): TourRouteType | null {
   if (pathname.startsWith(`${EXTERNAL_PAGES_PATH_PREFIX}/`)) return 'external-page'
   if (pathname.includes('/outages/')) return 'outage-detail'
   const segments = pathname.split('/').filter(Boolean)
-  if (segments.length === 2 && !pathname.startsWith('/tags')) return 'subcomponent-detail'
+  if (segments.length === 2 && !pathname.startsWith('/tags') && !pathname.startsWith('/team')) {
+    return 'subcomponent-detail'
+  }
   return null
 }
 
@@ -153,6 +155,16 @@ function getStepsForRoute(pathname: string): TourStep[] {
         },
       },
       {
+        element: '[data-tour="component-team"]',
+        popover: {
+          title: 'SHIP team',
+          description:
+            'Each component is owned by a SHIP team. Click the team name to see all sub-components that team owns.',
+          side: 'bottom',
+          align: 'start',
+        },
+      },
+      {
         element: '[data-tour="component-well"] [data-tour="subcomponent-card"]',
         popover: {
           title: 'Sub-component',
@@ -254,7 +266,7 @@ function getStepsForRoute(pathname: string): TourStep[] {
       },
     ]
   }
-  if (segments.length === 2 && !pathname.startsWith('/tags')) {
+  if (segments.length === 2 && !pathname.startsWith('/tags') && !pathname.startsWith('/team')) {
     return [
       {
         element: '[data-tour="subcomponent-detail-header"]',
