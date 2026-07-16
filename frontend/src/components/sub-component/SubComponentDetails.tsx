@@ -50,6 +50,7 @@ import UpsertOutageModal from '../outage/actions/UpsertOutageModal'
 import OutageDetailsButton from '../outage/OutageDetailsButton'
 import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
+import TeamChip from '../team/TeamChip'
 
 import MonitoredChip from './MonitoredChip'
 import SuspectedReportsBanner from './SuspectedReportsBanner'
@@ -227,6 +228,7 @@ const SubComponentDetails = () => {
   const [reportSuccess, setReportSuccess] = useState<string | null>(null)
   const [subComponentStatus, setSubComponentStatus] = useState<ComponentStatus | null>(null)
   const [subComponent, setSubComponent] = useState<SubComponent | null>(null)
+  const [shipTeam, setShipTeam] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'resolved'>('all')
 
   const dateStart = searchParams.get('start')
@@ -267,6 +269,7 @@ const SubComponentDetails = () => {
       setError(null)
       setSubComponentStatus(null)
       setSubComponent(null)
+      setShipTeam(null)
 
       Promise.all([
         fetch(outagesEndpoint, { signal }),
@@ -311,6 +314,7 @@ const SubComponentDetails = () => {
             setSubComponentStatus(statusData)
           }
           if (componentData) {
+            setShipTeam(componentData.ship_team || null)
             const foundSubComponent = componentData.sub_components.find(
               (sub: SubComponent) => sub.slug === subComponentSlug,
             )
@@ -324,6 +328,7 @@ const SubComponentDetails = () => {
             return
           }
           setError('Failed to fetch data')
+          setShipTeam(null)
         })
         .finally(() => {
           if (!signal?.aborted) {
@@ -595,15 +600,18 @@ const SubComponentDetails = () => {
             <Typography variant="h4">
               {componentName} / {subComponentName} - Outages
             </Typography>
-            {subComponent?.monitoring && (
+            {(shipTeam || subComponent?.monitoring) && (
               <HeaderMeta>
-                <MonitoredChip
-                  monitoring={subComponent.monitoring}
-                  lastPingTime={
-                    subComponentStatus ? (subComponentStatus.last_ping_time ?? null) : undefined
-                  }
-                  size="small"
-                />
+                {shipTeam && <TeamChip team={shipTeam} size="small" />}
+                {subComponent?.monitoring && (
+                  <MonitoredChip
+                    monitoring={subComponent.monitoring}
+                    lastPingTime={
+                      subComponentStatus ? (subComponentStatus.last_ping_time ?? null) : undefined
+                    }
+                    size="small"
+                  />
+                )}
               </HeaderMeta>
             )}
           </Box>

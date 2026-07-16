@@ -12,6 +12,7 @@ import OutageDetailsPage from './components/outage/OutageDetailsPage'
 import StatusHistoryPage from './components/StatusHistoryPage'
 import SubComponentDetails from './components/sub-component/SubComponentDetails'
 import TagPage from './components/tags/TagPage'
+import TeamPage from './components/team/TeamPage'
 import AppTour from './components/tour/AppTour'
 import { EXTERNAL_PAGES_PATH_PREFIX } from './constants/externalPages'
 import { AuthProvider } from './contexts/AuthContext'
@@ -99,6 +100,7 @@ function App() {
                   element={<ExternalPageViewer />}
                 />
                 <Route path="/tags/:tag" element={<TagPage />} />
+                <Route path="/team/:team" element={<TeamPage />} />
                 <Route path="/:componentSlug" element={<ComponentDetailsPage />} />
                 <Route path="/:componentSlug/:subComponentSlug" element={<SubComponentDetails />} />
                 <Route
