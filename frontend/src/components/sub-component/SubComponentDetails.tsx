@@ -52,6 +52,7 @@ import { SeverityChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
 import TeamChip from '../team/TeamChip'
 
+import MonitoredChip from './MonitoredChip'
 import SuspectedReportsBanner from './SuspectedReportsBanner'
 
 const HeaderBox = styled(Box)<{ status: string }>(({ theme, status }) => ({
@@ -154,11 +155,6 @@ const PageContainer = styled(Container)(({ theme }) => ({
   marginBottom: theme.spacing(4),
 }))
 
-const LastCheckedText = styled(Typography)(({ theme }) => ({
-  marginTop: theme.spacing(1),
-  opacity: 0.8,
-}))
-
 const HeaderMeta = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexWrap: 'wrap',
@@ -259,22 +255,31 @@ const SubComponentDetails = () => {
         )
       : getSubComponentOutagesEndpoint(componentName, subComponentName)
 
-  const fetchData = () => {
+  const fetchData = (signal?: AbortSignal) => {
     if (!componentName || !subComponentName) {
       return
     }
 
     setTimeout(() => {
+      if (signal?.aborted) {
+        return
+      }
+
       setLoading(true)
       setError(null)
+      setSubComponentStatus(null)
+      setSubComponent(null)
       setShipTeam(null)
 
       Promise.all([
-        fetch(outagesEndpoint),
-        fetch(getSubComponentStatusEndpoint(componentName, subComponentName)),
-        fetch(getComponentInfoEndpoint(componentName)),
+        fetch(outagesEndpoint, { signal }),
+        fetch(getSubComponentStatusEndpoint(componentName, subComponentName), { signal }),
+        fetch(getComponentInfoEndpoint(componentName), { signal }),
       ])
         .then(([outagesResponse, statusResponse, componentResponse]) => {
+          if (signal?.aborted) {
+            return
+          }
           if (!outagesResponse.ok) {
             setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
             return
@@ -294,35 +299,41 @@ const SubComponentDetails = () => {
           ])
         })
         .then((results) => {
-          if (results) {
-            const [outagesData, statusData, componentData] = results
-            if (outagesData) {
-              setOutages(outagesData)
-              if (!dateStart && !dateEnd) {
-                const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
-                setStatusFilter(hasOngoing ? 'ongoing' : 'all')
-              }
+          if (signal?.aborted || !results) {
+            return
+          }
+          const [outagesData, statusData, componentData] = results
+          if (outagesData) {
+            setOutages(outagesData)
+            if (!dateStart && !dateEnd) {
+              const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
+              setStatusFilter(hasOngoing ? 'ongoing' : 'all')
             }
-            if (statusData) {
-              setSubComponentStatus(statusData)
-            }
-            if (componentData) {
-              setShipTeam(componentData.ship_team || null)
-              const foundSubComponent = componentData.sub_components.find(
-                (sub: SubComponent) => sub.slug === subComponentSlug,
-              )
-              if (foundSubComponent) {
-                setSubComponent(foundSubComponent)
-              }
+          }
+          if (statusData) {
+            setSubComponentStatus(statusData)
+          }
+          if (componentData) {
+            setShipTeam(componentData.ship_team || null)
+            const foundSubComponent = componentData.sub_components.find(
+              (sub: SubComponent) => sub.slug === subComponentSlug,
+            )
+            if (foundSubComponent) {
+              setSubComponent(foundSubComponent)
             }
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return
+          }
           setError('Failed to fetch data')
           setShipTeam(null)
         })
         .finally(() => {
-          setLoading(false)
+          if (!signal?.aborted) {
+            setLoading(false)
+          }
         })
     }, 0)
   }
@@ -331,7 +342,13 @@ const SubComponentDetails = () => {
     if (!componentName || !subComponentName) {
       return
     }
-    fetchData()
+
+    const controller = new AbortController()
+    fetchData(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
   }, [componentName, subComponentName, subComponentSlug, outagesEndpoint, dateStart, dateEnd])
 
   const formatDate = (dateString: string) => {
@@ -583,17 +600,19 @@ const SubComponentDetails = () => {
             <Typography variant="h4">
               {componentName} / {subComponentName} - Outages
             </Typography>
-            {shipTeam && (
+            {(shipTeam || subComponent?.monitoring) && (
               <HeaderMeta>
-                <TeamChip team={shipTeam} size="small" />
+                {shipTeam && <TeamChip team={shipTeam} size="small" />}
+                {subComponent?.monitoring && (
+                  <MonitoredChip
+                    monitoring={subComponent.monitoring}
+                    lastPingTime={
+                      subComponentStatus ? (subComponentStatus.last_ping_time ?? null) : undefined
+                    }
+                    size="small"
+                  />
+                )}
               </HeaderMeta>
-            )}
-            {subComponentStatus?.last_ping_time && subComponent?.monitoring?.frequency && (
-              <LastCheckedText variant="body2">
-                Last Checked:{' '}
-                {relativeTime(new Date(subComponentStatus.last_ping_time), new Date())} · Expected
-                Frequency: {subComponent.monitoring.frequency}
-              </LastCheckedText>
             )}
           </Box>
           <HeaderActionsRow>

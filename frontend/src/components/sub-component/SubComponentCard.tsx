@@ -14,6 +14,8 @@ import OutageHistoryBar from '../OutageHistoryBar'
 import { StatusChip } from '../StatusColors'
 import TagChip from '../tags/TagChip'
 
+import MonitoredChip from './MonitoredChip'
+
 const SubComponentCard = styled(Card)<{ status: string }>(({ theme, status }) => ({
   ...getStatusTintStyles(theme, status, 1.5),
   ...(theme.palette.mode === 'dark' && { backgroundColor: theme.palette.grey[900] }),
@@ -83,6 +85,11 @@ const HistoryBarWrapper = styled(Box)(({ theme }) => ({
   borderTop: `1px solid ${theme.palette.divider}`,
 }))
 
+const MonitoredChipRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  marginTop: theme.spacing(1),
+}))
+
 const TagsContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexWrap: 'wrap',
@@ -99,6 +106,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   const navigate = useNavigate()
   const { getTag } = useTags()
   const [subComponentWithStatus, setSubComponentWithStatus] = useState<SubComponent>(subComponent)
+  const [lastPingTime, setLastPingTime] = useState<string | null | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const { buckets: historyBuckets, loading: historyLoading } = useOutageHistory(
     componentName,
@@ -107,18 +115,55 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   )
 
   useEffect(() => {
-    fetch(getSubComponentStatusEndpoint(componentName, subComponent.name))
-      .then((res) => res.json().catch(() => ({ status: 'Unknown', active_outages: [] })))
-      .then((subStatus) => {
-        setSubComponentWithStatus({
-          ...subComponent,
-          status: subStatus.status,
-          active_outages: subStatus.active_outages,
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      if (controller.signal.aborted) {
+        return
+      }
+
+      setSubComponentWithStatus(subComponent)
+      setLastPingTime(undefined)
+      setLoading(true)
+
+      fetch(getSubComponentStatusEndpoint(componentName, subComponent.name), {
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`Failed to fetch status: ${res.statusText}`)
+          }
+          return res.json()
         })
-      })
-      .finally(() => {
-        setLoading(false)
-      })
+        .then((subStatus) => {
+          setSubComponentWithStatus({
+            ...subComponent,
+            status: subStatus.status,
+            active_outages: subStatus.active_outages,
+          })
+          setLastPingTime(subStatus.last_ping_time ?? null)
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return
+          }
+          setSubComponentWithStatus({
+            ...subComponent,
+            status: 'Unknown',
+            active_outages: [],
+          })
+          setLastPingTime(undefined)
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false)
+          }
+        })
+    }, 0)
+
+    return () => {
+      clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [componentName, subComponent])
 
   const handleClick = () => {
@@ -166,6 +211,15 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
               ))}
             </TagsContainer>
           </CardFooter>
+        )}
+        {subComponent.monitoring && (
+          <MonitoredChipRow>
+            <MonitoredChip
+              monitoring={subComponent.monitoring}
+              lastPingTime={lastPingTime}
+              size="small"
+            />
+          </MonitoredChipRow>
         )}
         <HistoryBarWrapper>
           <OutageHistoryBar

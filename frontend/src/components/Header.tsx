@@ -3,6 +3,7 @@ import {
   Brightness4,
   Brightness7,
   Dashboard,
+  GitHub,
   HelpOutline,
   History,
   Insights,
@@ -24,6 +25,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../constants/externalPages'
+import { GITHUB_REPO_URL } from '../constants/links'
 
 import Auth from './Auth'
 import { TOUR_RESTART_EVENT, useHasTour } from './tour/AppTour'
@@ -169,6 +171,18 @@ const Header = ({
                 <HelpOutline fontSize="small" />
               </ListItemIcon>
               <ListItemText>Page tour</ListItemText>
+            </MenuItem>
+            <MenuItem
+              component="a"
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleMenuClose}
+            >
+              <ListItemIcon>
+                <GitHub fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Contribute on GitHub</ListItemText>
             </MenuItem>
           </Menu>
         </Box>
