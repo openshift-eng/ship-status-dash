@@ -291,3 +291,45 @@ func TestGetOutagesDuringJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestParseStatusFilters(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     []string
+		want    []types.Status
+		wantErr string
+	}{
+		{name: "empty", raw: nil, want: nil},
+		{name: "single", raw: []string{"Down"}, want: []types.Status{types.StatusDown}},
+		{
+			name: "repeated",
+			raw:  []string{"Down", "Degraded"},
+			want: []types.Status{types.StatusDown, types.StatusDegraded},
+		},
+		{
+			name: "comma-separated",
+			raw:  []string{"Down,Degraded"},
+			want: []types.Status{types.StatusDown, types.StatusDegraded},
+		},
+		{
+			name: "mixed with spaces and duplicates",
+			raw:  []string{"Down, Degraded", "Down", "Suspected"},
+			want: []types.Status{types.StatusDown, types.StatusDegraded, types.StatusSuspected},
+		},
+		{name: "invalid", raw: []string{"Nope"}, wantErr: "invalid status: Nope"},
+		{name: "blank only", raw: []string{", ,"}, wantErr: "status filter must include at least one status"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, errMsg := parseStatusFilters(tt.raw)
+			if tt.wantErr != "" {
+				assert.Equal(t, tt.wantErr, errMsg)
+				assert.Nil(t, got)
+				return
+			}
+			assert.Empty(t, errMsg)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

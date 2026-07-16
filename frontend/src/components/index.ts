@@ -1,4 +1,5 @@
 export { default as ComponentWell } from './component/ComponentWell'
+export { default as UnhealthyWell } from './component/UnhealthyWell'
 export { default as SubComponentCard } from './sub-component/SubComponentCard'
 export { default as UpsertOutageModal } from './outage/actions/UpsertOutageModal'
 export { default as DeleteOutage } from './outage/actions/DeleteOutage'

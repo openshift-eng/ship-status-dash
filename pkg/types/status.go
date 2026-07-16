@@ -13,6 +13,16 @@ const (
 	StatusPartial           Status = "Partial" // Indicates that some sub-components are healthy, and some are degraded or down
 )
 
+// IsValidStatus reports whether s is a recognized Status value.
+func IsValidStatus(s string) bool {
+	switch Status(s) {
+	case StatusHealthy, StatusDegraded, StatusDown, StatusCapacityExhausted, StatusSuspected, StatusPartial:
+		return true
+	default:
+		return false
+	}
+}
+
 // ToSeverity converts a Status to a Severity. Returns an empty string if the status cannot be converted to a severity.
 func (s Status) ToSeverity() Severity {
 	switch s {
@@ -87,5 +97,18 @@ func StatusFromOutages(outages []Outage) Status {
 		return StatusSuspected
 	}
 
+	return StatusHealthy
+}
+
+// StatusFromActiveOutages returns the status for a single sub-component from its active
+// confirmed outages and active suspected outages. Confirmed outages are those returned by
+// queries that exclude suspected-severity rows; suspected outages are queried separately.
+func StatusFromActiveOutages(confirmed, suspected []Outage) Status {
+	if len(confirmed) > 0 {
+		return StatusFromOutages(confirmed)
+	}
+	if len(suspected) > 0 {
+		return StatusSuspected
+	}
 	return StatusHealthy
 }

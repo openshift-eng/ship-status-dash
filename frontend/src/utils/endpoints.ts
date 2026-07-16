@@ -38,6 +38,12 @@ export const getListSubComponentsEndpoint = (params: SubComponentListParams = {}
   if (params.componentName) search.set('componentName', params.componentName)
   if (params.tag) search.set('tag', params.tag)
   if (params.team) search.set('team', params.team)
+  if (params.status) {
+    const statuses = Array.isArray(params.status) ? params.status : [params.status]
+    for (const status of statuses) {
+      search.append('status', status)
+    }
+  }
   const q = search.toString()
   return `${getPublicDomain()}/api/sub-components${q ? `?${q}` : ''}`
 }

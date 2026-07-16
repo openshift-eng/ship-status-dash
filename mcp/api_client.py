@@ -398,8 +398,14 @@ class ShipStatusAPI:
             return data
         return _truncate_json({"tags": data})
 
-    def list_sub_components(self) -> dict[str, Any]:
-        data = self.client.public_get("/sub-components")
+    def list_sub_components(self, status: str = "") -> dict[str, Any]:
+        path = "/sub-components"
+        status_s = (status or "").strip()
+        if status_s:
+            statuses = [s.strip() for s in status_s.split(",") if s.strip()]
+            if statuses:
+                path = f"/sub-components?{urlencode([('status', s) for s in statuses])}"
+        data = self.client.public_get(path)
         if data is None:
             return {"error": "Failed to retrieve sub-components list."}
         if isinstance(data, dict) and "error" in data:

@@ -92,6 +92,13 @@ def test_list_components_returns_api_error_at_top_level(api: ShipStatusAPI):
     assert result == {"error": "HTTP 500: boom"}
 
 
+def test_list_sub_components_status_filter(api: ShipStatusAPI):
+    with patch.object(api.client, "public_get", return_value=[{"name": "Deck", "status": "Down"}]) as mock_get:
+        result = api.list_sub_components(status="Down,Degraded")
+    assert result["sub_components"][0]["status"] == "Down"
+    mock_get.assert_called_once_with("/sub-components?status=Down&status=Degraded")
+
+
 def test_get_infrastructure_status(api: ShipStatusAPI):
     with patch.object(api.client, "public_get", return_value=[{"component_name": "Prow", "status": "Healthy", "active_outages": []}]):
         result = api.get_infrastructure_status()

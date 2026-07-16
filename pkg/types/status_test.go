@@ -85,3 +85,26 @@ func TestStatusFromOutages(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusFromActiveOutages(t *testing.T) {
+	now := time.Now()
+	confirmed := []Outage{{Severity: SeverityDown, ConfirmedAt: sql.NullTime{Time: now, Valid: true}}}
+	suspected := []Outage{{Severity: SeveritySuspected}}
+
+	assert.Equal(t, StatusHealthy, StatusFromActiveOutages(nil, nil))
+	assert.Equal(t, StatusDown, StatusFromActiveOutages(confirmed, nil))
+	assert.Equal(t, StatusDown, StatusFromActiveOutages(confirmed, suspected))
+	assert.Equal(t, StatusSuspected, StatusFromActiveOutages(nil, suspected))
+}
+
+func TestIsValidStatus(t *testing.T) {
+	assert.True(t, IsValidStatus("Healthy"))
+	assert.True(t, IsValidStatus("Degraded"))
+	assert.True(t, IsValidStatus("Down"))
+	assert.True(t, IsValidStatus("CapacityExhausted"))
+	assert.True(t, IsValidStatus("Suspected"))
+	assert.True(t, IsValidStatus("Partial"))
+	assert.False(t, IsValidStatus("Unknown"))
+	assert.False(t, IsValidStatus(""))
+	assert.False(t, IsValidStatus("down"))
+}
