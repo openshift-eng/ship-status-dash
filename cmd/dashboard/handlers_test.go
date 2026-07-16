@@ -78,9 +78,9 @@ func TestIsUserAuthorizedForComponent(t *testing.T) {
 			authorized: true,
 		},
 		{
-			name:       "service account owner is authorized",
+			name:       "service account owner is not authorized via Owner.ServiceAccount",
 			user:       "system:serviceaccount:ship-status:chai-bot",
-			authorized: true,
+			authorized: false,
 		},
 		{
 			name:       "rover group member is authorized",
@@ -338,6 +338,108 @@ func TestParseStatusFilters(t *testing.T) {
 	}
 }
 
+func requestWithUser(method, path string, body []byte, user string) *http.Request {
+	var req *http.Request
+	if body != nil {
+		req = httptest.NewRequest(method, path, bytes.NewReader(body))
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	ctx := context.WithValue(req.Context(), userContextKey, user)
+	return req.WithContext(ctx)
+}
+
+func TestCreateOutageJSON_Delegation(t *testing.T) {
+	const (
+		mcpSA      = "system:serviceaccount:ship-status:mcp-server"
+		authorUser = "jdoe"
+	)
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name: "Alpha", Slug: "alpha",
+				Subcomponents: []types.SubComponent{
+					{Name: "One", Slug: "one"},
+				},
+				Owners: []types.Owner{{User: authorUser}},
+			},
+		},
+		TrustedDelegators: []string{mcpSA},
+	}
+
+	tests := []struct {
+		name           string
+		user           string
+		body           types.UpsertOutageRequest
+		wantCode       int
+		wantCreatedBy  string
+		wantDiscovered string
+	}{
+		{
+			name: "trusted delegator with authorized acting_for succeeds",
+			user: mcpSA,
+			body: types.UpsertOutageRequest{
+				Severity:       strPtr("Down"),
+				StartTime:      timePtr(time.Now()),
+				Description:    strPtr("test outage"),
+				DiscoveredFrom: strPtr("chat"),
+				ActingFor:      strPtr(authorUser),
+			},
+			wantCode:       http.StatusCreated,
+			wantCreatedBy:  authorUser,
+			wantDiscovered: "chat",
+		},
+		{
+			name: "trusted delegator with unauthorized acting_for gets 403",
+			user: mcpSA,
+			body: types.UpsertOutageRequest{
+				Severity:       strPtr("Down"),
+				StartTime:      timePtr(time.Now()),
+				Description:    strPtr("test outage"),
+				DiscoveredFrom: strPtr("chat"),
+				ActingFor:      strPtr("stranger"),
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "trusted delegator without acting_for gets 400",
+			user: mcpSA,
+			body: types.UpsertOutageRequest{
+				Severity:       strPtr("Down"),
+				StartTime:      timePtr(time.Now()),
+				Description:    strPtr("test outage"),
+				DiscoveredFrom: strPtr("chat"),
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "regular authorized user without acting_for succeeds normally",
+			user: authorUser,
+			body: types.UpsertOutageRequest{
+				Severity:       strPtr("Down"),
+				StartTime:      timePtr(time.Now()),
+				Description:    strPtr("test outage"),
+				DiscoveredFrom: strPtr("manual"),
+			},
+			wantCode:      http.StatusCreated,
+			wantCreatedBy: authorUser,
+		},
+		{
+			name: "untrusted SA with acting_for targeting authorized user still gets 403",
+			user: "system:serviceaccount:other:unknown",
+			body: types.UpsertOutageRequest{
+				Severity:       strPtr("Down"),
+				StartTime:      timePtr(time.Now()),
+				Description:    strPtr("test outage"),
+				DiscoveredFrom: strPtr("manual"),
+				ActingFor:      strPtr(authorUser),
+			},
+			wantCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			mockOM := &outage.MockOutageManager{}
 			h := newTestHandlers(t, cfg, mockOM)
 
@@ -518,7 +620,9 @@ func TestDeleteOutage_Delegation(t *testing.T) {
 
 			var bodyBytes []byte
 			if tt.body != nil {
-				bodyBytes, _ = json.Marshal(tt.body)
+				var err error
+				bodyBytes, err = json.Marshal(tt.body)
+				require.NoError(t, err)
 			}
 
 			req := requestWithUser(http.MethodDelete, "/api/components/alpha/sub-components/one/outages/42", bodyBytes, tt.user)

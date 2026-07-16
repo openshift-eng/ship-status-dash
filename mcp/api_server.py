@@ -78,11 +78,6 @@ def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
 
 def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
     @server.tool()
-    def check_maintainers(component_slug: str) -> dict:
-        """Users authorized to manage a component (expands rover_group owners). Use to verify a user before creating outages on their behalf."""
-        return api.check_maintainers(component_slug)
-
-    @server.tool()
     def create_outage(
         component_slug: str,
         sub_component_slug: str,
@@ -223,6 +218,10 @@ def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
 def build_server() -> FastMCP:
     """Build the MCP server with tools appropriate for the configured mode."""
     mode = os.environ.get("MCP_MODE", "").strip().lower()
+    if mode not in ("", "public", "authenticated"):
+        raise ValueError(
+            f"Invalid MCP_MODE {mode!r}; expected 'public', 'authenticated', or unset"
+        )
     server = FastMCP("ship-status")
     api = ShipStatusAPI()
 

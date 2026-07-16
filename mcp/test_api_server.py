@@ -18,7 +18,6 @@ _READ_TOOLS = {
 }
 
 _WRITE_TOOLS = {
-    "check_maintainers",
     "create_outage",
     "update_outage",
     "delete_outage",
@@ -60,10 +59,18 @@ def test_no_mode_registers_all_tools():
 
 
 def test_write_tools_have_acting_for_parameter():
-    """All write tools (except check_maintainers which is a GET) accept acting_for."""
+    """All write tools accept acting_for."""
     with patch.dict("os.environ", {"MCP_MODE": "authenticated"}):
         server = build_server()
     tools = _tools_by_name(server)
-    for name in _WRITE_TOOLS - {"check_maintainers"}:
+    for name in _WRITE_TOOLS:
         param_names = set(tools[name].parameters.get("properties", {}).keys())
         assert "acting_for" in param_names, f"{name} missing acting_for parameter"
+
+
+def test_invalid_mode_raises():
+    """An unrecognized MCP_MODE value fails fast instead of silently exposing write tools."""
+    import pytest
+    with patch.dict("os.environ", {"MCP_MODE": "typo"}):
+        with pytest.raises(ValueError, match="Invalid MCP_MODE"):
+            build_server()

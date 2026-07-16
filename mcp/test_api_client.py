@@ -192,7 +192,7 @@ def test_create_outage_success(tmp_path):
     call_body = mock.call_args.kwargs["body"]
     assert call_body["severity"] == "Down"
     assert call_body["description"] == "test"
-    assert call_body["discovered_from"] == "chai-bot-user"
+    assert call_body["discovered_from"] == "mcp"
     assert call_body["confirmed"] is True
     assert "start_time" in call_body
     assert "acting_for" not in call_body
@@ -211,7 +211,7 @@ def test_create_outage_bot_initiated_forces_suspected(tmp_path):
     body = mock.call_args.kwargs["body"]
     assert body["severity"] == "Suspected"
     assert body["confirmed"] is False
-    assert body["discovered_from"] == "chai-bot"
+    assert body["discovered_from"] == "mcp"
     assert body["acting_for"] == "chai-bot"
 
 

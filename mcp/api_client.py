@@ -441,10 +441,6 @@ class ShipStatusAPI:
             return data
         return {"success": True, "message": success_msg}
 
-    def check_maintainers(self, component_slug: str) -> dict[str, Any]:
-        return self._dict_request("GET", f"/components/{component_slug}/maintainers", None,
-                                  f"Failed to retrieve maintainers for '{component_slug}'.")
-
     def _find_active_outage(self, component_slug: str, sub_component_slug: str) -> dict[str, Any] | None:
         """Return the first active outage for a sub-component, or None if there are no active outages."""
         path = f"/components/{component_slug}/{sub_component_slug}/outages"
@@ -486,15 +482,13 @@ class ShipStatusAPI:
                 warning = f"Severity overridden from {severity!r} to 'Suspected' for bot-initiated outage."
             severity = "Suspected"
             confirmed = False
-            discovered_from = "chai-bot"
         else:
             confirmed = True
-            discovered_from = "chai-bot-user"
 
         body: dict[str, Any] = {
             "severity": severity,
             "description": description,
-            "discovered_from": discovered_from,
+            "discovered_from": "mcp",
             "confirmed": confirmed,
             "start_time": start_time or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }

@@ -100,3 +100,19 @@ func (c *TestHTTPClient) PostWithBearerToken(url string, body []byte, token stri
 	req.Header.Set("Authorization", "Bearer "+token)
 	return c.client.Do(req)
 }
+
+func (c *TestHTTPClient) DeleteWithBearerToken(url string, body []byte, token string) (*http.Response, error) {
+	var req *http.Request
+	var err error
+	if body != nil {
+		req, err = http.NewRequest("DELETE", c.protectedURL+url, bytes.NewBuffer(body))
+	} else {
+		req, err = http.NewRequest("DELETE", c.protectedURL+url, nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	return c.client.Do(req)
+}

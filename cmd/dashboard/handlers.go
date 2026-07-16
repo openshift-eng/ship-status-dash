@@ -78,15 +78,12 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 }
 
 // collectAuthorizedIdentities returns all identities authorized for a component:
-// Owner.User values, Owner.ServiceAccount values, and expanded RoverGroup members.
+// Owner.User values and expanded RoverGroup members.
 func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
 	identities := sets.NewString()
 	for _, owner := range component.Owners {
 		if owner.User != "" {
 			identities.Insert(owner.User)
-		}
-		if owner.ServiceAccount != "" {
-			identities.Insert(owner.ServiceAccount)
 		}
 		if owner.RoverGroup != "" {
 			identities.Insert(h.groupCache.GetGroupMembers(owner.RoverGroup)...)
@@ -131,26 +128,6 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().UTC().Format(time.RFC3339),
 	}
 	respondWithJSON(w, http.StatusOK, response)
-}
-
-// GetComponentMaintainersJSON returns the list of users authorized to manage a component,
-// expanding rover_group owners to individual users.
-func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	componentName := vars["componentName"]
-
-	component := h.config().GetComponentBySlug(componentName)
-	if component == nil {
-		respondWithError(w, http.StatusNotFound, "Component not found")
-		return
-	}
-
-	maintainers := h.collectAuthorizedIdentities(component)
-
-	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"component":   componentName,
-		"maintainers": maintainers,
-	})
 }
 
 // GetComponentsJSON returns the list of configured components.
