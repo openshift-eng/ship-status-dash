@@ -1,7 +1,9 @@
 import { Alert, Box, CircularProgress, Container, styled, Typography } from '@mui/material'
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 
+import useIntervalRefresh from '../hooks/useIntervalRefresh'
 import type { Component } from '../types'
+import { deferMountFetch } from '../utils/deferMountFetch'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
 import { slugify } from '../utils/slugify'
 
@@ -88,37 +90,53 @@ const ComponentStatusList: React.FC = () => {
     }
   }, [])
 
-  useEffect(() => {
-    // Fetch components configuration and their statuses
+  const fetchComponents = useCallback((silent: boolean) => {
     Promise.all([
-      fetch(getComponentsEndpoint()).then((res) => res.json()),
-      fetch(getOverallStatusEndpoint()).then((res) => res.json()),
+      fetch(getComponentsEndpoint()).then((res) => {
+        if (!res.ok) throw new Error(`Failed to fetch components: HTTP ${res.status}`)
+        return res.json()
+      }),
+      fetch(getOverallStatusEndpoint()).then((res) => {
+        if (!res.ok) throw new Error(`Failed to fetch statuses: HTTP ${res.status}`)
+        return res.json()
+      }),
     ])
       .then(([componentsData, statusesData]) => {
-        // Create a map of component statuses for quick lookup
         const statusMap = new Map<string, string>()
         statusesData.forEach((status: { component_name: string; status: string }) => {
           statusMap.set(status.component_name, status.status)
         })
 
-        // Combine components with their statuses
-        const componentsWithStatuses = componentsData.map((component: Component) => ({
+        return componentsData.map((component: Component) => ({
           ...component,
           status: statusMap.get(component.name) || 'Unknown',
         }))
-
-        return componentsWithStatuses
       })
       .then((data) => {
         setComponents(data)
+        if (silent) {
+          setError(null)
+        }
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to fetch components')
+        if (!silent) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch components')
+        }
       })
       .finally(() => {
-        setLoading(false)
+        if (!silent) {
+          setLoading(false)
+        }
       })
   }, [])
+
+  useEffect(() => {
+    deferMountFetch(() => {
+      fetchComponents(false)
+    })
+  }, [fetchComponents])
+
+  useIntervalRefresh(() => fetchComponents(true))
 
   if (loading) {
     return (

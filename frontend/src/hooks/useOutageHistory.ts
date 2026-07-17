@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { OutageDayBucket } from '../types'
+import { deferMountFetch } from '../utils/deferMountFetch'
 import { getSubComponentHistoryEndpoint } from '../utils/endpoints'
+
+import useIntervalRefresh from './useIntervalRefresh'
 
 interface UseOutageHistoryResult {
   buckets: OutageDayBucket[]
@@ -17,37 +20,58 @@ const useOutageHistory = (
   const [buckets, setBuckets] = useState<OutageDayBucket[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const fetchHistory = useCallback(
+    (silent: boolean) => {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
+
+      fetch(getSubComponentHistoryEndpoint(componentName, subComponentName, days), {
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        })
+        .then((data: OutageDayBucket[]) => {
+          setBuckets(data ?? [])
+          if (silent) {
+            setError(null)
+          }
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          if (!silent) {
+            setError(err instanceof Error ? err.message : 'Failed to fetch outage history')
+            setBuckets([])
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && !silent) {
+            setLoading(false)
+          }
+        })
+    },
+    [componentName, subComponentName, days],
+  )
 
   useEffect(() => {
-    const controller = new AbortController()
-    // Reset before each fetch so stale data isn't shown as settled while the new request is in flight.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-    setError(null)
-
-    fetch(getSubComponentHistoryEndpoint(componentName, subComponentName, days), {
-      signal: controller.signal,
+    deferMountFetch(() => {
+      fetchHistory(false)
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((data: OutageDayBucket[]) => {
-        setBuckets(data ?? [])
-      })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : 'Failed to fetch outage history')
-        setBuckets([])
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
-      })
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [fetchHistory])
 
-    return () => controller.abort()
-  }, [componentName, subComponentName, days])
+  useIntervalRefresh(() => fetchHistory(true))
 
   return { buckets, loading, error }
 }

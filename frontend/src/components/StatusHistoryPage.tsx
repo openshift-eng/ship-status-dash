@@ -1,10 +1,12 @@
 import { Box, CircularProgress, Container, Divider, Link, styled, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
+import useIntervalRefresh from '../hooks/useIntervalRefresh'
 import useOutageHistory from '../hooks/useOutageHistory'
 import type { Component } from '../types'
+import { deferMountFetch } from '../utils/deferMountFetch'
 import { getComponentsEndpoint } from '../utils/endpoints'
 
 import OutageHistoryBar from './OutageHistoryBar'
@@ -122,16 +124,42 @@ const StatusHistoryPage = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchComponents = useCallback((silent: boolean) => {
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
+
     fetch(getComponentsEndpoint())
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<Component[]>
       })
-      .then((data) => setComponents(data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load components'))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        setComponents(data)
+        if (silent) {
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (!silent) {
+          setError(err instanceof Error ? err.message : 'Failed to load components')
+        }
+      })
+      .finally(() => {
+        if (!silent) {
+          setLoading(false)
+        }
+      })
   }, [])
+
+  useEffect(() => {
+    deferMountFetch(() => {
+      fetchComponents(false)
+    })
+  }, [fetchComponents])
+
+  useIntervalRefresh(() => fetchComponents(true))
 
   if (loading) {
     return (

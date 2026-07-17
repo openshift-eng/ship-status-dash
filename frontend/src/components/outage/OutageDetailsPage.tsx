@@ -16,18 +16,24 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Paper,
   Snackbar,
   Typography,
   styled,
 } from '@mui/material'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
-import type { OutageLink, TriageNote } from '../../types'
-import type { Outage } from '../../types'
-import { getOutageEndpoint } from '../../utils/endpoints'
+import useIntervalRefresh from '../../hooks/useIntervalRefresh'
+import type { Outage, OutageAuditLog, OutageLink, TriageNote } from '../../types'
+import { deferMountFetch } from '../../utils/deferMountFetch'
+import { getOutageAuditLogsEndpoint, getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
@@ -215,6 +221,11 @@ const OutageDetailsPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [auditLogModalOpen, setAuditLogModalOpen] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
+  // null = not loaded yet (polling gated); 0 = loaded with no audit entries.
+  const [latestAuditId, setLatestAuditId] = useState<number | null>(null)
+  const [updatesDialogOpen, setUpdatesDialogOpen] = useState(false)
+  const [pollingEnabled, setPollingEnabled] = useState(true)
+  const watermarkRequestIdRef = useRef(0)
 
   const { user, isComponentAdmin } = useAuth()
   const isAdmin = outage ? isComponentAdmin(outage.component_name) : false
@@ -225,6 +236,37 @@ const OutageDetailsPage = () => {
       ? 'Missing component, subcomponent, or outage ID'
       : null
   const [loading, setLoading] = useState(!!(componentName && subComponentName && outageId))
+
+  const fetchLatestAuditLogId = useCallback(async (): Promise<number | null> => {
+    if (!componentName || !subComponentName || !outageId) {
+      return null
+    }
+
+    try {
+      const response = await fetch(
+        getOutageAuditLogsEndpoint(componentName, subComponentName, parseInt(outageId, 10)),
+      )
+      if (!response.ok) {
+        return null
+      }
+      const logs: OutageAuditLog[] = await response.json()
+      return logs[0]?.ID ?? 0
+    } catch (err) {
+      console.warn('Failed to fetch audit logs for change detection', err)
+      return null
+    }
+  }, [componentName, subComponentName, outageId])
+
+  const refreshAuditWatermark = useCallback(async () => {
+    const requestId = ++watermarkRequestIdRef.current
+    const id = await fetchLatestAuditLogId()
+    if (requestId !== watermarkRequestIdRef.current) {
+      return
+    }
+    if (id !== null) {
+      setLatestAuditId(id)
+    }
+  }, [fetchLatestAuditLogId])
 
   const fetchOutage = useCallback(() => {
     if (!componentName || !subComponentName || !outageId) {
@@ -243,7 +285,6 @@ const OutageDetailsPage = () => {
     fetchPromise
       .then((outageResponse) => {
         if (!outageResponse.ok) {
-          // If 404, outage was deleted, navigate back
           if (outageResponse.status === 404) {
             if (componentName && subComponentName) {
               navigate(`/${slugify(componentName)}/${slugify(subComponentName)}`)
@@ -259,6 +300,7 @@ const OutageDetailsPage = () => {
       .then((outageData) => {
         if (outageData) {
           setOutage(outageData)
+          void refreshAuditWatermark()
         }
       })
       .catch((err) => {
@@ -267,21 +309,57 @@ const OutageDetailsPage = () => {
       .finally(() => {
         setLoading(false)
       })
-  }, [componentName, subComponentName, outageId, navigate])
+  }, [componentName, subComponentName, outageId, navigate, refreshAuditWatermark])
+
+  const checkForRemoteUpdates = useCallback(async () => {
+    if (latestAuditId === null) {
+      return
+    }
+
+    const newestId = await fetchLatestAuditLogId()
+    if (newestId !== null && newestId !== latestAuditId) {
+      setUpdatesDialogOpen(true)
+    }
+  }, [fetchLatestAuditLogId, latestAuditId])
 
   useEffect(() => {
     if (!componentName || !subComponentName || !outageId) {
       return
     }
 
-    fetchOutage()
+    deferMountFetch(() => {
+      setPollingEnabled(true)
+      setUpdatesDialogOpen(false)
+      setLatestAuditId(null)
+      fetchOutage()
+    })
   }, [componentName, subComponentName, outageId, fetchOutage])
+
+  useIntervalRefresh(
+    () => {
+      void checkForRemoteUpdates()
+    },
+    undefined,
+    pollingEnabled && !updatesDialogOpen && latestAuditId !== null,
+  )
+
+  const handleRefreshFromRemote = () => {
+    setUpdatesDialogOpen(false)
+    fetchOutage()
+  }
+
+  const handleDismissRemoteUpdates = () => {
+    setUpdatesDialogOpen(false)
+    // Intentional: dismiss stops change-detection for this page session only.
+    setPollingEnabled(false)
+  }
 
   const handleNoteAdded = (note: TriageNote) => {
     setOutage((prev) => {
       if (!prev) return prev
       return { ...prev, triage_notes: [...(prev.triage_notes ?? []), note] }
     })
+    void refreshAuditWatermark()
   }
 
   const handleNoteUpdated = (note: TriageNote) => {
@@ -292,6 +370,7 @@ const OutageDetailsPage = () => {
         triage_notes: (prev.triage_notes ?? []).map((n) => (n.ID === note.ID ? note : n)),
       }
     })
+    void refreshAuditWatermark()
   }
 
   const handleNoteDeleted = (noteId: number) => {
@@ -299,6 +378,7 @@ const OutageDetailsPage = () => {
       if (!prev) return prev
       return { ...prev, triage_notes: (prev.triage_notes ?? []).filter((n) => n.ID !== noteId) }
     })
+    void refreshAuditWatermark()
   }
 
   const handleLinkAdded = (link: OutageLink) => {
@@ -306,6 +386,7 @@ const OutageDetailsPage = () => {
       if (!prev) return prev
       return { ...prev, links: [...(prev.links ?? []), link] }
     })
+    void refreshAuditWatermark()
   }
 
   const handleLinkUpdated = (link: OutageLink) => {
@@ -313,6 +394,7 @@ const OutageDetailsPage = () => {
       if (!prev) return prev
       return { ...prev, links: (prev.links ?? []).map((l) => (l.ID === link.ID ? link : l)) }
     })
+    void refreshAuditWatermark()
   }
 
   const handleLinkDeleted = (linkId: number) => {
@@ -320,6 +402,7 @@ const OutageDetailsPage = () => {
       if (!prev) return prev
       return { ...prev, links: (prev.links ?? []).filter((l) => l.ID !== linkId) }
     })
+    void refreshAuditWatermark()
   }
 
   const formatDateTime = (dateString: string) => {
@@ -610,6 +693,21 @@ const OutageDetailsPage = () => {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      <Dialog open={updatesDialogOpen} onClose={handleDismissRemoteUpdates}>
+        <DialogTitle>Outage updated</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This outage has been updated. Refresh to see the latest changes.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDismissRemoteUpdates}>Dismiss</Button>
+          <Button onClick={handleRefreshFromRemote} variant="contained" autoFocus>
+            Refresh
+          </Button>
+        </DialogActions>
+      </Dialog>
     </StyledContainer>
   )
 }

@@ -29,12 +29,14 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import { useTags } from '../../contexts/TagsContext'
+import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import type { ComponentStatus, Outage, SubComponent } from '../../types'
+import { deferMountFetch } from '../../utils/deferMountFetch'
 import {
   getComponentInfoEndpoint,
   getOutagesDuringEndpoint,
@@ -255,21 +257,19 @@ const SubComponentDetails = () => {
         )
       : getSubComponentOutagesEndpoint(componentName, subComponentName)
 
-  const fetchData = (signal?: AbortSignal) => {
-    if (!componentName || !subComponentName) {
-      return
-    }
-
-    setTimeout(() => {
-      if (signal?.aborted) {
+  const fetchData = useCallback(
+    (signal?: AbortSignal, silent = false) => {
+      if (!componentName || !subComponentName) {
         return
       }
 
-      setLoading(true)
-      setError(null)
-      setSubComponentStatus(null)
-      setSubComponent(null)
-      setShipTeam(null)
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+        setSubComponentStatus(null)
+        setSubComponent(null)
+        setShipTeam(null)
+      }
 
       Promise.all([
         fetch(outagesEndpoint, { signal }),
@@ -281,15 +281,21 @@ const SubComponentDetails = () => {
             return
           }
           if (!outagesResponse.ok) {
-            setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
+            if (!silent) {
+              setError(`Failed to fetch outages: ${outagesResponse.statusText}`)
+            }
             return
           }
           if (!statusResponse.ok) {
-            setError(`Failed to fetch status: ${statusResponse.statusText}`)
+            if (!silent) {
+              setError(`Failed to fetch status: ${statusResponse.statusText}`)
+            }
             return
           }
           if (!componentResponse.ok) {
-            setError(`Failed to fetch component: ${componentResponse.statusText}`)
+            if (!silent) {
+              setError(`Failed to fetch component: ${componentResponse.statusText}`)
+            }
             return
           }
           return Promise.all([
@@ -307,7 +313,13 @@ const SubComponentDetails = () => {
             setOutages(outagesData)
             if (!dateStart && !dateEnd) {
               const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
-              setStatusFilter(hasOngoing ? 'ongoing' : 'all')
+              if (!silent) {
+                setStatusFilter(hasOngoing ? 'ongoing' : 'all')
+              } else if (hasOngoing) {
+                // Silent refresh only upgrades to ongoing so new outages are visible;
+                // it does not reset a user-chosen filter back to all.
+                setStatusFilter('ongoing')
+              }
             }
           }
           if (statusData) {
@@ -322,21 +334,35 @@ const SubComponentDetails = () => {
               setSubComponent(foundSubComponent)
             }
           }
+          if (silent) {
+            setError(null)
+          }
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') {
             return
           }
-          setError('Failed to fetch data')
-          setShipTeam(null)
+          if (!silent) {
+            setError('Failed to fetch data')
+            setShipTeam(null)
+          }
         })
         .finally(() => {
-          if (!signal?.aborted) {
+          if (!signal?.aborted && !silent) {
             setLoading(false)
           }
         })
-    }, 0)
-  }
+    },
+    [
+      componentName,
+      subComponentName,
+      outagesEndpoint,
+      dateStart,
+      dateEnd,
+      subComponentSlug,
+      setLoading,
+    ],
+  )
 
   useEffect(() => {
     if (!componentName || !subComponentName) {
@@ -344,12 +370,20 @@ const SubComponentDetails = () => {
     }
 
     const controller = new AbortController()
-    fetchData(controller.signal)
+    deferMountFetch(() => {
+      fetchData(controller.signal, false)
+    })
 
     return () => {
       controller.abort()
     }
-  }, [componentName, subComponentName, subComponentSlug, outagesEndpoint, dateStart, dateEnd])
+  }, [componentName, subComponentName, fetchData])
+
+  useIntervalRefresh(
+    () => fetchData(undefined, true),
+    undefined,
+    !!(componentName && subComponentName),
+  )
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
@@ -363,7 +397,7 @@ const SubComponentDetails = () => {
   }
 
   const handleOutageAction = () => {
-    fetchData()
+    fetchData(undefined, false)
   }
 
   const hasSuspectedOutage = !!subComponentStatus?.suspected_outage
