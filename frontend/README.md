@@ -19,11 +19,17 @@ Before starting the frontend, ensure the backend services are running:
    ```
 
 3. Start the development server with required environment variables:
+
    ```bash
    VITE_PUBLIC_DOMAIN=http://localhost:8180 \
    VITE_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```
+
+   Optional: set `VITE_DASHBOARD_REFRESH_INTERVAL_MS` (milliseconds) to change how often
+   pages poll for live data. Default is `600000` (10 minutes). For faster local
+   testing, put `VITE_DASHBOARD_REFRESH_INTERVAL_MS=15000` in `.env.development.local`
+   (gitignored), not in the committed `.env.development`.
 
 The app will open at [http://localhost:3030](http://localhost:3030).
 

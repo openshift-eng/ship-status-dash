@@ -1,10 +1,12 @@
 import { Box, CircularProgress, Container, Divider, Link, styled, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
+import useIntervalRefresh from '../hooks/useIntervalRefresh'
 import useOutageHistory from '../hooks/useOutageHistory'
 import type { Component } from '../types'
+import { deferMountFetch } from '../utils/deferMountFetch'
 import { getComponentsEndpoint } from '../utils/endpoints'
 
 import OutageHistoryBar from './OutageHistoryBar'
@@ -121,17 +123,57 @@ const StatusHistoryPage = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    fetch(getComponentsEndpoint())
+  const fetchComponents = useCallback((silent: boolean) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
+
+    fetch(getComponentsEndpoint(), { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<Component[]>
       })
-      .then((data) => setComponents(data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load components'))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (controller.signal.aborted) {
+          return
+        }
+        setComponents(data)
+        if (silent) {
+          setError(null)
+        }
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
+        if (!silent) {
+          setError(err instanceof Error ? err.message : 'Failed to load components')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && !silent) {
+          setLoading(false)
+        }
+      })
   }, [])
+
+  useEffect(() => {
+    deferMountFetch(() => {
+      fetchComponents(false)
+    })
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [fetchComponents])
+
+  useIntervalRefresh(() => fetchComponents(true))
 
   if (loading) {
     return (

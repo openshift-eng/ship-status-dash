@@ -13,10 +13,12 @@ import {
   styled,
   Typography,
 } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import type { Component } from '../../types'
+import { deferMountFetch } from '../../utils/deferMountFetch'
 import { getComponentInfoEndpoint, getComponentStatusEndpoint } from '../../utils/endpoints'
 import { formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify } from '../../utils/slugify'
@@ -152,42 +154,89 @@ const ComponentDetailsPage = () => {
 
   const validationError = !componentSlug ? 'Component name is required' : null
   const [loading, setLoading] = useState(!!componentSlug)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const fetchComponent = useCallback(
+    (silent: boolean) => {
+      if (!componentSlug) {
+        return
+      }
+
+      const componentName = deslugify(componentSlug)
+
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
+
+      Promise.all([
+        fetch(getComponentInfoEndpoint(componentName), { signal: controller.signal }).then(
+          (res) => {
+            if (!res.ok) {
+              throw new Error(`Component "${componentName}" not found`)
+            }
+            return res.json()
+          },
+        ),
+        fetch(getComponentStatusEndpoint(componentName), { signal: controller.signal }).then(
+          (res) => {
+            if (!res.ok) {
+              throw new Error(`Failed to fetch status: ${res.statusText}`)
+            }
+            return res.json()
+          },
+        ),
+      ])
+        .then(([componentData, statusData]) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          return {
+            ...componentData,
+            status: statusData.status || 'Unknown',
+            last_ping_time: statusData.last_ping_time,
+          }
+        })
+        .then((data) => {
+          if (!data || controller.signal.aborted) {
+            return
+          }
+          setComponent(data)
+          if (silent) {
+            setError(null)
+          }
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return
+          }
+          if (!silent) {
+            setError(err instanceof Error ? err.message : 'Failed to fetch component details')
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && !silent) {
+            setLoading(false)
+          }
+        })
+    },
+    [componentSlug],
+  )
 
   useEffect(() => {
-    if (!componentSlug) {
-      return
+    deferMountFetch(() => {
+      fetchComponent(false)
+    })
+    return () => {
+      abortRef.current?.abort()
     }
+  }, [fetchComponent])
 
-    const componentName = deslugify(componentSlug)
-
-    // Fetch component configuration and its specific status
-    Promise.all([
-      fetch(getComponentInfoEndpoint(componentName)).then((res) => {
-        if (!res.ok) {
-          throw new Error(`Component "${componentName}" not found`)
-        }
-        return res.json()
-      }),
-      fetch(getComponentStatusEndpoint(componentName)).then((res) => res.json()),
-    ])
-      .then(([componentData, statusData]) => {
-        // Add status and last ping time to the component
-        return {
-          ...componentData,
-          status: statusData.status || 'Unknown',
-          last_ping_time: statusData.last_ping_time,
-        }
-      })
-      .then((data) => {
-        setComponent(data)
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to fetch component details')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [componentSlug])
+  useIntervalRefresh(() => fetchComponent(true), undefined, !!componentSlug)
 
   const handleBackClick = () => {
     navigate('/')

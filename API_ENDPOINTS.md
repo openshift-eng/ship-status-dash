@@ -52,6 +52,7 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **GET** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Get a specific outage by ID
   - **Public:** Yes
+  - Response includes `last_auditable_update` (RFC3339), maintained by a DB trigger to match `CreatedAt` of the newest audit log for the outage.
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages` - Create a new outage
   - **Public:** No (requires authentication and component authorization)

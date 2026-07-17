@@ -1,7 +1,9 @@
 import { Alert, Box, Card, CardContent, styled, Typography } from '@mui/material'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import type { Status, SubComponent, SubComponentListItem } from '../../types'
+import { deferMountFetch } from '../../utils/deferMountFetch'
 import { getListSubComponentsEndpoint } from '../../utils/endpoints'
 import { getStatusChipColor } from '../../utils/helpers'
 import { getStatusTintStyles } from '../../utils/styles'
@@ -94,9 +96,17 @@ const UnhealthyWell: React.FC<UnhealthyWellProps> = ({ onHasOutagesChange }) => 
   const [items, setItems] = useState<SubComponentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
+  const fetchItems = useCallback((silent: boolean) => {
+    abortRef.current?.abort()
     const controller = new AbortController()
+    abortRef.current = controller
+
+    if (!silent) {
+      setLoading(true)
+    }
+
     fetch(getListSubComponentsEndpoint({ status: UNHEALTHY_STATUSES }), {
       signal: controller.signal,
     })
@@ -105,19 +115,36 @@ const UnhealthyWell: React.FC<UnhealthyWellProps> = ({ onHasOutagesChange }) => 
         return res.json()
       })
       .then((data: SubComponentListItem[]) => {
-        if (!controller.signal.aborted) setItems(data ?? [])
+        if (!controller.signal.aborted) {
+          setItems(data ?? [])
+          if (silent) {
+            setError(null)
+          }
+        }
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && !silent) {
           setError(err instanceof Error ? err.message : 'Failed to load unhealthy sub-components')
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted && !silent) {
+          setLoading(false)
+        }
       })
-    return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    deferMountFetch(() => {
+      fetchItems(false)
+    })
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [fetchItems])
+
+  useIntervalRefresh(() => fetchItems(true))
 
   useEffect(() => {
     if (loading) return

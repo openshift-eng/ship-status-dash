@@ -1,11 +1,13 @@
 import { Box, Card, CardContent, Tooltip, Typography, styled } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { CARD_OUTAGE_HISTORY_DAYS } from '../../constants/history'
 import { useTags } from '../../contexts/TagsContext'
+import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import useOutageHistory from '../../hooks/useOutageHistory'
 import type { SubComponent } from '../../types'
+import { deferMountFetch } from '../../utils/deferMountFetch'
 import { getSubComponentStatusEndpoint } from '../../utils/endpoints'
 import { formatStatusSeverityText } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
@@ -113,19 +115,34 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
     subComponent.name,
     CARD_OUTAGE_HISTORY_DAYS,
   )
+  const abortRef = useRef<AbortController | null>(null)
+  const foregroundInFlightRef = useRef(false)
+  const subComponentRef = useRef(subComponent)
+  const subComponentName = subComponent.name
 
   useEffect(() => {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => {
-      if (controller.signal.aborted) {
+    subComponentRef.current = subComponent
+  }, [subComponent])
+
+  const fetchStatus = useCallback(
+    (silent: boolean) => {
+      if (silent && foregroundInFlightRef.current) {
         return
       }
 
-      setSubComponentWithStatus(subComponent)
-      setLastPingTime(undefined)
-      setLoading(true)
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      const current = subComponentRef.current
 
-      fetch(getSubComponentStatusEndpoint(componentName, subComponent.name), {
+      if (!silent) {
+        foregroundInFlightRef.current = true
+        setSubComponentWithStatus(current)
+        setLastPingTime(undefined)
+        setLoading(true)
+      }
+
+      fetch(getSubComponentStatusEndpoint(componentName, subComponentName), {
         signal: controller.signal,
       })
         .then((res) => {
@@ -135,8 +152,11 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           return res.json()
         })
         .then((subStatus) => {
+          if (controller.signal.aborted) {
+            return
+          }
           setSubComponentWithStatus({
-            ...subComponent,
+            ...current,
             status: subStatus.status,
             active_outages: subStatus.active_outages,
           })
@@ -146,25 +166,36 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           if (err instanceof DOMException && err.name === 'AbortError') {
             return
           }
-          setSubComponentWithStatus({
-            ...subComponent,
-            status: 'Unknown',
-            active_outages: [],
-          })
-          setLastPingTime(undefined)
+          if (!silent) {
+            setSubComponentWithStatus({
+              ...current,
+              status: 'Unknown',
+              active_outages: [],
+            })
+            setLastPingTime(undefined)
+          }
         })
         .finally(() => {
-          if (!controller.signal.aborted) {
+          if (!controller.signal.aborted && !silent) {
+            foregroundInFlightRef.current = false
             setLoading(false)
           }
         })
-    }, 0)
+    },
+    [componentName, subComponentName],
+  )
 
+  useEffect(() => {
+    deferMountFetch(() => {
+      fetchStatus(false)
+    })
     return () => {
-      clearTimeout(timeoutId)
-      controller.abort()
+      abortRef.current?.abort()
+      foregroundInFlightRef.current = false
     }
-  }, [componentName, subComponent])
+  }, [fetchStatus])
+
+  useIntervalRefresh(() => fetchStatus(true), undefined, !loading)
 
   const handleClick = () => {
     const status = subComponentWithStatus.status || 'Unknown'

@@ -86,6 +86,9 @@ type Outage struct {
 	DiscoveredFrom string       `json:"discovered_from" gorm:"column:discovered_from;not null"`
 	CreatedBy      string       `json:"created_by" gorm:"column:created_by;not null"`
 	ConfirmedAt    sql.NullTime `json:"confirmed_at" gorm:"column:confirmed_at"`
+	// LastAuditableUpdate mirrors CreatedAt of the newest audit log for this outage.
+	// Maintained by a Postgres trigger on outage_audit_logs inserts.
+	LastAuditableUpdate time.Time `json:"last_auditable_update" gorm:"column:last_auditable_update;index"`
 	// Reasons are the Reason records that describe the reason for the outage
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
@@ -147,6 +150,9 @@ func normalizeOutageTimesUTC(o *Outage) {
 	}
 	if o.ConfirmedAt.Valid {
 		o.ConfirmedAt.Time = o.ConfirmedAt.Time.UTC()
+	}
+	if !o.LastAuditableUpdate.IsZero() {
+		o.LastAuditableUpdate = o.LastAuditableUpdate.UTC()
 	}
 }
 
