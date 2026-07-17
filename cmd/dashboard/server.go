@@ -227,7 +227,7 @@ func (s *Server) setupRoutes() http.Handler {
 	router := mux.NewRouter()
 	protectedRouter := router.Name("protected").Subrouter()
 	protectedRouter.Use(func(next http.Handler) http.Handler {
-		return newAuthMiddleware(s.logger, s.hmacSecret, next)
+		return newAuthMiddleware(s.logger, s.hmacSecret, s.configManager, next)
 	})
 
 	for _, route := range routes {
@@ -245,7 +245,7 @@ func (s *Server) setupRoutes() http.Handler {
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{s.corsOrigin}),
 		handlers.AllowedMethods([]string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions}),
-		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "GAP-Signature"}),
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-Forwarded-User", "X-Acting-For", "GAP-Signature"}),
 		handlers.AllowCredentials(),
 	)(router)
 

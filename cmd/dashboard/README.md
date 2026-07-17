@@ -71,9 +71,9 @@ See [SignatureHeaders](https://github.com/openshift/oauth-proxy/blob/master/oaut
 The MCP servers ([`mcp/`](../../mcp/)) expose dashboard REST API tools for AI agents. They run as sidecar containers in the dashboard pod. Each server is a separate entry point:
 
 - **Public MCP** (`public_server.py`, port 8090): Read-only tools for querying status, outages, and component discovery. No authentication required. Route: `mcp.ship-status.ci.openshift.org`.
-- **Authenticated MCP** (`auth_server.py`, port 8091): Write tools for creating, updating, and deleting outages, triage notes, and links. Requires authentication via oauth-proxy. Route: `protected-mcp.ship-status.ci.openshift.org`. Calls the dashboard's protected API using a mounted service account token (`SHIP_STATUS_AUTH_TOKEN_FILE`) and passes `acting_for` in the request body for delegated authorization.
+- **Authenticated MCP** (`auth_server.py`, port 8091): Write tools for creating, updating, and deleting outages, triage notes, and links. Requires authentication via oauth-proxy. Route: `protected-mcp.ship-status.ci.openshift.org`. Calls the dashboard's protected API using a mounted service account token (`SHIP_STATUS_AUTH_TOKEN_FILE`) and passes `X-Acting-For` header for delegated authorization.
 
-OpenShift Deployment/Route changes are maintained in the external cluster config repo.
+OpenShift Deployment/Route changes are maintained in [openshift/release](https://github.com/openshift/release).
 
 Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not these servers.
 

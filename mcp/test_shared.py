@@ -196,6 +196,7 @@ def test_create_outage_success(tmp_path):
     assert call_body["confirmed"] is True
     assert "start_time" in call_body
     assert "acting_for" not in call_body
+    assert mock.call_args.kwargs["acting_for"] == ""
 
 
 def test_create_outage_bot_initiated_forces_suspected(tmp_path):
@@ -212,7 +213,8 @@ def test_create_outage_bot_initiated_forces_suspected(tmp_path):
     assert body["severity"] == "Suspected"
     assert body["confirmed"] is False
     assert body["discovered_from"] == "mcp"
-    assert body["acting_for"] == "chai-bot"
+    assert "acting_for" not in body
+    assert mock.call_args.kwargs["acting_for"] == "chai-bot"
 
 
 def test_create_outage_bot_initiated_returns_existing(tmp_path):
@@ -258,8 +260,9 @@ def test_update_outage_includes_acting_for(tmp_path):
         result = api.update_outage("prow", "tide", 1, severity="Down", acting_for="jdoe")
     assert result["ID"] == 1
     body = mock.call_args.kwargs["body"]
-    assert body["acting_for"] == "jdoe"
+    assert "acting_for" not in body
     assert body["severity"] == "Down"
+    assert mock.call_args.kwargs["acting_for"] == "jdoe"
 
 
 def test_update_outage_no_fields(tmp_path):

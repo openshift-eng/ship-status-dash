@@ -100,30 +100,6 @@ func (h *Handlers) IsUserAuthorizedForComponent(user string, component *types.Co
 	return slices.Contains(h.collectAuthorizedIdentities(component), user)
 }
 
-// resolveActingUser returns the acting_for identity when the caller is a trusted delegator,
-// or the authenticated user otherwise. On failure it writes the error response and returns ok=false.
-func (h *Handlers) resolveActingUser(w http.ResponseWriter, authenticatedUser string, actingFor *string, logger *logrus.Entry) (actingUser string, delegated bool, ok bool) {
-	if !slices.Contains(h.config().TrustedDelegators, authenticatedUser) {
-		return authenticatedUser, false, true
-	}
-	if actingFor == nil || strings.TrimSpace(*actingFor) == "" {
-		logger.Warn("Trusted delegator did not provide acting_for")
-		respondWithError(w, http.StatusBadRequest, "acting_for is required for delegated requests")
-		return "", false, false
-	}
-	return strings.TrimSpace(*actingFor), true, true
-}
-
-// parseDelegatedAction reads acting_for from the request body for handlers that normally
-// have no body (e.g., DELETE). Returns nil if the body is empty or not JSON.
-func parseDelegatedAction(r *http.Request) *string {
-	var req types.DelegatedActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil
-	}
-	return req.ActingFor
-}
-
 // HealthJSON returns the health status of the dashboard service.
 func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
@@ -245,15 +221,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actingUser, delegated, ok := h.resolveActingUser(w, activeUser, outageReq.ActingFor, logger)
-	if !ok {
-		return
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to create outage")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
@@ -286,7 +254,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		DiscoveredFrom:   discoveredFrom,
 	}
 
-	outage.CreatedBy = actingUser
+	outage.CreatedBy = activeUser
 
 	if outageReq.EndTime != nil {
 		outage.EndTime = *outageReq.EndTime
@@ -307,7 +275,7 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		initialTriageNote = strings.TrimSpace(*outageReq.InitialTriageNote)
 	}
 
-	if err := h.outageManager.CreateOutage(&outage, nil, actingUser, initialTriageNote); err != nil {
+	if err := h.outageManager.CreateOutage(&outage, nil, activeUser, initialTriageNote); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
 		return
@@ -363,15 +331,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actingUser, delegated, ok := h.resolveActingUser(w, activeUser, updateReq.ActingFor, logger)
-	if !ok {
-		return
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to update outage")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
@@ -419,7 +379,7 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.UpdateOutage(outage, actingUser); err != nil {
+	if err := h.outageManager.UpdateOutage(outage, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to update outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to update outage")
 		return
@@ -508,16 +468,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actingFor := parseDelegatedAction(r)
-	actingUser, delegated, ok := h.resolveActingUser(w, activeUser, actingFor, logger)
-	if !ok {
-		return
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to delete outage")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
@@ -540,7 +491,7 @@ func (h *Handlers) DeleteOutage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.outageManager.DeleteOutage(outage, actingUser); err != nil {
+	if err := h.outageManager.DeleteOutage(outage, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to delete outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete outage")
 		return
@@ -594,15 +545,7 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actingUser, delegated, ok := h.resolveActingUser(w, activeUser, req.ActingFor, logger)
-	if !ok {
-		return
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to add triage note")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
@@ -627,7 +570,7 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 	note := &types.TriageNote{
 		OutageID: uint(outageID),
 		Body:     strings.TrimSpace(req.Body),
-		Author:   actingUser,
+		Author:   activeUser,
 	}
 
 	if err := h.outageManager.AddTriageNote(note); err != nil {
@@ -642,7 +585,7 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 
 // resolveTriageNote is shared setup for triage note mutation handlers.
 // It writes the appropriate error response and returns ok=false on any failure.
-func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request, actingFor *string) (outageID, noteID uint, actingUser string, logger *logrus.Entry, ok bool) {
+func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (outageID, noteID uint, activeUser string, logger *logrus.Entry, ok bool) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
@@ -676,14 +619,6 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request, act
 		"active_user":   activeUser,
 	})
 
-	actingUser, delegated, resolveOK := h.resolveActingUser(w, activeUser, actingFor, logger)
-	if !resolveOK {
-		return 0, 0, "", nil, false
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
 	component := h.config().GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
@@ -695,7 +630,7 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request, act
 		return 0, 0, "", nil, false
 	}
 
-	isAdmin := h.IsUserAuthorizedForComponent(actingUser, component)
+	isAdmin := h.IsUserAuthorizedForComponent(activeUser, component)
 
 	// Verify the outage belongs to this component/sub-component to prevent cross-component access.
 	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, outageID); err != nil {
@@ -719,13 +654,13 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request, act
 		return 0, 0, "", nil, false
 	}
 
-	if !isAdmin && note.Author != actingUser {
+	if !isAdmin && note.Author != activeUser {
 		logger.Warn("User not authorized to modify triage note")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action")
 		return 0, 0, "", nil, false
 	}
 
-	return outageID, noteID, actingUser, logger, true
+	return outageID, noteID, activeUser, logger, true
 }
 
 // UpdateTriageNoteJSON updates the body of a triage note. Allowed for component admins and the note author.
@@ -736,7 +671,7 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	outageID, noteID, actingUser, logger, ok := h.resolveTriageNote(w, r, req.ActingFor)
+	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
 	if !ok {
 		return
 	}
@@ -747,7 +682,7 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, body, actingUser)
+	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, body, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
@@ -764,13 +699,12 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 
 // DeleteTriageNoteJSON removes a triage note. Allowed for component admins and the note author.
 func (h *Handlers) DeleteTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
-	actingFor := parseDelegatedAction(r)
-	outageID, noteID, actingUser, logger, ok := h.resolveTriageNote(w, r, actingFor)
+	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
 	if !ok {
 		return
 	}
 
-	if err := h.outageManager.DeleteTriageNote(outageID, noteID, actingUser); err != nil {
+	if err := h.outageManager.DeleteTriageNote(outageID, noteID, activeUser); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
 			return
@@ -828,15 +762,7 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actingUser, delegated, ok := h.resolveActingUser(w, activeUser, req.ActingFor, logger)
-	if !ok {
-		return
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to add outage link")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
@@ -884,7 +810,7 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		Description: description,
 	}
 
-	if err := h.outageManager.AddOutageLink(link, actingUser); err != nil {
+	if err := h.outageManager.AddOutageLink(link, activeUser); err != nil {
 		logger.WithField("error", err).Error("Failed to add outage link")
 		respondWithError(w, http.StatusInternalServerError, "Failed to add outage link")
 		return
@@ -896,7 +822,7 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 
 // resolveOutageLink is shared setup for outage link mutation handlers.
 // It writes the appropriate error response and returns ok=false on any failure.
-func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request, actingFor *string) (outageID, linkID uint, actingUser string, logger *logrus.Entry, ok bool) {
+func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (outageID, linkID uint, activeUser string, logger *logrus.Entry, ok bool) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
@@ -927,14 +853,6 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request, act
 		"active_user":   activeUser,
 	})
 
-	actingUser, delegated, resolveOK := h.resolveActingUser(w, activeUser, actingFor, logger)
-	if !resolveOK {
-		return 0, 0, "", nil, false
-	}
-	if delegated {
-		logger = logger.WithField("acting_for", actingUser)
-	}
-
 	component := h.config().GetComponentBySlug(componentName)
 	if component == nil {
 		respondWithError(w, http.StatusNotFound, "Component not found")
@@ -946,7 +864,7 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request, act
 		return 0, 0, "", nil, false
 	}
 
-	if !h.IsUserAuthorizedForComponent(actingUser, component) {
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to modify outage link")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return 0, 0, "", nil, false
@@ -963,7 +881,7 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request, act
 		return 0, 0, "", nil, false
 	}
 
-	return uint(parsedOutageID), uint(parsedLinkID), actingUser, logger, true
+	return uint(parsedOutageID), uint(parsedLinkID), activeUser, logger, true
 }
 
 // UpdateOutageLinkJSON updates an existing outage link's URL, type, and description.
@@ -974,7 +892,7 @@ func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	outageID, linkID, actingUser, logger, ok := h.resolveOutageLink(w, r, req.ActingFor)
+	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
 	if !ok {
 		return
 	}
@@ -1002,7 +920,7 @@ func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		description = strings.TrimSpace(req.Description)
 	}
 
-	link, err := h.outageManager.UpdateOutageLink(outageID, linkID, rawURL, linkType, description, actingUser)
+	link, err := h.outageManager.UpdateOutageLink(outageID, linkID, rawURL, linkType, description, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Link not found")
@@ -1019,13 +937,12 @@ func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 
 // DeleteOutageLinkJSON removes a link from an outage.
 func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
-	actingFor := parseDelegatedAction(r)
-	outageID, linkID, actingUser, logger, ok := h.resolveOutageLink(w, r, actingFor)
+	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
 	if !ok {
 		return
 	}
 
-	if err := h.outageManager.DeleteOutageLink(outageID, linkID, actingUser); err != nil {
+	if err := h.outageManager.DeleteOutageLink(outageID, linkID, activeUser); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Link not found")
 			return

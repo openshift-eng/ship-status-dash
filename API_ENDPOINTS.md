@@ -4,7 +4,7 @@ This document lists all API endpoints available in the SHIP Status Dashboard.
 
 For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.md).
 
-Write endpoints support delegated authorization via the `acting_for` request body field. Trusted service accounts (configured in `trusted_delegators`) must provide `acting_for` to identify the user they are acting on behalf of; the dashboard authorizes and audits the target identity. Regular authenticated users do not need this field and are authorized directly.
+Write endpoints support delegated authorization via the `X-Acting-For` HTTP header. Trusted service accounts (configured in `trusted_delegators`) must provide this header to identify the user they are acting on behalf of; the auth middleware resolves the delegated identity before handlers run, so authorization and auditing use the delegated user transparently. Regular authenticated users do not need this header and are authorized directly.
 
 ## Endpoints
 
@@ -52,15 +52,15 @@ Write endpoints support delegated authorization via the `acting_for` request bod
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages` - Create a new outage
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Update an existing outage
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Delete an outage
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `{"acting_for": "<user>"}` JSON body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/report-suspected` - Submit a community suspected outage report
   - **Public:** No (requires authentication)
@@ -83,15 +83,15 @@ Write endpoints support delegated authorization via the `acting_for` request bod
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes` - Add a triage note to an outage
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Update a triage note
   - **Public:** No (requires authentication and component authorization or note authorship)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Delete a triage note
   - **Public:** No (requires authentication and component authorization or note authorship)
-  - Accepts optional `{"acting_for": "<user>"}` JSON body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 ### Outage Links
 
@@ -100,15 +100,15 @@ Write endpoints support delegated authorization via the `acting_for` request bod
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links` - Add a link to an outage
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Update an outage link
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `acting_for` in request body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Delete an outage link
   - **Public:** No (requires authentication and component authorization)
-  - Accepts optional `{"acting_for": "<user>"}` JSON body for delegated authorization
+  - Supports `X-Acting-For` header for delegated authorization
 
 ### External Pages
 

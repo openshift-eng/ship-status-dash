@@ -88,6 +88,7 @@ class DashboardClient:
         method: str,
         path: str,
         body: dict | None = None,
+        acting_for: str = "",
     ) -> dict | list | None:
         token = self._load_bearer_token()
         if not token:
@@ -98,6 +99,8 @@ class DashboardClient:
                 )
             }
         headers = {"Authorization": f"Bearer {token}"}
+        if acting_for:
+            headers["X-Acting-For"] = acting_for
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"
@@ -424,19 +427,20 @@ class ShipStatusAPI:
         return None
 
     def _dict_request(
-        self, method: str, path: str, body: dict[str, Any] | None, fallback_msg: str, truncate: bool = False
+        self, method: str, path: str, body: dict[str, Any] | None, fallback_msg: str,
+        truncate: bool = False, acting_for: str = "",
     ) -> dict[str, Any]:
         """Issue a protected request expecting a dict response. Returns error dict on failure."""
-        data = self.client.protected_request(method, path, body=body) if body is not None else self.client.protected_request(method, path)
+        data = self.client.protected_request(method, path, body=body, acting_for=acting_for)
         if err := self._protected_error(data, fallback_msg):
             return err
         if not isinstance(data, dict):
             return {"error": f"Unexpected response shape from {method} {path}."}
         return _truncate_json(data) if truncate else data
 
-    def _delete_request(self, path: str, success_msg: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _delete_request(self, path: str, success_msg: str, acting_for: str = "") -> dict[str, Any]:
         """Issue a protected DELETE request. None or non-error response means success."""
-        data = self.client.protected_request("DELETE", path, body=body)
+        data = self.client.protected_request("DELETE", path, acting_for=acting_for)
         if isinstance(data, dict) and "error" in data:
             return data
         return {"success": True, "message": success_msg}
@@ -496,11 +500,9 @@ class ShipStatusAPI:
         }
         if initial_triage_note:
             body["initial_triage_note"] = initial_triage_note
-        if acting_for:
-            body["acting_for"] = acting_for
 
         path = f"/components/{component_slug}/{sub_component_slug}/outages"
-        result = self._dict_request("POST", path, body, "Failed to create outage.", truncate=True)
+        result = self._dict_request("POST", path, body, "Failed to create outage.", truncate=True, acting_for=acting_for)
         if warning and "error" not in result:
             result["warning"] = warning
         return result
@@ -532,11 +534,8 @@ class ShipStatusAPI:
         if not body:
             return {"error": "No fields to update. Provide at least one of: severity, description, start_time, end_time, confirmed."}
 
-        if acting_for:
-            body["acting_for"] = acting_for
-
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
-        return self._dict_request("PATCH", path, body, f"Failed to update outage {outage_id}.", truncate=True)
+        return self._dict_request("PATCH", path, body, f"Failed to update outage {outage_id}.", truncate=True, acting_for=acting_for)
 
     def delete_outage(
         self,
@@ -546,8 +545,7 @@ class ShipStatusAPI:
         acting_for: str = "",
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}"
-        body = {"acting_for": acting_for} if acting_for else None
-        return self._delete_request(path, f"Outage {outage_id} deleted.", body=body)
+        return self._delete_request(path, f"Outage {outage_id} deleted.", acting_for=acting_for)
 
     def add_triage_note(
         self,
@@ -558,10 +556,8 @@ class ShipStatusAPI:
         acting_for: str = "",
     ) -> dict[str, Any]:
         req_body: dict[str, Any] = {"body": body}
-        if acting_for:
-            req_body["acting_for"] = acting_for
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes"
-        return self._dict_request("POST", path, req_body, f"Failed to add triage note to outage {outage_id}.")
+        return self._dict_request("POST", path, req_body, f"Failed to add triage note to outage {outage_id}.", acting_for=acting_for)
 
     def update_triage_note(
         self,
@@ -573,10 +569,8 @@ class ShipStatusAPI:
         acting_for: str = "",
     ) -> dict[str, Any]:
         req_body: dict[str, Any] = {"body": body}
-        if acting_for:
-            req_body["acting_for"] = acting_for
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
-        return self._dict_request("PATCH", path, req_body, f"Failed to update triage note {note_id}.")
+        return self._dict_request("PATCH", path, req_body, f"Failed to update triage note {note_id}.", acting_for=acting_for)
 
     def delete_triage_note(
         self,
@@ -587,8 +581,7 @@ class ShipStatusAPI:
         acting_for: str = "",
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/triage-notes/{note_id}"
-        body = {"acting_for": acting_for} if acting_for else None
-        return self._delete_request(path, f"Triage note {note_id} deleted.", body=body)
+        return self._delete_request(path, f"Triage note {note_id} deleted.", acting_for=acting_for)
 
     def add_outage_link(
         self,
@@ -603,10 +596,8 @@ class ShipStatusAPI:
         link_body: dict[str, Any] = {"url": url, "link_type": link_type}
         if description:
             link_body["description"] = description
-        if acting_for:
-            link_body["acting_for"] = acting_for
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links"
-        return self._dict_request("POST", path, link_body, f"Failed to add link to outage {outage_id}.")
+        return self._dict_request("POST", path, link_body, f"Failed to add link to outage {outage_id}.", acting_for=acting_for)
 
     def update_outage_link(
         self,
@@ -622,10 +613,8 @@ class ShipStatusAPI:
         link_body: dict[str, Any] = {"url": url, "link_type": link_type}
         if description:
             link_body["description"] = description
-        if acting_for:
-            link_body["acting_for"] = acting_for
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
-        return self._dict_request("PATCH", path, link_body, f"Failed to update link {link_id}.")
+        return self._dict_request("PATCH", path, link_body, f"Failed to update link {link_id}.", acting_for=acting_for)
 
     def delete_outage_link(
         self,
@@ -636,5 +625,4 @@ class ShipStatusAPI:
         acting_for: str = "",
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
-        body = {"acting_for": acting_for} if acting_for else None
-        return self._delete_request(path, f"Link {link_id} deleted.", body=body)
+        return self._delete_request(path, f"Link {link_id} deleted.", acting_for=acting_for)

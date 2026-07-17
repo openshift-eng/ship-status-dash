@@ -2993,28 +2993,6 @@ func testOutageLinks(client *TestHTTPClient) func(*testing.T) {
 
 func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		t.Run("SA rejected even on component with Owner.ServiceAccount", func(t *testing.T) {
-			outagePayload := map[string]interface{}{
-				"severity":        string(types.SeverityDown),
-				"start_time":      time.Now().UTC().Format(time.RFC3339),
-				"description":     "SA-created outage should be rejected",
-				"discovered_from": "mcp",
-				"confirmed":       true,
-			}
-
-			payloadBytes, err := json.Marshal(outagePayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken(
-				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				payloadBytes, chaiBotSAToken,
-			)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-		})
-
 		t.Run("SA rejected on unowned component", func(t *testing.T) {
 			outagePayload := map[string]interface{}{
 				"severity":        string(types.SeverityDown),
@@ -3047,7 +3025,6 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 				"description":     "Delegated outage creation",
 				"discovered_from": "mcp",
 				"confirmed":       true,
-				"acting_for":      "developer",
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -3055,7 +3032,7 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 
 			resp, err := client.PostWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				payloadBytes, mcpServerSAToken,
+				payloadBytes, mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -3094,7 +3071,6 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Should be rejected",
 				"discovered_from": "mcp",
-				"acting_for":      "stranger",
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -3102,7 +3078,7 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 
 			resp, err := client.PostWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				payloadBytes, mcpServerSAToken,
+				payloadBytes, mcpServerSAToken, "stranger",
 			)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -3132,21 +3108,19 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("delegator can add triage note on behalf of user", func(t *testing.T) {
-			// First create an outage as the delegated user
 			outagePayload := map[string]interface{}{
 				"severity":        string(types.SeverityDown),
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Outage for triage note test",
 				"discovered_from": "mcp",
 				"confirmed":       true,
-				"acting_for":      "developer",
 			}
 			payloadBytes, err := json.Marshal(outagePayload)
 			require.NoError(t, err)
 
 			resp, err := client.PostWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				payloadBytes, mcpServerSAToken,
+				payloadBytes, mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -3157,17 +3131,15 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
 
-			// Add a triage note via delegation
 			notePayload := map[string]interface{}{
-				"body":       "Investigating the issue via MCP",
-				"acting_for": "developer",
+				"body": "Investigating the issue via MCP",
 			}
 			noteBytes, err := json.Marshal(notePayload)
 			require.NoError(t, err)
 
 			noteResp, err := client.PostWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
-				noteBytes, mcpServerSAToken,
+				noteBytes, mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer noteResp.Body.Close()
@@ -3181,21 +3153,19 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("delegator can delete outage on behalf of user", func(t *testing.T) {
-			// Create an outage via delegation
 			createPayload := map[string]interface{}{
 				"severity":        string(types.SeverityDown),
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Outage for delegated delete test",
 				"discovered_from": "mcp",
 				"confirmed":       true,
-				"acting_for":      "developer",
 			}
 			createBytes, err := json.Marshal(createPayload)
 			require.NoError(t, err)
 
 			createResp, err := client.PostWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				createBytes, mcpServerSAToken,
+				createBytes, mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer createResp.Body.Close()
@@ -3205,23 +3175,15 @@ func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 			err = json.NewDecoder(createResp.Body).Decode(&outage)
 			require.NoError(t, err)
 
-			// Delete via delegation
-			deletePayload := map[string]interface{}{
-				"acting_for": "developer",
-			}
-			deleteBytes, err := json.Marshal(deletePayload)
-			require.NoError(t, err)
-
 			deleteResp, err := client.DeleteWithBearerToken(
 				fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
-				deleteBytes, mcpServerSAToken,
+				mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer deleteResp.Body.Close()
 
 			assert.Equal(t, http.StatusNoContent, deleteResp.StatusCode)
 
-			// Verify the outage is gone
 			getResp, err := client.Get(
 				fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
 				false,
