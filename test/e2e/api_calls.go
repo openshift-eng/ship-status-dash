@@ -70,8 +70,8 @@ func getComponents(t *testing.T, client *TestHTTPClient) []types.Component {
 	return components
 }
 
-// getSubComponents returns sub-components from GET /api/sub-components with optional query params (componentName, tag, team).
-func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, team string) []types.SubComponentListItem {
+// getSubComponents returns sub-components from GET /api/sub-components with optional query params (componentName, tag, team, status).
+func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, team string, statuses ...string) []types.SubComponentListItem {
 	params := url.Values{}
 	if componentName != "" {
 		params.Set("componentName", componentName)
@@ -81,6 +81,9 @@ func getSubComponents(t *testing.T, client *TestHTTPClient, componentName, tag, 
 	}
 	if team != "" {
 		params.Set("team", team)
+	}
+	for _, status := range statuses {
+		params.Add("status", status)
 	}
 	path := "/api/sub-components"
 	if len(params) > 0 {

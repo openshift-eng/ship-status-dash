@@ -1117,25 +1117,10 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	outages, err := h.outageManager.GetActiveOutagesForSubComponent(componentName, subComponentName)
+	active, err := h.statusForSubComponent(componentName, subComponentName)
 	if err != nil {
-		logger.WithField("error", err).Error("Failed to query active outages from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
 		return
-	}
-
-	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentName, subComponentName)
-	if err != nil {
-		logger.WithField("error", err).Error("Failed to query suspected outages from database")
-		respondWithError(w, http.StatusInternalServerError, "Failed to get subcomponent status")
-		return
-	}
-
-	status := types.StatusHealthy
-	if len(outages) > 0 {
-		status = types.StatusFromOutages(outages)
-	} else if len(suspected) > 0 {
-		status = types.StatusSuspected
 	}
 
 	lastPingTime, err := h.pingRepo.GetLastPingTime(componentName, subComponentName)
@@ -1145,13 +1130,13 @@ func (h *Handlers) GetSubComponentStatusJSON(w http.ResponseWriter, r *http.Requ
 
 	response := types.ComponentStatus{
 		ComponentName: fmt.Sprintf("%s/%s", componentName, subComponentName),
-		Status:        status,
-		ActiveOutages: outages,
+		Status:        active.Status,
+		ActiveOutages: active.Confirmed,
 		LastPingTime:  lastPingTime,
 	}
 
-	if len(suspected) > 0 {
-		s := suspected[0]
+	if len(active.Suspected) > 0 {
+		s := active.Suspected[0]
 		reporters := make([]string, len(s.Reports))
 		for i, r := range s.Reports {
 			reporters[i] = r.User
@@ -1255,25 +1240,20 @@ func (h *Handlers) getComponentStatus(component *types.Component, logger *logrus
 		logger.WithField("error", err).Warn("Failed to query component report pings")
 	}
 
-	suspectedBySubComponent := make(map[string]bool)
+	suspectedBySubComponent := make(map[string][]types.Outage)
 	for _, o := range suspected {
-		suspectedBySubComponent[o.SubComponentName] = true
+		suspectedBySubComponent[o.SubComponentName] = append(suspectedBySubComponent[o.SubComponentName], o)
+	}
+	confirmedBySubComponent := make(map[string][]types.Outage)
+	for _, o := range confirmed {
+		confirmedBySubComponent[o.SubComponentName] = append(confirmedBySubComponent[o.SubComponentName], o)
 	}
 	subComponentStatuses := make(map[string]types.Status, len(component.Subcomponents))
 	for _, sub := range component.Subcomponents {
-		if _, hasOutage := subComponentsWithOutages[sub.Slug]; hasOutage {
-			var subOutages []types.Outage
-			for _, o := range confirmed {
-				if o.SubComponentName == sub.Slug {
-					subOutages = append(subOutages, o)
-				}
-			}
-			subComponentStatuses[sub.Slug] = types.StatusFromOutages(subOutages)
-		} else if suspectedBySubComponent[sub.Slug] {
-			subComponentStatuses[sub.Slug] = types.StatusSuspected
-		} else {
-			subComponentStatuses[sub.Slug] = types.StatusHealthy
-		}
+		subComponentStatuses[sub.Slug] = types.StatusFromActiveOutages(
+			confirmedBySubComponent[sub.Slug],
+			suspectedBySubComponent[sub.Slug],
+		)
 	}
 
 	return types.ComponentStatus{
@@ -1340,14 +1320,65 @@ func (h *Handlers) ListTagsJSON(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, h.config().Tags)
 }
 
-// ListSubComponentsJSON handles HTTP requests to fetch a list of sub-components based on filters like componentName, team, or tag.
+// parseStatusFilters parses repeated and/or comma-separated status query values.
+// Returns nil when no status filter was provided.
+func parseStatusFilters(raw []string) ([]types.Status, string) {
+	if len(raw) == 0 {
+		return nil, ""
+	}
+	seen := make(map[types.Status]bool)
+	var result []types.Status
+	for _, entry := range raw {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if !types.IsValidSubComponentStatus(part) {
+				return nil, fmt.Sprintf("invalid status: %s", part)
+			}
+			s := types.Status(part)
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	if len(result) == 0 {
+		return nil, "status filter must include at least one status"
+	}
+	return result, ""
+}
+
+// ListSubComponentsJSON handles HTTP requests to fetch a list of sub-components based on filters like componentName, team, tag, or status.
 // All must be matched for a sub-component to be returned. If no filters are provided, all sub-components are returned.
+// The status query parameter may be repeated and/or comma-separated (e.g. status=Down&status=Degraded or status=Down,Degraded).
+// Each item includes the current sub-component status.
 func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request) {
-	componentSlug := r.URL.Query().Get("componentName")
-	tag := r.URL.Query().Get("tag")
-	team := r.URL.Query().Get("team")
+	q := r.URL.Query()
+	componentSlug := q.Get("componentName")
+	tag := q.Get("tag")
+	team := q.Get("team")
+	statusFilters, errMsg := parseStatusFilters(q["status"])
+	if errMsg != "" {
+		respondWithError(w, http.StatusBadRequest, errMsg)
+		return
+	}
 
 	refs := h.config().SubComponentRefsMatching(componentSlug, "", tag, team)
+
+	confirmedByRef, suspectedByRef, err := h.activeOutagesByRef(refs)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get sub-component status")
+		return
+	}
+
+	statusSet := make(map[types.Status]bool, len(statusFilters))
+	for _, s := range statusFilters {
+		statusSet[s] = true
+	}
+
 	items := make([]types.SubComponentListItem, 0, len(refs))
 	for _, ref := range refs {
 		component := h.config().GetComponentBySlug(ref.ComponentSlug)
@@ -1358,10 +1389,93 @@ func (h *Handlers) ListSubComponentsJSON(w http.ResponseWriter, r *http.Request)
 		if sub == nil {
 			continue
 		}
-		items = append(items, types.SubComponentListItem{ComponentName: component.Name, SubComponent: *sub})
+		st := types.StatusFromActiveOutages(confirmedByRef[ref], suspectedByRef[ref])
+		if len(statusFilters) > 0 && !statusSet[st] {
+			continue
+		}
+		items = append(items, types.SubComponentListItem{
+			ComponentName: component.Name,
+			SubComponent:  *sub,
+			Status:        st,
+		})
 	}
 
 	respondWithJSON(w, http.StatusOK, items)
+}
+
+// activeOutagesByRef loads active confirmed and suspected outages once per unique component
+// among refs, grouped by SubComponentRef.
+func (h *Handlers) activeOutagesByRef(refs []types.SubComponentRef) (confirmedByRef, suspectedByRef map[types.SubComponentRef][]types.Outage, err error) {
+	confirmedByRef = make(map[types.SubComponentRef][]types.Outage)
+	suspectedByRef = make(map[types.SubComponentRef][]types.Outage)
+	seenComponents := make(map[string]bool)
+	for _, ref := range refs {
+		if seenComponents[ref.ComponentSlug] {
+			continue
+		}
+		seenComponents[ref.ComponentSlug] = true
+
+		confirmed, err := h.outageManager.GetActiveOutagesForComponent(ref.ComponentSlug)
+		if err != nil {
+			h.logger.WithFields(logrus.Fields{
+				"component": ref.ComponentSlug,
+				"error":     err,
+			}).Error("Failed to query active outages")
+			return nil, nil, err
+		}
+		for _, o := range confirmed {
+			r := types.SubComponentRef{ComponentSlug: o.ComponentName, SubSlug: o.SubComponentName}
+			confirmedByRef[r] = append(confirmedByRef[r], o)
+		}
+
+		suspected, err := h.outageManager.GetActiveSuspectedOutagesForComponent(ref.ComponentSlug)
+		if err != nil {
+			h.logger.WithFields(logrus.Fields{
+				"component": ref.ComponentSlug,
+				"error":     err,
+			}).Error("Failed to query suspected outages")
+			return nil, nil, err
+		}
+		for _, o := range suspected {
+			r := types.SubComponentRef{ComponentSlug: o.ComponentName, SubSlug: o.SubComponentName}
+			suspectedByRef[r] = append(suspectedByRef[r], o)
+		}
+	}
+	return confirmedByRef, suspectedByRef, nil
+}
+
+// subComponentActiveStatus holds status and active outages for a single sub-component.
+type subComponentActiveStatus struct {
+	Status    types.Status
+	Confirmed []types.Outage
+	Suspected []types.Outage
+}
+
+// statusForSubComponent loads active confirmed and suspected outages for a sub-component and derives its status.
+func (h *Handlers) statusForSubComponent(componentSlug, subSlug string) (subComponentActiveStatus, error) {
+	confirmed, err := h.outageManager.GetActiveOutagesForSubComponent(componentSlug, subSlug)
+	if err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"component":     componentSlug,
+			"sub_component": subSlug,
+			"error":         err,
+		}).Error("Failed to query active outages")
+		return subComponentActiveStatus{}, err
+	}
+	suspected, err := h.outageManager.GetActiveSuspectedOutages(componentSlug, subSlug)
+	if err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"component":     componentSlug,
+			"sub_component": subSlug,
+			"error":         err,
+		}).Error("Failed to query suspected outages")
+		return subComponentActiveStatus{}, err
+	}
+	return subComponentActiveStatus{
+		Status:    types.StatusFromActiveOutages(confirmed, suspected),
+		Confirmed: confirmed,
+		Suspected: suspected,
+	}, nil
 }
 
 // GetOutagesDuringJSON returns outages overlapping the requested time window (or a single instant when only one of start/end is set).

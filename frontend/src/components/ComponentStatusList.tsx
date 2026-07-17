@@ -1,11 +1,12 @@
 import { Alert, Box, CircularProgress, Container, styled, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import type { Component } from '../types'
 import { getComponentsEndpoint, getOverallStatusEndpoint } from '../utils/endpoints'
 import { slugify } from '../utils/slugify'
 
 import ComponentWell from './component/ComponentWell'
+import UnhealthyWell from './component/UnhealthyWell'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
   marginTop: theme.spacing(4),
@@ -55,10 +56,18 @@ const ComponentsGrid = styled(Box)(({ theme }) => ({
   gap: theme.spacing(3),
 }))
 
-const ComponentStatusList = () => {
+const getLogoSrc = (isDarkMode: boolean, inOutage: boolean) => {
+  if (inOutage) {
+    return isDarkMode ? '/logo-outage-dark.svg' : '/logo-outage.svg'
+  }
+  return isDarkMode ? '/logo-dark.svg' : '/logo.svg'
+}
+
+const ComponentStatusList: React.FC = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [inOutage, setInOutage] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme')
     return saved === 'dark'
@@ -133,10 +142,12 @@ const ComponentStatusList = () => {
     <StyledContainer maxWidth="lg">
       <TitleSection data-tour="home-heading">
         <TitleContainer>
-          <Logo src={isDarkMode ? '/logo-dark.svg' : '/logo.svg'} alt="SHIP Logo" />
+          <Logo src={getLogoSrc(isDarkMode, inOutage)} alt="SHIP Logo" />
         </TitleContainer>
         <Subtitle>Real-time monitoring of system components and availability</Subtitle>
       </TitleSection>
+
+      <UnhealthyWell onHasOutagesChange={setInOutage} />
 
       <ComponentsGrid data-tour="component-list">
         {components.map((component) => (

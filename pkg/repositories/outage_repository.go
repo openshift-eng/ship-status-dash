@@ -265,18 +265,23 @@ func (r *gormOutageRepository) GetOutagesDuring(queryStart, queryEnd time.Time, 
 	qe := queryEnd.UTC()
 	q := r.db.Preload("Reasons").Scopes(excludeSuspected).
 		Where("start_time <= ? AND (end_time IS NULL OR end_time > ?)", qe, qs)
+	q = applyRefsFilter(q, refs)
+	var outages []types.Outage
+	if err := q.Order("start_time DESC").Find(&outages).Error; err != nil {
+		return nil, fmt.Errorf("OutageRepository.GetOutagesDuring: query outages: %w", err)
+	}
+	return outages, nil
+}
+
+// applyRefsFilter restricts a query to rows matching any of the given (component, sub-component) pairs.
+func applyRefsFilter(q *gorm.DB, refs []types.SubComponentRef) *gorm.DB {
 	conds := make([]string, len(refs))
 	args := make([]interface{}, 0, len(refs)*2)
 	for i, ref := range refs {
 		conds[i] = "(component_name = ? AND sub_component_name = ?)"
 		args = append(args, ref.ComponentSlug, ref.SubSlug)
 	}
-	q = q.Where("("+strings.Join(conds, " OR ")+")", args...)
-	var outages []types.Outage
-	if err := q.Order("start_time DESC").Find(&outages).Error; err != nil {
-		return nil, fmt.Errorf("OutageRepository.GetOutagesDuring: query outages: %w", err)
-	}
-	return outages, nil
+	return q.Where("("+strings.Join(conds, " OR ")+")", args...)
 }
 
 func (r *gormOutageRepository) GetOutageAuditLogs(outageID uint) ([]types.OutageAuditLog, error) {

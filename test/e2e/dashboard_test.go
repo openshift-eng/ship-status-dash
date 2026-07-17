@@ -1312,6 +1312,9 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 			subs := getSubComponents(t, client, "", "", "")
 			// Prow 4 + Downstream CI 1 + Build Farm 2 + Boskos 2 + Sippy 5 + Errata Reliability 1
 			assert.Len(t, subs, 15)
+			for _, sub := range subs {
+				assert.NotEmpty(t, sub.Status)
+			}
 		})
 		t.Run("componentName filter returns only that component's sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "prow", "", "")
@@ -1371,6 +1374,52 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 				names[i] = subs[i].Name
 			}
 			assert.ElementsMatch(t, []string{"Tide", "Hook", "Plank", "Retester"}, names)
+		})
+
+		t.Run("status filter returns only matching sub-components", func(t *testing.T) {
+			down := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Deck", down.ID)
+			degraded := createOutageWithSeverity(t, client, "Prow", "Tide", string(types.SeverityDegraded))
+			defer deleteOutage(t, client, "Prow", "Tide", degraded.ID)
+
+			subs := getSubComponents(t, client, "", "", "", "Down", "Degraded")
+			require.GreaterOrEqual(t, len(subs), 2)
+			byName := map[string]types.SubComponentListItem{}
+			for _, sub := range subs {
+				byName[sub.Name] = sub
+				assert.NotEmpty(t, sub.Status)
+				assert.Contains(t, []types.Status{types.StatusDown, types.StatusDegraded}, sub.Status)
+			}
+			assert.Equal(t, types.StatusDown, byName["Deck"].Status)
+			assert.Equal(t, types.StatusDegraded, byName["Tide"].Status)
+		})
+
+		t.Run("status=Healthy excludes unhealthy sub-components", func(t *testing.T) {
+			down := createOutageWithSeverity(t, client, "Prow", "Deck", string(types.SeverityDown))
+			defer deleteOutage(t, client, "Prow", "Deck", down.ID)
+
+			subs := getSubComponents(t, client, "prow", "", "", "Healthy")
+			names := make([]string, len(subs))
+			for i := range subs {
+				names[i] = subs[i].Name
+				assert.Equal(t, types.StatusHealthy, subs[i].Status)
+			}
+			assert.NotContains(t, names, "Deck")
+			assert.Contains(t, names, "Tide")
+		})
+
+		t.Run("invalid status returns 400", func(t *testing.T) {
+			resp, err := client.Get("/api/sub-components?status=Nope", false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("status=Partial returns 400", func(t *testing.T) {
+			resp, err := client.Get("/api/sub-components?status=Partial", false)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		})
 
 	}

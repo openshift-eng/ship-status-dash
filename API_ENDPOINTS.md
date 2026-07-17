@@ -26,7 +26,7 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **GET** `/api/components/{componentName}` - Get information for a specific component
   - **Public:** Yes
 
-- **GET** `/api/sub-components` - List sub-components; optional query parameters `componentName`, `tag`, and `team` (when more than one is given, a sub-component must match all of them)
+- **GET** `/api/sub-components` - List sub-components; optional query parameters `componentName`, `tag`, `team`, and `status`. Filters combine with AND across parameter names (`componentName`, `tag`, `team`, and `status`). Within `status`, multiple values are matched with OR: `status` may be repeated and/or comma-separated (e.g. `status=Down&status=Degraded` or `status=Down,Degraded`) and returns sub-components matching any listed status. Valid `status` values are `Healthy`, `Degraded`, `Down`, `CapacityExhausted`, and `Suspected` (`Partial` is component-level only and is rejected). Each returned item includes a `status` field with the sub-component's current status.
   - **Public:** Yes
 
 ### Component Maintainers

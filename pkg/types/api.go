@@ -42,10 +42,11 @@ type ComponentMonitorReportComponentStatus struct {
 	Reasons          []Reason `json:"reasons"`
 }
 
-// SubComponentListItem is a sub-component with its parent component name for list API responses.
+// SubComponentListItem is a sub-component with its parent component name and current status for list API responses.
 type SubComponentListItem struct {
 	ComponentName string `json:"component_name"`
 	SubComponent
+	Status Status `json:"status"`
 }
 
 // ReportSuspectedOutageRequest represents the body of a community suspected-outage report.

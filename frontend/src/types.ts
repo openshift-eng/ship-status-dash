@@ -135,6 +135,8 @@ export interface SubComponentListParams {
   componentName?: string
   tag?: string
   team?: string
+  /** One or more statuses; when set, only matching sub-components are returned. Status is always included on each item. */
+  status?: Status | Status[]
 }
 
 export interface Component {

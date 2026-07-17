@@ -74,9 +74,9 @@ def list_tags() -> dict:
 
 
 @mcp.tool()
-def list_sub_components() -> dict:
-    """All sub-components across components."""
-    return _api.list_sub_components()
+def list_sub_components(status: str = "") -> dict:
+    """All sub-components across components. Optional status filter: comma-separated values (Healthy, Degraded, Down, CapacityExhausted, Suspected). Partial is not valid for this filter. When set, only matching items are returned. Each item includes a status field."""
+    return _api.list_sub_components(status=status)
 
 
 # Write tools (protected API)
