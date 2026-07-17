@@ -1,9 +1,9 @@
-"""Tests for MCP server mode splitting and tool registration."""
+"""Tests for MCP server tool registration (public and auth servers)."""
 
 import asyncio
-from unittest.mock import patch
 
-from api_server import build_server
+from public_server import build_server as build_public_server
+from auth_server import build_server as build_auth_server
 
 
 _READ_TOOLS = {
@@ -40,37 +40,26 @@ def _tools_by_name(server) -> dict[str, object]:
     return {t.name: t for t in tools}
 
 
-def test_public_mode_only_registers_read_tools():
-    with patch.dict("os.environ", {"MCP_MODE": "public"}):
-        server = build_server()
+def test_public_server_only_registers_read_tools():
+    server = build_public_server()
     assert _tool_names(server) == _READ_TOOLS
 
 
-def test_authenticated_mode_only_registers_write_tools():
-    with patch.dict("os.environ", {"MCP_MODE": "authenticated"}):
-        server = build_server()
+def test_auth_server_only_registers_write_tools():
+    server = build_auth_server()
     assert _tool_names(server) == _WRITE_TOOLS
 
 
-def test_no_mode_registers_all_tools():
-    with patch.dict("os.environ", {"MCP_MODE": ""}):
-        server = build_server()
-    assert _tool_names(server) == _READ_TOOLS | _WRITE_TOOLS
+def test_no_overlap_between_servers():
+    pub = _tool_names(build_public_server())
+    auth = _tool_names(build_auth_server())
+    assert pub & auth == set()
 
 
 def test_write_tools_have_acting_for_parameter():
     """All write tools accept acting_for."""
-    with patch.dict("os.environ", {"MCP_MODE": "authenticated"}):
-        server = build_server()
+    server = build_auth_server()
     tools = _tools_by_name(server)
     for name in _WRITE_TOOLS:
         param_names = set(tools[name].parameters.get("properties", {}).keys())
         assert "acting_for" in param_names, f"{name} missing acting_for parameter"
-
-
-def test_invalid_mode_raises():
-    """An unrecognized MCP_MODE value fails fast instead of silently exposing write tools."""
-    import pytest
-    with patch.dict("os.environ", {"MCP_MODE": "typo"}):
-        with pytest.raises(ValueError, match="Invalid MCP_MODE"):
-            build_server()

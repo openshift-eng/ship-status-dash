@@ -78,9 +78,9 @@ func TestIsUserAuthorizedForComponent(t *testing.T) {
 			authorized: true,
 		},
 		{
-			name:       "service account owner is not authorized via Owner.ServiceAccount",
+			name:       "service account owner is authorized via Owner.ServiceAccount",
 			user:       "system:serviceaccount:ship-status:chai-bot",
-			authorized: false,
+			authorized: true,
 		},
 		{
 			name:       "rover group member is authorized",

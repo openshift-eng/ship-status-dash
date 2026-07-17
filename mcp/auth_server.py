@@ -1,9 +1,8 @@
-"""MCP server exposing the SHIP Status Dashboard REST API to AI agents.
+"""Authenticated (write) MCP server for the SHIP Status Dashboard.
 
-Supports MCP_MODE env var:
-  - "public": read-only tools (no credentials required)
-  - "authenticated": write tools only (behind oauth-proxy, requires acting_for)
-  - unset/empty: all tools (local dev via stdio)
+Exposes write tools that call the protected API. Requires a Bearer token
+(SHIP_STATUS_AUTH_TOKEN_FILE) and acting_for to identify the delegated user.
+Deployed behind oauth-proxy.
 """
 
 from __future__ import annotations
@@ -13,67 +12,11 @@ import os
 
 from fastmcp import FastMCP
 
-from api_client import ShipStatusAPI
+from shared import ShipStatusAPI
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MCP_HTTP_PORT = 8090
-
-
-def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
-    @server.tool()
-    def get_infrastructure_status() -> dict:
-        """Current health of all SHIP infrastructure components and active outages."""
-        return api.get_infrastructure_status()
-
-    @server.tool()
-    def get_component_details(component_slug: str) -> dict:
-        """Component config: description, team, and sub-components. Slugs are lowercase with hyphens (e.g. prow, build-farm)."""
-        return api.get_component_details(component_slug)
-
-    @server.tool()
-    def get_component_outages(component_slug: str, sub_component_slug: str = "") -> dict:
-        """Outage history for a component or sub-component (active and resolved). Omit sub_component_slug for all subs."""
-        return api.get_component_outages(component_slug, sub_component_slug)
-
-    @server.tool()
-    def get_outage(component_slug: str, sub_component_slug: str, outage_id: int) -> dict:
-        """Single outage by ID (includes slack_threads when present)."""
-        return api.get_outage(component_slug, sub_component_slug, outage_id)
-
-    @server.tool()
-    def get_outages_during(
-        start: str = "",
-        end: str = "",
-        component_name: str = "",
-        sub_component_name: str = "",
-        tag: str = "",
-        team: str = "",
-    ) -> dict:
-        """Outages overlapping a time instant or interval (RFC3339 UTC). At least one of start or end is required."""
-        return api.get_outages_during(
-            start=start,
-            end=end,
-            component_name=component_name,
-            sub_component_name=sub_component_name,
-            tag=tag,
-            team=team,
-        )
-
-    @server.tool()
-    def list_components() -> dict:
-        """All configured components (use slugs in other tools)."""
-        return api.list_components()
-
-    @server.tool()
-    def list_tags() -> dict:
-        """All dashboard tags (for filtering get_outages_during)."""
-        return api.list_tags()
-
-    @server.tool()
-    def list_sub_components() -> dict:
-        """All sub-components across components."""
-        return api.list_sub_components()
+_DEFAULT_MCP_HTTP_PORT = 8091
 
 
 def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
@@ -216,20 +159,10 @@ def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
 
 
 def build_server() -> FastMCP:
-    """Build the MCP server with tools appropriate for the configured mode."""
-    mode = os.environ.get("MCP_MODE", "").strip().lower()
-    if mode not in ("", "public", "authenticated"):
-        raise ValueError(
-            f"Invalid MCP_MODE {mode!r}; expected 'public', 'authenticated', or unset"
-        )
-    server = FastMCP("ship-status")
+    """Build the authenticated (write) MCP server."""
+    server = FastMCP("ship-status-auth")
     api = ShipStatusAPI()
-
-    if mode != "authenticated":
-        _register_read_tools(server, api)
-    if mode != "public":
-        _register_write_tools(server, api)
-
+    _register_write_tools(server, api)
     return server
 
 

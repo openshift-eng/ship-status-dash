@@ -7,6 +7,10 @@
     "ship-status": {
       "command": "mcp/run.sh",
       "args": []
+    },
+    "ship-status-auth": {
+      "command": "mcp/run-auth.sh",
+      "args": []
     }
   }
 }

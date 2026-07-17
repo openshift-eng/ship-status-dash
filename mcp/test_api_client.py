@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api_client import DashboardClient, ShipStatusAPI, _outage_is_active
+from shared import DashboardClient, ShipStatusAPI, _outage_is_active
 
 
 def _list_outage_no_slack(*, active: bool) -> dict:
@@ -43,7 +43,7 @@ def api(client: DashboardClient) -> ShipStatusAPI:
 
 
 def test_public_get_builds_url(client: DashboardClient):
-    with patch("api_client.urlopen") as mock_open:
+    with patch("shared.urlopen") as mock_open:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'[{"ok": true}]'
         mock_resp.__enter__ = lambda s: s
@@ -73,7 +73,7 @@ def test_protected_request_with_bearer(tmp_path):
         auth_token_file=str(token_file),
     )
     with patch.dict("os.environ", {}, clear=True):
-        with patch("api_client.urlopen") as mock_open:
+        with patch("shared.urlopen") as mock_open:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"id": 1}'
             mock_resp.__enter__ = lambda s: s

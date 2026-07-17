@@ -7,7 +7,7 @@ WORKDIR /app
 COPY mcp/requirements.txt .
 RUN pip3.12 install --no-cache-dir -r requirements.txt
 
-COPY mcp/api_client.py mcp/api_server.py ./
+COPY mcp/shared.py mcp/public_server.py mcp/auth_server.py ./
 
 RUN useradd -r -u 10001 -g 0 -d /app mcp && chown -R 10001:0 /app
 
@@ -21,4 +21,4 @@ EXPOSE 8090
 
 USER 10001
 
-CMD ["python3.12", "api_server.py"]
+CMD ["python3.12", "public_server.py"]

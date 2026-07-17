@@ -78,12 +78,15 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 }
 
 // collectAuthorizedIdentities returns all identities authorized for a component:
-// Owner.User values and expanded RoverGroup members.
+// Owner.User, Owner.ServiceAccount values, and expanded RoverGroup members.
 func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
 	identities := sets.NewString()
 	for _, owner := range component.Owners {
 		if owner.User != "" {
 			identities.Insert(owner.User)
+		}
+		if owner.ServiceAccount != "" {
+			identities.Insert(owner.ServiceAccount)
 		}
 		if owner.RoverGroup != "" {
 			identities.Insert(h.groupCache.GetGroupMembers(owner.RoverGroup)...)

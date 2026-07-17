@@ -3,16 +3,23 @@ paths:
   - "mcp/**"
 ---
 
-MCP server **`ship-status`** wraps the dashboard REST API for AI agents. Code lives in `mcp/api_client.py` and `mcp/api_server.py`.
+MCP server **`ship-status`** wraps the dashboard REST API for AI agents. Code lives in:
 
-- Local config: [`.mcp.json`](../../.mcp.json) → `mcp/run.sh`
-- Env: `SHIP_STATUS_PUBLIC_API_URL`, `SHIP_STATUS_PROTECTED_API_URL`
+- `mcp/shared.py` -- `DashboardClient` and `ShipStatusAPI` (HTTP client and domain logic)
+- `mcp/public_server.py` -- public read-only MCP server (no credentials required)
+- `mcp/auth_server.py` -- authenticated write MCP server (behind oauth-proxy, requires SA token)
+
+Local config: [`.mcp.json`](../../.mcp.json) → `mcp/run.sh` (runs `public_server.py` by default)
+
+- Env: `SHIP_STATUS_PUBLIC_API_URL`, `SHIP_STATUS_PROTECTED_API_URL`, `SHIP_STATUS_AUTH_TOKEN_FILE`
 - Tests: `mcp/.venv/bin/pytest mcp/` (install `mcp/requirements-dev.txt` first)
 
-There are two MCP server modes, controlled by `MCP_MODE`:
+The two servers are entirely separate entry points:
 
-- **Public** (`MCP_MODE=public`): Read-only tools, accepts unauthenticated traffic. This instance is stateless and MUST NOT hold credentials.
-- **Authenticated** (`MCP_MODE=authenticated`): Write tools, sits behind oauth-proxy. This instance holds its own SA token to call the dashboard's protected API. Only authenticated callers can reach it.
+- **`public_server.py`**: Read-only tools, accepts unauthenticated traffic. Stateless, holds no credentials.
+- **`auth_server.py`**: Write tools, sits behind oauth-proxy. Holds its own SA token to call the dashboard's protected API. Only authenticated callers can reach it.
+
+The deployment overrides `CMD` to run `auth_server.py` for the authenticated container.
 
 See `security.instructions.md` for the full auth model and credential placement rules.
 
