@@ -247,6 +247,7 @@ const SubComponentDetails = () => {
     !componentName || !subComponentName ? 'Missing component or subcomponent name' : null
   const [loading, setLoading] = useState(!!(componentName && subComponentName))
   const abortRef = useRef<AbortController | null>(null)
+  const foregroundInFlightRef = useRef(false)
 
   const outagesEndpoint =
     dateStart && dateEnd
@@ -264,12 +265,17 @@ const SubComponentDetails = () => {
         return
       }
 
+      if (silent && foregroundInFlightRef.current) {
+        return
+      }
+
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       const { signal } = controller
 
       if (!silent) {
+        foregroundInFlightRef.current = true
         setLoading(true)
         setError(null)
         setSubComponentStatus(null)
@@ -349,6 +355,7 @@ const SubComponentDetails = () => {
         })
         .finally(() => {
           if (!signal.aborted && !silent) {
+            foregroundInFlightRef.current = false
             setLoading(false)
           }
         })
@@ -375,11 +382,15 @@ const SubComponentDetails = () => {
 
     return () => {
       abortRef.current?.abort()
+      foregroundInFlightRef.current = false
     }
   }, [componentName, subComponentName, fetchData])
 
-  useIntervalRefresh(() => fetchData(true), undefined, !!(componentName && subComponentName))
-
+  useIntervalRefresh(
+    () => fetchData(true),
+    undefined,
+    !!(componentName && subComponentName) && !loading,
+  )
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
   }
