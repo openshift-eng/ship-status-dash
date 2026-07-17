@@ -226,6 +226,12 @@ const OutageDetailsPage = () => {
   const [updatesDialogOpen, setUpdatesDialogOpen] = useState(false)
   const [pollingEnabled, setPollingEnabled] = useState(true)
   const watermarkRequestIdRef = useRef(0)
+  const lastAuditableUpdateRef = useRef<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    lastAuditableUpdateRef.current = lastAuditableUpdate
+  }, [lastAuditableUpdate])
 
   const { user, isComponentAdmin } = useAuth()
   const isAdmin = outage ? isComponentAdmin(outage.component_name) : false
@@ -273,16 +279,16 @@ const OutageDetailsPage = () => {
       return
     }
 
-    const fetchPromise = fetch(
-      getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)),
-    )
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
-    fetchPromise.then(() => {
-      setLoading(true)
-      setError(null)
+    setLoading(true)
+    setError(null)
+
+    fetch(getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)), {
+      signal: controller.signal,
     })
-
-    fetchPromise
       .then((outageResponse) => {
         if (!outageResponse.ok) {
           if (outageResponse.status === 404) {
@@ -298,29 +304,40 @@ const OutageDetailsPage = () => {
         return outageResponse.json()
       })
       .then((outageData: Outage | undefined) => {
-        if (outageData) {
-          setOutage(outageData)
-          setLastAuditableUpdate(outageData.last_auditable_update ?? null)
+        if (controller.signal.aborted || !outageData) {
+          return
         }
+        setOutage(outageData)
+        setLastAuditableUpdate(outageData.last_auditable_update ?? null)
       })
       .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         setError(err.message || 'Failed to fetch data')
       })
       .finally(() => {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       })
   }, [componentName, subComponentName, outageId, navigate])
 
   const checkForRemoteUpdates = useCallback(async () => {
-    if (lastAuditableUpdate === null) {
+    if (lastAuditableUpdateRef.current === null) {
       return
     }
 
+    // Capture generation so a concurrent local watermark refresh invalidates this check.
+    const requestId = watermarkRequestIdRef.current
     const newest = await fetchLastAuditableUpdate()
-    if (newest !== null && newest !== lastAuditableUpdate) {
+    if (requestId !== watermarkRequestIdRef.current) {
+      return
+    }
+    if (newest !== null && newest !== lastAuditableUpdateRef.current) {
       setUpdatesDialogOpen(true)
     }
-  }, [fetchLastAuditableUpdate, lastAuditableUpdate])
+  }, [fetchLastAuditableUpdate])
 
   useEffect(() => {
     if (!componentName || !subComponentName || !outageId) {
@@ -333,6 +350,10 @@ const OutageDetailsPage = () => {
       setLastAuditableUpdate(null)
       fetchOutage()
     })
+    return () => {
+      abortRef.current?.abort()
+      watermarkRequestIdRef.current += 1
+    }
   }, [componentName, subComponentName, outageId, fetchOutage])
 
   useIntervalRefresh(

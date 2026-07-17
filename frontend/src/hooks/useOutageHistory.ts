@@ -21,14 +21,20 @@ const useOutageHistory = (
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const foregroundInFlightRef = useRef(false)
 
   const fetchHistory = useCallback(
     (silent: boolean) => {
+      if (silent && foregroundInFlightRef.current) {
+        return
+      }
+
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
 
       if (!silent) {
+        foregroundInFlightRef.current = true
         setLoading(true)
         setError(null)
       }
@@ -41,6 +47,9 @@ const useOutageHistory = (
           return res.json()
         })
         .then((data: OutageDayBucket[]) => {
+          if (controller.signal.aborted) {
+            return
+          }
           setBuckets(data ?? [])
           if (silent) {
             setError(null)
@@ -55,6 +64,7 @@ const useOutageHistory = (
         })
         .finally(() => {
           if (!controller.signal.aborted && !silent) {
+            foregroundInFlightRef.current = false
             setLoading(false)
           }
         })
@@ -68,10 +78,11 @@ const useOutageHistory = (
     })
     return () => {
       abortRef.current?.abort()
+      foregroundInFlightRef.current = false
     }
   }, [fetchHistory])
 
-  useIntervalRefresh(() => fetchHistory(true))
+  useIntervalRefresh(() => fetchHistory(true), undefined, !loading)
 
   return { buckets, loading, error }
 }

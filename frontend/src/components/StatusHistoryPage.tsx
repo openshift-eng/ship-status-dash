@@ -1,5 +1,5 @@
 import { Box, CircularProgress, Container, Divider, Link, styled, Typography } from '@mui/material'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
@@ -123,31 +123,42 @@ const StatusHistoryPage = () => {
   const [components, setComponents] = useState<Component[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const fetchComponents = useCallback((silent: boolean) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     if (!silent) {
       setLoading(true)
       setError(null)
     }
 
-    fetch(getComponentsEndpoint())
+    fetch(getComponentsEndpoint(), { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<Component[]>
       })
       .then((data) => {
+        if (controller.signal.aborted) {
+          return
+        }
         setComponents(data)
         if (silent) {
           setError(null)
         }
       })
       .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         if (!silent) {
           setError(err instanceof Error ? err.message : 'Failed to load components')
         }
       })
       .finally(() => {
-        if (!silent) {
+        if (!controller.signal.aborted && !silent) {
           setLoading(false)
         }
       })
@@ -157,6 +168,9 @@ const StatusHistoryPage = () => {
     deferMountFetch(() => {
       fetchComponents(false)
     })
+    return () => {
+      abortRef.current?.abort()
+    }
   }, [fetchComponents])
 
   useIntervalRefresh(() => fetchComponents(true))

@@ -78,7 +78,7 @@ func main() {
 		WHERE o.last_auditable_update IS NULL
 		   OR o.last_auditable_update = TIMESTAMPTZ '0001-01-01 00:00:00+00'
 	`).Error; err != nil {
-		log.WithField("error", err).Warn("Failed to backfill last_auditable_update")
+		log.WithField("error", err).Fatal("Failed to backfill last_auditable_update")
 	}
 
 	// Keep last_auditable_update in sync with audit log inserts (source of truth for change detection).

@@ -29,7 +29,7 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { DataGrid } from '@mui/x-data-grid'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
@@ -246,6 +246,7 @@ const SubComponentDetails = () => {
   const validationError =
     !componentName || !subComponentName ? 'Missing component or subcomponent name' : null
   const [loading, setLoading] = useState(!!(componentName && subComponentName))
+  const abortRef = useRef<AbortController | null>(null)
 
   const outagesEndpoint =
     dateStart && dateEnd
@@ -258,10 +259,15 @@ const SubComponentDetails = () => {
       : getSubComponentOutagesEndpoint(componentName, subComponentName)
 
   const fetchData = useCallback(
-    (signal?: AbortSignal, silent = false) => {
+    (silent = false) => {
       if (!componentName || !subComponentName) {
         return
       }
+
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      const { signal } = controller
 
       if (!silent) {
         setLoading(true)
@@ -277,7 +283,7 @@ const SubComponentDetails = () => {
         fetch(getComponentInfoEndpoint(componentName), { signal }),
       ])
         .then(([outagesResponse, statusResponse, componentResponse]) => {
-          if (signal?.aborted) {
+          if (signal.aborted) {
             return
           }
           if (!outagesResponse.ok) {
@@ -305,21 +311,15 @@ const SubComponentDetails = () => {
           ])
         })
         .then((results) => {
-          if (signal?.aborted || !results) {
+          if (signal.aborted || !results) {
             return
           }
           const [outagesData, statusData, componentData] = results
           if (outagesData) {
             setOutages(outagesData)
-            if (!dateStart && !dateEnd) {
+            if (!silent && !dateStart && !dateEnd) {
               const hasOngoing = outagesData.some((outage: Outage) => !outage.end_time.Valid)
-              if (!silent) {
-                setStatusFilter(hasOngoing ? 'ongoing' : 'all')
-              } else if (hasOngoing) {
-                // Silent refresh only upgrades to ongoing so new outages are visible;
-                // it does not reset a user-chosen filter back to all.
-                setStatusFilter('ongoing')
-              }
+              setStatusFilter(hasOngoing ? 'ongoing' : 'all')
             }
           }
           if (statusData) {
@@ -348,7 +348,7 @@ const SubComponentDetails = () => {
           }
         })
         .finally(() => {
-          if (!signal?.aborted && !silent) {
+          if (!signal.aborted && !silent) {
             setLoading(false)
           }
         })
@@ -369,21 +369,16 @@ const SubComponentDetails = () => {
       return
     }
 
-    const controller = new AbortController()
     deferMountFetch(() => {
-      fetchData(controller.signal, false)
+      fetchData(false)
     })
 
     return () => {
-      controller.abort()
+      abortRef.current?.abort()
     }
   }, [componentName, subComponentName, fetchData])
 
-  useIntervalRefresh(
-    () => fetchData(undefined, true),
-    undefined,
-    !!(componentName && subComponentName),
-  )
+  useIntervalRefresh(() => fetchData(true), undefined, !!(componentName && subComponentName))
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
@@ -397,7 +392,7 @@ const SubComponentDetails = () => {
   }
 
   const handleOutageAction = () => {
-    fetchData(undefined, false)
+    fetchData(false)
   }
 
   const hasSuspectedOutage = !!subComponentStatus?.suspected_outage
@@ -425,13 +420,13 @@ const SubComponentDetails = () => {
             setReportSuccess('Report recorded')
             setReportDialogOpen(false)
             setReportDescription('')
-            fetchData()
+            fetchData(false)
           })
         } else {
           return response.json().then((data: { error?: string }) => {
             if (response.status === 409) {
               setReportDialogOpen(false)
-              fetchData()
+              fetchData(false)
             }
             setReportError(data.error || 'Failed to submit report')
           })

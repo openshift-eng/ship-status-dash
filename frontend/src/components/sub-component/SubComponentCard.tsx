@@ -116,6 +116,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
     CARD_OUTAGE_HISTORY_DAYS,
   )
   const abortRef = useRef<AbortController | null>(null)
+  const foregroundInFlightRef = useRef(false)
   const subComponentRef = useRef(subComponent)
   const subComponentName = subComponent.name
 
@@ -125,12 +126,17 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
 
   const fetchStatus = useCallback(
     (silent: boolean) => {
+      if (silent && foregroundInFlightRef.current) {
+        return
+      }
+
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       const current = subComponentRef.current
 
       if (!silent) {
+        foregroundInFlightRef.current = true
         setSubComponentWithStatus(current)
         setLastPingTime(undefined)
         setLoading(true)
@@ -146,6 +152,9 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
           return res.json()
         })
         .then((subStatus) => {
+          if (controller.signal.aborted) {
+            return
+          }
           setSubComponentWithStatus({
             ...current,
             status: subStatus.status,
@@ -168,6 +177,7 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
         })
         .finally(() => {
           if (!controller.signal.aborted && !silent) {
+            foregroundInFlightRef.current = false
             setLoading(false)
           }
         })
@@ -181,10 +191,11 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
     })
     return () => {
       abortRef.current?.abort()
+      foregroundInFlightRef.current = false
     }
   }, [fetchStatus])
 
-  useIntervalRefresh(() => fetchStatus(true))
+  useIntervalRefresh(() => fetchStatus(true), undefined, !loading)
 
   const handleClick = () => {
     const status = subComponentWithStatus.status || 'Unknown'

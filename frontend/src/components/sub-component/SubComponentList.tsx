@@ -1,5 +1,5 @@
 import { Alert, Box, CircularProgress, styled, Typography } from '@mui/material'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import type { SubComponent, SubComponentListParams, SubComponentListItem } from '../../types'
@@ -36,6 +36,7 @@ const SubComponentList = ({ filters }: SubComponentListProps) => {
   const [items, setItems] = useState<SubComponentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Stable across identical filter values even when parents pass a new object each render.
   const filterKey = JSON.stringify(
@@ -46,29 +47,39 @@ const SubComponentList = ({ filters }: SubComponentListProps) => {
 
   const fetchItems = useCallback(
     (silent: boolean) => {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
       if (!silent) {
         setLoading(true)
         setError(null)
       }
 
-      fetch(getListSubComponentsEndpoint(filters))
+      fetch(getListSubComponentsEndpoint(filters), { signal: controller.signal })
         .then((res) => {
           if (!res.ok) throw new Error('Failed to load sub-components')
           return res.json()
         })
         .then((data) => {
+          if (controller.signal.aborted) {
+            return
+          }
           setItems(data ?? [])
           if (silent) {
             setError(null)
           }
         })
         .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return
+          }
           if (!silent) {
             setError(err instanceof Error ? err.message : 'Failed to load sub-components')
           }
         })
         .finally(() => {
-          if (!silent) {
+          if (!controller.signal.aborted && !silent) {
             setLoading(false)
           }
         })
@@ -82,6 +93,9 @@ const SubComponentList = ({ filters }: SubComponentListProps) => {
     deferMountFetch(() => {
       fetchItems(false)
     })
+    return () => {
+      abortRef.current?.abort()
+    }
   }, [fetchItems])
 
   useIntervalRefresh(() => fetchItems(true))
