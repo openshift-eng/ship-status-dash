@@ -374,13 +374,14 @@ func (m *DBOutageManager) snapshotOutage(outageID uint) []byte {
 	return data
 }
 
-func (m *DBOutageManager) auditMutation(outageID uint, user string, old, new []byte) {
+func (m *DBOutageManager) auditMutation(outageID uint, user string, old []byte) {
+	newSnap := m.snapshotOutage(outageID)
 	if err := m.db.Create(&types.OutageAuditLog{
 		OutageID:  outageID,
 		User:      user,
 		Operation: string(types.Update),
 		Old:       old,
-		New:       new,
+		New:       newSnap,
 	}).Error; err != nil {
 		m.logger.WithFields(logrus.Fields{
 			"outage_id": outageID,
@@ -399,7 +400,7 @@ func (m *DBOutageManager) AddTriageNote(note *types.TriageNote) error {
 		return err
 	}
 
-	m.auditMutation(note.OutageID, note.Author, old, m.snapshotOutage(note.OutageID))
+	m.auditMutation(note.OutageID, note.Author, old)
 	m.reportChildUpdate(note.OutageID, oldOutage)
 	return nil
 }
@@ -413,7 +414,7 @@ func (m *DBOutageManager) UpdateTriageNote(outageID, noteID uint, body, user str
 		return nil, err
 	}
 
-	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	m.auditMutation(outageID, user, old)
 	return result, nil
 }
 
@@ -425,7 +426,7 @@ func (m *DBOutageManager) DeleteTriageNote(outageID, noteID uint, user string) e
 		return err
 	}
 
-	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	m.auditMutation(outageID, user, old)
 	return nil
 }
 
@@ -438,7 +439,7 @@ func (m *DBOutageManager) AddOutageLink(link *types.OutageLink, user string) err
 		return err
 	}
 
-	m.auditMutation(link.OutageID, user, old, m.snapshotOutage(link.OutageID))
+	m.auditMutation(link.OutageID, user, old)
 	m.reportChildUpdate(link.OutageID, oldOutage)
 	return nil
 }
@@ -453,7 +454,7 @@ func (m *DBOutageManager) UpdateOutageLink(outageID, linkID uint, url string, li
 		return nil, err
 	}
 
-	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	m.auditMutation(outageID, user, old)
 	m.reportChildUpdate(outageID, oldOutage)
 	return result, nil
 }
@@ -466,7 +467,7 @@ func (m *DBOutageManager) DeleteOutageLink(outageID, linkID uint, user string) e
 		return err
 	}
 
-	m.auditMutation(outageID, user, old, m.snapshotOutage(outageID))
+	m.auditMutation(outageID, user, old)
 	return nil
 }
 

@@ -67,6 +67,48 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageAuditLog table")
 	}
 
+	// TODO(sgoeddel): remove once all environments have run this backfill
+	// Backfill last_auditable_update from the newest audit log (or created_at when none exist).
+	if err = db.Exec(`
+		UPDATE outages o
+		SET last_auditable_update = COALESCE(
+			(SELECT MAX(a.created_at) FROM outage_audit_logs a WHERE a.outage_id = o.id AND a.deleted_at IS NULL),
+			o.created_at
+		)
+		WHERE o.last_auditable_update IS NULL
+		   OR o.last_auditable_update = TIMESTAMPTZ '0001-01-01 00:00:00+00'
+	`).Error; err != nil {
+		log.WithField("error", err).Warn("Failed to backfill last_auditable_update")
+	}
+
+	// Keep last_auditable_update in sync with audit log inserts (source of truth for change detection).
+	if err = db.Exec(`
+		CREATE OR REPLACE FUNCTION sync_outage_last_auditable_update()
+		RETURNS TRIGGER AS $$
+		BEGIN
+			UPDATE outages
+			SET last_auditable_update = NEW.created_at
+			WHERE id = NEW.outage_id;
+			RETURN NEW;
+		END;
+		$$ LANGUAGE plpgsql
+	`).Error; err != nil {
+		log.WithField("error", err).Fatal("Failed to create sync_outage_last_auditable_update function")
+	}
+	if err = db.Exec(`
+		DROP TRIGGER IF EXISTS trg_sync_outage_last_auditable_update ON outage_audit_logs
+	`).Error; err != nil {
+		log.WithField("error", err).Fatal("Failed to drop trg_sync_outage_last_auditable_update")
+	}
+	if err = db.Exec(`
+		CREATE TRIGGER trg_sync_outage_last_auditable_update
+		AFTER INSERT ON outage_audit_logs
+		FOR EACH ROW
+		EXECUTE PROCEDURE sync_outage_last_auditable_update()
+	`).Error; err != nil {
+		log.WithField("error", err).Fatal("Failed to create trg_sync_outage_last_auditable_update")
+	}
+
 	if err = db.AutoMigrate(&types.TriageNote{}); err != nil {
 		log.WithField("error", err).Fatal("Failed to migrate TriageNote table")
 	}

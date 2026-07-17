@@ -77,6 +77,7 @@ export interface Outage {
   ID: number
   CreatedAt: string
   UpdatedAt: string
+  last_auditable_update: string
   component_name: string
   sub_component_name: string
   severity: string

@@ -31,9 +31,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { useAuth } from '../../contexts/AuthContext'
 import useIntervalRefresh from '../../hooks/useIntervalRefresh'
-import type { Outage, OutageAuditLog, OutageLink, TriageNote } from '../../types'
+import type { Outage, OutageLink, TriageNote } from '../../types'
 import { deferMountFetch } from '../../utils/deferMountFetch'
-import { getOutageAuditLogsEndpoint, getOutageEndpoint } from '../../utils/endpoints'
+import { getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
@@ -221,8 +221,8 @@ const OutageDetailsPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [auditLogModalOpen, setAuditLogModalOpen] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
-  // null = not loaded yet (polling gated); 0 = loaded with no audit entries.
-  const [latestAuditId, setLatestAuditId] = useState<number | null>(null)
+  // null = not loaded yet (polling gated).
+  const [lastAuditableUpdate, setLastAuditableUpdate] = useState<string | null>(null)
   const [updatesDialogOpen, setUpdatesDialogOpen] = useState(false)
   const [pollingEnabled, setPollingEnabled] = useState(true)
   const watermarkRequestIdRef = useRef(0)
@@ -237,36 +237,36 @@ const OutageDetailsPage = () => {
       : null
   const [loading, setLoading] = useState(!!(componentName && subComponentName && outageId))
 
-  const fetchLatestAuditLogId = useCallback(async (): Promise<number | null> => {
+  const fetchLastAuditableUpdate = useCallback(async (): Promise<string | null> => {
     if (!componentName || !subComponentName || !outageId) {
       return null
     }
 
     try {
       const response = await fetch(
-        getOutageAuditLogsEndpoint(componentName, subComponentName, parseInt(outageId, 10)),
+        getOutageEndpoint(componentName, subComponentName, parseInt(outageId, 10)),
       )
       if (!response.ok) {
         return null
       }
-      const logs: OutageAuditLog[] = await response.json()
-      return logs[0]?.ID ?? 0
+      const data: Outage = await response.json()
+      return data.last_auditable_update ?? null
     } catch (err) {
-      console.warn('Failed to fetch audit logs for change detection', err)
+      console.warn('Failed to fetch outage for change detection', err)
       return null
     }
   }, [componentName, subComponentName, outageId])
 
   const refreshAuditWatermark = useCallback(async () => {
     const requestId = ++watermarkRequestIdRef.current
-    const id = await fetchLatestAuditLogId()
+    const watermark = await fetchLastAuditableUpdate()
     if (requestId !== watermarkRequestIdRef.current) {
       return
     }
-    if (id !== null) {
-      setLatestAuditId(id)
+    if (watermark !== null) {
+      setLastAuditableUpdate(watermark)
     }
-  }, [fetchLatestAuditLogId])
+  }, [fetchLastAuditableUpdate])
 
   const fetchOutage = useCallback(() => {
     if (!componentName || !subComponentName || !outageId) {
@@ -297,10 +297,10 @@ const OutageDetailsPage = () => {
         }
         return outageResponse.json()
       })
-      .then((outageData) => {
+      .then((outageData: Outage | undefined) => {
         if (outageData) {
           setOutage(outageData)
-          void refreshAuditWatermark()
+          setLastAuditableUpdate(outageData.last_auditable_update ?? null)
         }
       })
       .catch((err) => {
@@ -309,18 +309,18 @@ const OutageDetailsPage = () => {
       .finally(() => {
         setLoading(false)
       })
-  }, [componentName, subComponentName, outageId, navigate, refreshAuditWatermark])
+  }, [componentName, subComponentName, outageId, navigate])
 
   const checkForRemoteUpdates = useCallback(async () => {
-    if (latestAuditId === null) {
+    if (lastAuditableUpdate === null) {
       return
     }
 
-    const newestId = await fetchLatestAuditLogId()
-    if (newestId !== null && newestId !== latestAuditId) {
+    const newest = await fetchLastAuditableUpdate()
+    if (newest !== null && newest !== lastAuditableUpdate) {
       setUpdatesDialogOpen(true)
     }
-  }, [fetchLatestAuditLogId, latestAuditId])
+  }, [fetchLastAuditableUpdate, lastAuditableUpdate])
 
   useEffect(() => {
     if (!componentName || !subComponentName || !outageId) {
@@ -330,7 +330,7 @@ const OutageDetailsPage = () => {
     deferMountFetch(() => {
       setPollingEnabled(true)
       setUpdatesDialogOpen(false)
-      setLatestAuditId(null)
+      setLastAuditableUpdate(null)
       fetchOutage()
     })
   }, [componentName, subComponentName, outageId, fetchOutage])
@@ -340,7 +340,7 @@ const OutageDetailsPage = () => {
       void checkForRemoteUpdates()
     },
     undefined,
-    pollingEnabled && !updatesDialogOpen && latestAuditId !== null,
+    pollingEnabled && !updatesDialogOpen && lastAuditableUpdate !== null,
   )
 
   const handleRefreshFromRemote = () => {

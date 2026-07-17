@@ -774,6 +774,62 @@ func testOutageAuditLogs(client *TestHTTPClient) func(*testing.T) {
 			defer resp3.Body.Close()
 			assert.Equal(t, http.StatusNotFound, resp3.StatusCode, "audit-logs for deleted outage should return 404")
 		})
+
+		t.Run("last_auditable_update tracks newest audit log CreatedAt", func(t *testing.T) {
+			createdOutage := createOutage(t, client, "Prow", "Tide")
+			defer deleteOutage(t, client, "Prow", "Tide", createdOutage.ID)
+
+			outageURL := fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), createdOutage.ID)
+			auditLogsURL := fmt.Sprintf("%s/audit-logs", outageURL)
+			notesURL := fmt.Sprintf("%s/triage-notes", outageURL)
+
+			assertLastAuditableMatchesNewestAudit := func(t *testing.T) (previous time.Time) {
+				t.Helper()
+
+				resp, err := client.Get(outageURL, false)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+
+				var outage types.Outage
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&outage))
+				require.False(t, outage.LastAuditableUpdate.IsZero(), "last_auditable_update should be set")
+
+				logsResp, err := client.Get(auditLogsURL, false)
+				require.NoError(t, err)
+				defer logsResp.Body.Close()
+				require.Equal(t, http.StatusOK, logsResp.StatusCode)
+
+				var logs []types.OutageAuditLog
+				require.NoError(t, json.NewDecoder(logsResp.Body).Decode(&logs))
+				require.NotEmpty(t, logs)
+				assert.True(t, outage.LastAuditableUpdate.Equal(logs[0].CreatedAt),
+					"last_auditable_update (%v) should equal newest audit CreatedAt (%v)",
+					outage.LastAuditableUpdate, logs[0].CreatedAt)
+
+				return outage.LastAuditableUpdate
+			}
+
+			afterCreate := assertLastAuditableMatchesNewestAudit(t)
+
+			time.Sleep(5 * time.Millisecond)
+			updateOutage(t, client, "Prow", "Tide", createdOutage.ID, map[string]interface{}{
+				"description": "Updated for last_auditable_update test",
+			})
+			afterUpdate := assertLastAuditableMatchesNewestAudit(t)
+			assert.True(t, afterUpdate.After(afterCreate), "last_auditable_update should advance on outage update")
+
+			time.Sleep(5 * time.Millisecond)
+			noteBody, err := json.Marshal(map[string]string{"body": "Note for last_auditable_update test"})
+			require.NoError(t, err)
+			noteResp, err := client.Post(notesURL, noteBody)
+			require.NoError(t, err)
+			defer noteResp.Body.Close()
+			require.Equal(t, http.StatusCreated, noteResp.StatusCode)
+
+			afterNote := assertLastAuditableMatchesNewestAudit(t)
+			assert.True(t, afterNote.After(afterUpdate), "last_auditable_update should advance on triage note create")
+		})
 	}
 }
 
