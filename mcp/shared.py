@@ -466,10 +466,12 @@ class ShipStatusAPI:
         existing = self._find_active_outage(component_slug, sub_component_slug)
         if existing:
             if initial_triage_note and existing.get("ID"):
-                self.add_triage_note(
+                note_result = self.add_triage_note(
                     component_slug, sub_component_slug, existing["ID"], initial_triage_note,
                     acting_for=acting_for,
                 )
+                if "error" in note_result:
+                    return note_result
             return _truncate_json({
                 "existing_outage": True,
                 "message": "Active outage already exists for this sub-component.",
