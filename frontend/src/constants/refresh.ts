@@ -1,4 +1,4 @@
-const DEFAULT_DASHBOARD_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+const DEFAULT_DASHBOARD_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 function resolveRefreshIntervalMs(): number {
   const raw = import.meta.env.VITE_DASHBOARD_REFRESH_INTERVAL_MS
