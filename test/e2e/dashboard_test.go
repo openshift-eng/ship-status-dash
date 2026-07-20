@@ -23,6 +23,7 @@ const (
 	prowComponentName       = "Prow"
 	componentMonitorSAToken = "component-monitor-sa-token"
 	chaiBotSAToken          = "chai-bot-sa-token"
+	mcpServerSAToken        = "mcp-server-sa-token"
 )
 
 func TestE2E_Dashboard(t *testing.T) {
@@ -62,7 +63,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("TriageNotes", testTriageNotes(client))
 	t.Run("OutageLinks", testOutageLinks(client))
 	t.Run("ServiceAccountOutages", testServiceAccountOutages(client))
-	t.Run("ComponentMaintainers", testComponentMaintainers(client))
+	t.Run("DelegatedAuthorization", testDelegatedAuthorization(client))
 	t.Run("AbsentReport", testAbsentReport(client))
 	t.Run("CommunityReport", testCommunityReport(client))
 	// ConfigHotReload should be tested at the end, it attempts to clean up after itself, but due to the nature of timing,
@@ -3048,46 +3049,12 @@ func testOutageLinks(client *TestHTTPClient) func(*testing.T) {
 
 func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		t.Run("SA creates outage on owned component", func(t *testing.T) {
-			outagePayload := map[string]interface{}{
-				"severity":        string(types.SeverityDown),
-				"start_time":      time.Now().UTC().Format(time.RFC3339),
-				"description":     "SA-created outage",
-				"discovered_from": "chai-bot",
-				"confirmed":       true,
-			}
-
-			payloadBytes, err := json.Marshal(outagePayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken(
-				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
-				payloadBytes, chaiBotSAToken,
-			)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusCreated, resp.StatusCode)
-
-			var outage types.Outage
-			err = json.NewDecoder(resp.Body).Decode(&outage)
-			require.NoError(t, err)
-
-			assert.NotZero(t, outage.ID)
-			assert.Equal(t, "system:serviceaccount:ship-status:chai-bot", outage.CreatedBy)
-			assert.Equal(t, "chai-bot", outage.DiscoveredFrom)
-			assert.Equal(t, string(types.SeverityDown), string(outage.Severity))
-			assert.True(t, outage.ConfirmedAt.Valid, "outage should be confirmed when confirmed=true is sent")
-
-			deleteOutage(t, client, "Prow", "Tide", outage.ID)
-		})
-
 		t.Run("SA rejected on unowned component", func(t *testing.T) {
 			outagePayload := map[string]interface{}{
 				"severity":        string(types.SeverityDown),
 				"start_time":      time.Now().UTC().Format(time.RFC3339),
 				"description":     "Should be rejected",
-				"discovered_from": "chai-bot",
+				"discovered_from": "mcp",
 			}
 
 			payloadBytes, err := json.Marshal(outagePayload)
@@ -3105,32 +3072,181 @@ func testServiceAccountOutages(client *TestHTTPClient) func(*testing.T) {
 	}
 }
 
-func testComponentMaintainers(client *TestHTTPClient) func(*testing.T) {
+func testDelegatedAuthorization(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		t.Run("returns maintainers for component", func(t *testing.T) {
-			resp, err := client.Get(
-				fmt.Sprintf("/api/components/%s/maintainers", utils.Slugify("Prow")),
-				true,
+		t.Run("delegator creates outage on behalf of authorized user", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Delegated outage creation",
+				"discovered_from": "mcp",
+				"confirmed":       true,
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				payloadBytes, mcpServerSAToken, "developer",
 			)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-			var result struct {
-				Component   string   `json:"component"`
-				Maintainers []string `json:"maintainers"`
-			}
-			err = json.NewDecoder(resp.Body).Decode(&result)
+			var outage types.Outage
+			err = json.NewDecoder(resp.Body).Decode(&outage)
 			require.NoError(t, err)
 
-			assert.Equal(t, utils.Slugify("Prow"), result.Component)
-			assert.Contains(t, result.Maintainers, "developer")
-			assert.Contains(t, result.Maintainers, "editor")
+			assert.NotZero(t, outage.ID)
+			assert.Equal(t, "developer", outage.CreatedBy)
+			assert.Equal(t, "mcp", outage.DiscoveredFrom)
+
+			// Verify audit log records the delegated user
+			auditResp, err := client.Get(
+				fmt.Sprintf("/api/components/%s/%s/outages/%d/audit-logs", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
+				false,
+			)
+			require.NoError(t, err)
+			defer auditResp.Body.Close()
+			assert.Equal(t, http.StatusOK, auditResp.StatusCode)
+
+			var auditLogs []map[string]interface{}
+			err = json.NewDecoder(auditResp.Body).Decode(&auditLogs)
+			require.NoError(t, err)
+			require.NotEmpty(t, auditLogs)
+			assert.Equal(t, "developer", auditLogs[0]["user"])
+
+			deleteOutage(t, client, "Prow", "Tide", outage.ID)
 		})
 
-		t.Run("returns 404 for unknown component", func(t *testing.T) {
-			expect404(t, client, fmt.Sprintf("/api/components/%s/maintainers", "nonexistent"), true)
+		t.Run("delegator rejected for unauthorized acting_for user", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Should be rejected",
+				"discovered_from": "mcp",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				payloadBytes, mcpServerSAToken, "stranger",
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+		})
+
+		t.Run("delegator without acting_for gets 400", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Missing acting_for",
+				"discovered_from": "mcp",
+			}
+
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				payloadBytes, mcpServerSAToken,
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("delegator can add triage note on behalf of user", func(t *testing.T) {
+			outagePayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Outage for triage note test",
+				"discovered_from": "mcp",
+				"confirmed":       true,
+			}
+			payloadBytes, err := json.Marshal(outagePayload)
+			require.NoError(t, err)
+
+			resp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				payloadBytes, mcpServerSAToken, "developer",
+			)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var outage types.Outage
+			err = json.NewDecoder(resp.Body).Decode(&outage)
+			require.NoError(t, err)
+			defer deleteOutage(t, client, "Prow", "Tide", outage.ID)
+
+			notePayload := map[string]interface{}{
+				"body": "Investigating the issue via MCP",
+			}
+			noteBytes, err := json.Marshal(notePayload)
+			require.NoError(t, err)
+
+			noteResp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
+				noteBytes, mcpServerSAToken, "developer",
+			)
+			require.NoError(t, err)
+			defer noteResp.Body.Close()
+
+			assert.Equal(t, http.StatusCreated, noteResp.StatusCode)
+
+			var note map[string]interface{}
+			err = json.NewDecoder(noteResp.Body).Decode(&note)
+			require.NoError(t, err)
+			assert.Equal(t, "developer", note["author"])
+		})
+
+		t.Run("delegator can delete outage on behalf of user", func(t *testing.T) {
+			createPayload := map[string]interface{}{
+				"severity":        string(types.SeverityDown),
+				"start_time":      time.Now().UTC().Format(time.RFC3339),
+				"description":     "Outage for delegated delete test",
+				"discovered_from": "mcp",
+				"confirmed":       true,
+			}
+			createBytes, err := json.Marshal(createPayload)
+			require.NoError(t, err)
+
+			createResp, err := client.PostWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages", utils.Slugify("Prow"), utils.Slugify("Tide")),
+				createBytes, mcpServerSAToken, "developer",
+			)
+			require.NoError(t, err)
+			defer createResp.Body.Close()
+			require.Equal(t, http.StatusCreated, createResp.StatusCode)
+
+			var outage types.Outage
+			err = json.NewDecoder(createResp.Body).Decode(&outage)
+			require.NoError(t, err)
+
+			deleteResp, err := client.DeleteWithBearerToken(
+				fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
+				mcpServerSAToken, "developer",
+			)
+			require.NoError(t, err)
+			defer deleteResp.Body.Close()
+
+			assert.Equal(t, http.StatusNoContent, deleteResp.StatusCode)
+
+			getResp, err := client.Get(
+				fmt.Sprintf("/api/components/%s/%s/outages/%d", utils.Slugify("Prow"), utils.Slugify("Tide"), outage.ID),
+				false,
+			)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			assert.Equal(t, http.StatusNotFound, getResp.StatusCode)
 		})
 	}
 }

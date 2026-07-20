@@ -78,7 +78,7 @@ func respondWithError(w http.ResponseWriter, statusCode int, message string) {
 }
 
 // collectAuthorizedIdentities returns all identities authorized for a component:
-// Owner.User values, Owner.ServiceAccount values, and expanded RoverGroup members.
+// Owner.User, Owner.ServiceAccount values, and expanded RoverGroup members.
 func (h *Handlers) collectAuthorizedIdentities(component *types.Component) []string {
 	identities := sets.NewString()
 	for _, owner := range component.Owners {
@@ -107,26 +107,6 @@ func (h *Handlers) HealthJSON(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().UTC().Format(time.RFC3339),
 	}
 	respondWithJSON(w, http.StatusOK, response)
-}
-
-// GetComponentMaintainersJSON returns the list of users authorized to manage a component,
-// expanding rover_group owners to individual users.
-func (h *Handlers) GetComponentMaintainersJSON(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	componentName := vars["componentName"]
-
-	component := h.config().GetComponentBySlug(componentName)
-	if component == nil {
-		respondWithError(w, http.StatusNotFound, "Component not found")
-		return
-	}
-
-	maintainers := h.collectAuthorizedIdentities(component)
-
-	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"component":   componentName,
-		"maintainers": maintainers,
-	})
 }
 
 // GetComponentsJSON returns the list of configured components.
@@ -235,15 +215,15 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.IsUserAuthorizedForComponent(activeUser, component) {
-		logger.Warn("User not authorized to create outage")
-		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
-		return
-	}
-
 	var outageReq types.UpsertOutageRequest
 	if err := json.NewDecoder(r.Body).Decode(&outageReq); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to create outage")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
 	}
 
@@ -345,6 +325,12 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var updateReq types.UpsertOutageRequest
+	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to update outage")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
@@ -359,12 +345,6 @@ func (h *Handlers) UpdateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
-		return
-	}
-
-	var updateReq types.UpsertOutageRequest
-	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -559,6 +539,12 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var req types.TriageNoteBodyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to add triage note")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
@@ -573,12 +559,6 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
-		return
-	}
-
-	var req types.TriageNoteBodyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -610,8 +590,7 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (ou
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
 
-	var authOK bool
-	activeUser, authOK = GetUserFromContext(r.Context())
+	activeUser, authOK := GetUserFromContext(r.Context())
 	if !authOK {
 		respondWithError(w, http.StatusUnauthorized, "no active user found")
 		return 0, 0, "", nil, false
@@ -686,14 +665,14 @@ func (h *Handlers) resolveTriageNote(w http.ResponseWriter, r *http.Request) (ou
 
 // UpdateTriageNoteJSON updates the body of a triage note. Allowed for component admins and the note author.
 func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
-	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
-	if !ok {
-		return
-	}
-
 	var req types.TriageNoteBodyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	outageID, noteID, activeUser, logger, ok := h.resolveTriageNote(w, r)
+	if !ok {
 		return
 	}
 
@@ -777,6 +756,12 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var req types.OutageLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to add outage link")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
@@ -791,12 +776,6 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.WithField("error", err).Error("Failed to query outage from database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
-		return
-	}
-
-	var req types.OutageLinkRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -848,8 +827,7 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (ou
 	componentName := vars["componentName"]
 	subComponentName := vars["subComponentName"]
 
-	var authOk bool
-	activeUser, authOk = GetUserFromContext(r.Context())
+	activeUser, authOk := GetUserFromContext(r.Context())
 	if !authOk {
 		respondWithError(w, http.StatusUnauthorized, "no active user found")
 		return 0, 0, "", nil, false
@@ -908,14 +886,14 @@ func (h *Handlers) resolveOutageLink(w http.ResponseWriter, r *http.Request) (ou
 
 // UpdateOutageLinkJSON updates an existing outage link's URL, type, and description.
 func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
-	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
-	if !ok {
-		return
-	}
-
 	var req types.OutageLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	outageID, linkID, activeUser, logger, ok := h.resolveOutageLink(w, r)
+	if !ok {
 		return
 	}
 

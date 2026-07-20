@@ -43,7 +43,6 @@ components:
       - user: developer
       - user: editor
       - service_account: system:serviceaccount:ship-status:component-monitor
-      - service_account: system:serviceaccount:ship-status:chai-bot
   - name: Downstream CI
     description: Downstream CI system
     ship_team: TestPlatform
@@ -183,3 +182,5 @@ tags:
   - name: GCP
     description: "Components running on GCP infrastructure"
     color: "#03A9F4"
+trusted_delegators:
+  - "system:serviceaccount:ship-status:mcp-server"

@@ -75,7 +75,7 @@ func TestIsUserAuthorizedForComponent(t *testing.T) {
 			authorized: true,
 		},
 		{
-			name:       "service account owner is authorized",
+			name:       "service account owner is authorized via Owner.ServiceAccount",
 			user:       "system:serviceaccount:ship-status:chai-bot",
 			authorized: true,
 		},

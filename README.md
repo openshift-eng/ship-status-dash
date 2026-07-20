@@ -32,7 +32,8 @@ For detailed documentation, see [`cmd/dashboard/README.md`](cmd/dashboard/README
 
 The component-monitor is a service that periodically probes sub-components to detect outages and report their status to the dashboard API.
 
-- Go service (`cmd/component-monitor`)
-- Supports HTTP, Prometheus, and JUnit monitoring
-
 For detailed documentation, see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md).
+
+## Configuration
+
+The dashboard reads component definitions and settings from a YAML config file (synced from openshift/release via git-sync in production). This includes component owners, monitoring config, and `trusted_delegators` for delegated write authorization. See [API_ENDPOINTS.md](API_ENDPOINTS.md) for endpoint details.

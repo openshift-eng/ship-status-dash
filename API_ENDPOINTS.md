@@ -4,6 +4,8 @@ This document lists all API endpoints available in the SHIP Status Dashboard.
 
 For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.md).
 
+Write endpoints support delegated authorization via the `X-Acting-For` HTTP header. Trusted service accounts (configured in `trusted_delegators`) must provide this header to identify the user they are acting on behalf of; the auth middleware resolves the delegated identity before handlers run, so authorization and auditing use the delegated user transparently. Regular authenticated users do not need this header and are authorized directly.
+
 ## Endpoints
 
 ### Component Status
@@ -29,11 +31,6 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 - **GET** `/api/sub-components` - List sub-components; optional query parameters `componentName`, `tag`, `team`, and `status`. Filters combine with AND across parameter names (`componentName`, `tag`, `team`, and `status`). Within `status`, multiple values are matched with OR: `status` may be repeated and/or comma-separated (e.g. `status=Down&status=Degraded` or `status=Down,Degraded`) and returns sub-components matching any listed status. Valid `status` values are `Healthy`, `Degraded`, `Down`, `CapacityExhausted`, and `Suspected` (`Partial` is component-level only and is rejected). Each returned item includes a `status` field with the sub-component's current status.
   - **Public:** Yes
 
-### Component Maintainers
-
-- **GET** `/api/components/{componentName}/maintainers` - Get the list of users authorized to manage a component, expanding rover_group owners to individual users
-  - **Public:** No (requires authentication)
-
 ### Tags
 
 - **GET** `/api/tags` - Get the configured tag definitions
@@ -56,12 +53,15 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages` - Create a new outage
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Update an existing outage
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}` - Delete an outage
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/report-suspected` - Submit a community suspected outage report
   - **Public:** No (requires authentication)
@@ -84,12 +84,15 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes` - Add a triage note to an outage
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Update a triage note
   - **Public:** No (requires authentication and component authorization or note authorship)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/triage-notes/{noteId}` - Delete a triage note
   - **Public:** No (requires authentication and component authorization or note authorship)
+  - Supports `X-Acting-For` header for delegated authorization
 
 ### Outage Links
 
@@ -98,12 +101,15 @@ For authentication details, see [cmd/dashboard/README.md](cmd/dashboard/README.m
 
 - **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links` - Add a link to an outage
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **PATCH** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Update an outage link
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 - **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/links/{linkId}` - Delete an outage link
   - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
 
 ### External Pages
 

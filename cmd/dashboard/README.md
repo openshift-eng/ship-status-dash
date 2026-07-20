@@ -66,15 +66,16 @@ Both oauth-proxy and dashboard share the same HMAC secret. The signature include
 Each of these headers are included when the OpenShift Oauth Proxy creates it's signature, and we must provide complete parity.
 See [SignatureHeaders](https://github.com/openshift/oauth-proxy/blob/master/oauthproxy.go).
 
-## MCP Server (`ship-status`)
+## MCP Servers (`ship-status`)
 
-A separate **ship-status** MCP server ([`mcp/`](../../mcp/)) exposes dashboard REST API tools for AI agents (status, outages, `outages/during`, discovery). It is deployed as an optional **sidecar** ([`images/mcp/Dockerfile`](../../images/mcp/Dockerfile)) in the dashboard pod.
+The MCP servers ([`mcp/`](../../mcp/)) expose dashboard REST API tools for AI agents. They run as sidecar containers in the dashboard pod. Each server is a separate entry point:
 
-- **Reads**: loopback `http://127.0.0.1:8080/api` (public routes)
-- **Writes** (future): `http://127.0.0.1:8443/api` with a mounted OpenShift service-account Bearer token (`SHIP_STATUS_AUTH_TOKEN_FILE`); oauth-proxy validates the token and signs requests to the dashboard
-- OpenShift Deployment/Route changes are maintained in the external cluster config repo
+- **Public MCP** (`public_server.py`, port 8090): Read-only tools for querying status, outages, and component discovery. No authentication required. Route: `mcp.ship-status.ci.openshift.org`.
+- **Authenticated MCP** (`auth_server.py`, port 8091): Write tools for creating, updating, and deleting outages, triage notes, and links. Requires authentication via oauth-proxy. Route: `protected-mcp.ship-status.ci.openshift.org`. Calls the dashboard's protected API using a mounted service account token (`SHIP_STATUS_AUTH_TOKEN_FILE`) and passes `X-Acting-For` header for delegated authorization.
 
-Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not this server.
+OpenShift Deployment/Route changes are maintained in [openshift/release](https://github.com/openshift/release).
+
+Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not these servers.
 
 ## Slack Integration
 

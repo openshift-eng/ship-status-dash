@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api_client import DashboardClient, ShipStatusAPI, _outage_is_active
+from shared import DashboardClient, ShipStatusAPI, _outage_is_active
 
 
 def _list_outage_no_slack(*, active: bool) -> dict:
@@ -43,7 +43,7 @@ def api(client: DashboardClient) -> ShipStatusAPI:
 
 
 def test_public_get_builds_url(client: DashboardClient):
-    with patch("api_client.urlopen") as mock_open:
+    with patch("shared.urlopen") as mock_open:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'[{"ok": true}]'
         mock_resp.__enter__ = lambda s: s
@@ -73,7 +73,7 @@ def test_protected_request_with_bearer(tmp_path):
         auth_token_file=str(token_file),
     )
     with patch.dict("os.environ", {}, clear=True):
-        with patch("api_client.urlopen") as mock_open:
+        with patch("shared.urlopen") as mock_open:
             mock_resp = MagicMock()
             mock_resp.read.return_value = b'{"id": 1}'
             mock_resp.__enter__ = lambda s: s
@@ -185,15 +185,18 @@ def _authed_api(tmp_path) -> ShipStatusAPI:
 def test_create_outage_success(tmp_path):
     api = _authed_api(tmp_path)
     response = {"ID": 1, "severity": "Down", "description": "test"}
-    with patch.object(api.client, "protected_request", return_value=response) as mock:
-        result = api.create_outage("prow", "tide", severity="Down", description="test")
+    with patch.object(api.client, "public_get", return_value=[]):
+        with patch.object(api.client, "protected_request", return_value=response) as mock:
+            result = api.create_outage("prow", "tide", severity="Down", description="test")
     assert result["ID"] == 1
     call_body = mock.call_args.kwargs["body"]
     assert call_body["severity"] == "Down"
     assert call_body["description"] == "test"
-    assert call_body["discovered_from"] == "chai-bot-user"
+    assert call_body["discovered_from"] == "mcp"
     assert call_body["confirmed"] is True
     assert "start_time" in call_body
+    assert "acting_for" not in call_body
+    assert mock.call_args.kwargs["acting_for"] == ""
 
 
 def test_create_outage_bot_initiated_forces_suspected(tmp_path):
@@ -202,13 +205,16 @@ def test_create_outage_bot_initiated_forces_suspected(tmp_path):
     with patch.object(api.client, "public_get", return_value=[]):
         with patch.object(api.client, "protected_request", return_value=response) as mock:
             result = api.create_outage(
-                "prow", "tide", severity="Down", description="bot detected", bot_initiated=True
+                "prow", "tide", severity="Down", description="bot detected",
+                bot_initiated=True, acting_for="chai-bot",
             )
     assert result["ID"] == 3
     body = mock.call_args.kwargs["body"]
     assert body["severity"] == "Suspected"
     assert body["confirmed"] is False
-    assert body["discovered_from"] == "chai-bot"
+    assert body["discovered_from"] == "mcp"
+    assert "acting_for" not in body
+    assert mock.call_args.kwargs["acting_for"] == "chai-bot"
 
 
 def test_create_outage_bot_initiated_returns_existing(tmp_path):
@@ -247,14 +253,16 @@ def test_update_outage_resolve(tmp_path):
     assert body["end_time"] == {"Time": "2026-06-29T14:00:00Z", "Valid": True}
 
 
-def test_update_outage_start_time(tmp_path):
+def test_update_outage_includes_acting_for(tmp_path):
     api = _authed_api(tmp_path)
-    response = {"ID": 1, "start_time": "2026-06-29T12:00:00Z"}
+    response = {"ID": 1, "severity": "Down"}
     with patch.object(api.client, "protected_request", return_value=response) as mock:
-        result = api.update_outage("prow", "tide", 1, start_time="2026-06-29T12:00:00Z")
+        result = api.update_outage("prow", "tide", 1, severity="Down", acting_for="jdoe")
     assert result["ID"] == 1
     body = mock.call_args.kwargs["body"]
-    assert body["start_time"] == "2026-06-29T12:00:00Z"
+    assert "acting_for" not in body
+    assert body["severity"] == "Down"
+    assert mock.call_args.kwargs["acting_for"] == "jdoe"
 
 
 def test_update_outage_no_fields(tmp_path):
@@ -269,6 +277,5 @@ def test_delete_outage_success(tmp_path):
     with patch.object(api.client, "protected_request", return_value=None):
         result = api.delete_outage("prow", "tide", 1)
     assert result["success"] is True
-
 
 
