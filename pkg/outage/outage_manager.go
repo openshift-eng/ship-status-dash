@@ -114,21 +114,23 @@ func (m *DBOutageManager) CreateOutage(outage *types.Outage, reasons []types.Rea
 			}
 		}
 
-		suspected, err := outageRepo.GetActiveSuspectedOutages(outage.ComponentName, outage.SubComponentName)
-		if err != nil {
-			m.logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
-			return nil
-		}
-		now := time.Now()
-		for i := range suspected {
-			suspected[i].EndTime = sql.NullTime{Time: now, Valid: true}
-			if err := outageRepo.SaveOutage(&suspected[i], user); err != nil {
-				m.logger.WithFields(logrus.Fields{
-					"outage_id": suspected[i].ID,
-					"error":     err,
-				}).Warn("Failed to auto-resolve suspected outage")
-			} else {
-				m.logger.WithField("outage_id", suspected[i].ID).Info("Auto-resolved suspected outage")
+		if outage.Severity != types.SeveritySuspected && outage.ConfirmedAt.Valid {
+			suspected, err := outageRepo.GetActiveSuspectedOutages(outage.ComponentName, outage.SubComponentName)
+			if err != nil {
+				m.logger.WithField("error", err).Warn("Failed to check for active suspected outages to resolve")
+				return nil
+			}
+			now := time.Now()
+			for i := range suspected {
+				suspected[i].EndTime = sql.NullTime{Time: now, Valid: true}
+				if err := outageRepo.SaveOutage(&suspected[i], user); err != nil {
+					m.logger.WithFields(logrus.Fields{
+						"outage_id": suspected[i].ID,
+						"error":     err,
+					}).Warn("Failed to auto-resolve suspected outage")
+				} else {
+					m.logger.WithField("outage_id", suspected[i].ID).Info("Auto-resolved suspected outage")
+				}
 			}
 		}
 

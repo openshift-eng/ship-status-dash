@@ -986,3 +986,204 @@ func TestOutageManager_DeleteOutageLink(t *testing.T) {
 	assert.Equal(t, "UPDATE", logs[0].Operation)
 	assert.Equal(t, "on-call-user", logs[0].User)
 }
+
+func TestCreateOutage_SuspectedCleanup(t *testing.T) {
+	baseCfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "prow",
+				Name: "Prow",
+				Subcomponents: []types.SubComponent{
+					{Slug: "tide", Name: "Tide"},
+				},
+			},
+		},
+	}
+
+	t.Run("confirmed non-suspected resolves existing suspected", func(t *testing.T) {
+		tm := setupTestManager(t, baseCfg)
+		defer tm.close()
+
+		suspected := &types.Outage{
+			ComponentName:    "prow",
+			SubComponentName: "tide",
+			Severity:         types.SeveritySuspected,
+			StartTime:        time.Now().Add(-1 * time.Hour),
+			Description:      "Community reported suspected outage",
+			CreatedBy:        "community-user",
+			DiscoveredFrom:   "community",
+		}
+		err := tm.manager.CreateOutage(suspected, nil, "community-user", "")
+		require.NoError(t, err)
+		require.NotZero(t, suspected.ID)
+
+		confirmed := &types.Outage{
+			ComponentName:    "prow",
+			SubComponentName: "tide",
+			Severity:         types.SeverityDown,
+			StartTime:        time.Now(),
+			Description:      "Admin confirmed outage",
+			CreatedBy:        "admin",
+			DiscoveredFrom:   "frontend",
+			ConfirmedAt:      sql.NullTime{Time: time.Now(), Valid: true},
+		}
+		err = tm.manager.CreateOutage(confirmed, nil, "admin", "")
+		require.NoError(t, err)
+
+		var resolved types.Outage
+		err = tm.db.First(&resolved, suspected.ID).Error
+		require.NoError(t, err)
+		assert.True(t, resolved.EndTime.Valid, "Suspected outage should be resolved")
+	})
+
+	t.Run("suspected outage does not self-resolve", func(t *testing.T) {
+		tm := setupTestManager(t, baseCfg)
+		defer tm.close()
+
+		suspected := &types.Outage{
+			ComponentName:    "prow",
+			SubComponentName: "tide",
+			Severity:         types.SeveritySuspected,
+			StartTime:        time.Now(),
+			Description:      "Bot-initiated suspected outage",
+			CreatedBy:        "chai-bot",
+			DiscoveredFrom:   "mcp",
+		}
+		err := tm.manager.CreateOutage(suspected, nil, "chai-bot", "")
+		require.NoError(t, err)
+
+		var created types.Outage
+		err = tm.db.First(&created, suspected.ID).Error
+		require.NoError(t, err)
+		assert.False(t, created.EndTime.Valid, "Suspected outage should NOT be self-resolved")
+	})
+
+	t.Run("unconfirmed outage does not resolve suspected", func(t *testing.T) {
+		tm := setupTestManager(t, baseCfg)
+		defer tm.close()
+
+		suspected := &types.Outage{
+			ComponentName:    "prow",
+			SubComponentName: "tide",
+			Severity:         types.SeveritySuspected,
+			StartTime:        time.Now().Add(-1 * time.Hour),
+			Description:      "Community reported suspected outage",
+			CreatedBy:        "community-user",
+			DiscoveredFrom:   "community",
+		}
+		err := tm.manager.CreateOutage(suspected, nil, "community-user", "")
+		require.NoError(t, err)
+
+		unconfirmed := &types.Outage{
+			ComponentName:    "prow",
+			SubComponentName: "tide",
+			Severity:         types.SeverityDown,
+			StartTime:        time.Now(),
+			Description:      "Component-monitor detected on requires_confirmation sub",
+			CreatedBy:        "component-monitor",
+			DiscoveredFrom:   "component-monitor",
+			// ConfirmedAt NOT set (requires_confirmation sub-component)
+		}
+		err = tm.manager.CreateOutage(unconfirmed, nil, "component-monitor", "")
+		require.NoError(t, err)
+
+		var existing types.Outage
+		err = tm.db.First(&existing, suspected.ID).Error
+		require.NoError(t, err)
+		assert.False(t, existing.EndTime.Valid, "Suspected outage should NOT be resolved by unconfirmed outage")
+	})
+}
+
+func TestGetStaleSuspectedOutages_IncludesReportlessOutages(t *testing.T) {
+	db := setupTestDB(t)
+	repo := repositories.NewGORMOutageRepository(db)
+	skipHooks := db.Session(&gorm.Session{SkipHooks: true})
+
+	cutoff := time.Now().Add(-24 * time.Hour)
+
+	// Suspected outage with a stale report (older than cutoff)
+	withReport := types.Outage{
+		ComponentName:    "prow",
+		SubComponentName: "tide",
+		Severity:         types.SeveritySuspected,
+		StartTime:        time.Now().Add(-48 * time.Hour),
+		Description:      "Community reported",
+		CreatedBy:        "user1",
+		DiscoveredFrom:   "community",
+	}
+	require.NoError(t, skipHooks.Create(&withReport).Error)
+	report := types.OutageReport{
+		OutageID: withReport.ID,
+		User:     "user1",
+	}
+	require.NoError(t, skipHooks.Create(&report).Error)
+	// Backdate the report to before the cutoff
+	skipHooks.Model(&report).Update("created_at", time.Now().Add(-36*time.Hour))
+
+	// Suspected outage with NO reports (bot-initiated), started before cutoff
+	withoutReport := types.Outage{
+		ComponentName:    "prow",
+		SubComponentName: "deck",
+		Severity:         types.SeveritySuspected,
+		StartTime:        time.Now().Add(-48 * time.Hour),
+		Description:      "Bot detected suspected outage",
+		CreatedBy:        "chai-bot",
+		DiscoveredFrom:   "mcp",
+	}
+	require.NoError(t, skipHooks.Create(&withoutReport).Error)
+
+	// Suspected outage with NO reports but started AFTER cutoff (should NOT be returned)
+	recentNoReport := types.Outage{
+		ComponentName:    "prow",
+		SubComponentName: "crier",
+		Severity:         types.SeveritySuspected,
+		StartTime:        time.Now().Add(-1 * time.Hour),
+		Description:      "Just created, not stale yet",
+		CreatedBy:        "chai-bot",
+		DiscoveredFrom:   "mcp",
+	}
+	require.NoError(t, skipHooks.Create(&recentNoReport).Error)
+
+	// Suspected outage with a FRESH report (should NOT be returned)
+	freshReport := types.Outage{
+		ComponentName:    "prow",
+		SubComponentName: "gangway",
+		Severity:         types.SeveritySuspected,
+		StartTime:        time.Now().Add(-48 * time.Hour),
+		Description:      "Active community reports",
+		CreatedBy:        "user2",
+		DiscoveredFrom:   "community",
+	}
+	require.NoError(t, skipHooks.Create(&freshReport).Error)
+	recentReport := types.OutageReport{
+		OutageID: freshReport.ID,
+		User:     "user2",
+	}
+	require.NoError(t, skipHooks.Create(&recentReport).Error)
+
+	// Non-suspected outage (should never be returned)
+	nonSuspected := types.Outage{
+		ComponentName:    "prow",
+		SubComponentName: "sinker",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Now().Add(-48 * time.Hour),
+		Description:      "Real outage",
+		CreatedBy:        "admin",
+		DiscoveredFrom:   "frontend",
+	}
+	require.NoError(t, skipHooks.Create(&nonSuspected).Error)
+
+	stale, err := repo.GetStaleSuspectedOutages(cutoff)
+	require.NoError(t, err)
+
+	staleIDs := make([]uint, len(stale))
+	for i, o := range stale {
+		staleIDs[i] = o.ID
+	}
+
+	assert.Contains(t, staleIDs, withReport.ID, "Should include suspected with stale report")
+	assert.Contains(t, staleIDs, withoutReport.ID, "Should include reportless suspected older than cutoff")
+	assert.NotContains(t, staleIDs, recentNoReport.ID, "Should NOT include recent reportless suspected")
+	assert.NotContains(t, staleIDs, freshReport.ID, "Should NOT include suspected with fresh report")
+	assert.NotContains(t, staleIDs, nonSuspected.ID, "Should NOT include non-suspected outages")
+}

@@ -172,17 +172,24 @@ func (r *gormOutageRepository) GetActiveSuspectedOutagesForComponent(componentSl
 	return outages, err
 }
 
-// GetStaleSuspectedOutages returns active suspected outages whose most recent report is older than cutoff.
+// GetStaleSuspectedOutages returns active suspected outages that are stale: either their most
+// recent report is older than cutoff, or they have no reports at all and their start_time
+// predates the cutoff (covers bot-initiated suspected outages which have zero reports).
 func (r *gormOutageRepository) GetStaleSuspectedOutages(cutoff time.Time) ([]types.Outage, error) {
 	var outages []types.Outage
+
+	hasStaleReports := r.db.Model(&types.OutageReport{}).
+		Select("outage_id").
+		Group("outage_id").
+		Having("MAX(created_at) < ?", cutoff)
+
+	hasAnyReports := r.db.Model(&types.OutageReport{}).
+		Select("DISTINCT outage_id")
+
 	err := r.db.
 		Where("severity = ? AND end_time IS NULL", types.SeveritySuspected).
-		Where("id IN (?)",
-			r.db.Model(&types.OutageReport{}).
-				Select("outage_id").
-				Group("outage_id").
-				Having("MAX(created_at) < ?", cutoff),
-		).
+		Where("(id IN (?) OR (id NOT IN (?) AND start_time < ?))",
+			hasStaleReports, hasAnyReports, cutoff).
 		Find(&outages).Error
 	return outages, err
 }
