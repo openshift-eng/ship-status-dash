@@ -86,7 +86,7 @@ for test locators.
 
 ### Directory Structure
 
-```
+```text
 frontend/
   e2e/
     features/           # Gherkin .feature files
