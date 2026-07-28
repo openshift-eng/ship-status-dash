@@ -16,7 +16,7 @@ RUN dnf module enable nodejs:22 -y && \
     procps-ng \
     sudo \
     go \
-    npm \
+    nodejs \
     python3.12 \
     libstdc++ \
     postgresql \

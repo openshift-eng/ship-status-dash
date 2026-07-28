@@ -16,7 +16,7 @@ ENV GOARCH=${GOARCH}
 COPY . .
 
 RUN dnf module enable nodejs:22 -y && \
-    dnf install -y go make npm && \
+    dnf install -y go make nodejs && \
     make build-dashboard && \
     make build-frontend
 
