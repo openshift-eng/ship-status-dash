@@ -1,5 +1,5 @@
 import { Box, Divider, Skeleton, Tooltip, Typography, styled, useTheme } from '@mui/material'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import type { OutageDayBucket } from '../types'
 import { formatMinutes, formatStatusSeverityText, getSeverityColor } from '../utils/helpers'

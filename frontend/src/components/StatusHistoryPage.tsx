@@ -1,6 +1,6 @@
 import { Box, CircularProgress, Container, Divider, Link, styled, Typography } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink } from 'react-router'
 
 import { FULL_OUTAGE_HISTORY_DAYS } from '../constants/history'
 import useIntervalRefresh from '../hooks/useIntervalRefresh'

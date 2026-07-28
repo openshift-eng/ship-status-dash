@@ -22,7 +22,7 @@ import {
   Toolbar,
 } from '@mui/material'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../constants/externalPages'
 import { GITHUB_REPO_URL } from '../constants/links'
