@@ -64,6 +64,10 @@ replaced with mock data. This means:
 - Tests do not need the Go backend, PostgreSQL, or Prometheus to run.
 - Each scenario controls exactly what the API returns, so tests are
   deterministic and not affected by backend state.
+- Write actions (creating outages, reporting issues, etc.) are tested
+  by intercepting the POST/PATCH/DELETE request and returning a mock
+  response. The test can verify that the correct request was sent and
+  that the UI updates after the response.
 - Frontend rendering and interaction are tested on their own. Backend
   logic is already covered by the Go e2e tests.
 
@@ -173,8 +177,10 @@ Feature: Auth-gated actions
 |---|---|---|
 | Dashboard (`/`) | Each component is shown with its name, status, and sub-components. Unhealthy components appear in a summary at the top of the page. | 4-6 |
 | Component details (`/:componentSlug`) | The page displays the component name, description, status, SHIP team, owners, and a grid of sub-component cards. | 4-5 |
-| Sub-component details (`/:componentSlug/:subComponentSlug`) | The outage table shows severity, start/end times, and status. Outages can be filtered by ongoing/resolved and by date range. The "Report Outage" button is only visible to authorized users. The suspected outage banner appears when users have reported issues. | 5-7 |
-| Outage details (`/.../:outageId`) | The page displays outage severity, confirmation status, start/end times, duration, description, triage notes, attached links, and an audit log modal. Admin users see outage actions (update, resolve, delete, confirm). | 4-6 |
+| Sub-component details (`/:componentSlug/:subComponentSlug`) | The outage table shows severity, start/end times, and status. Outages can be filtered by ongoing/resolved and by date range. The "Report Outage" button is only visible to authorized users. | 5-7 |
+| Outage actions | Admin users can create, update, resolve, delete, and confirm outages. Each action submits a request (mocked via `page.route()`), and the UI updates to reflect the change. | 5-7 |
+| Outage details (`/.../:outageId`) | The page displays outage severity, confirmation status, start/end times, duration, description, triage notes, and attached links. Triage notes and links can be added, edited, and deleted by admin users. The audit log modal opens and displays a history of changes. | 6-8 |
+| Community issue reporting | Non-admin users can report a suspected issue via the "Report Issue" button. The suspected outage banner shows the report count and description. Users who have already reported see a disabled button. | 3-4 |
 | Navigation | Header menu links, "Details" buttons, sub-component cards, and outage rows all navigate to the correct page. Back buttons return to the previous page. | 4-5 |
 | Theme | Toggling dark/light mode updates the page theme. Toggling accessibility mode updates contrast and colors. | 2-3 |
 | Status history (`/status-history`) | Each sub-component shows an outage history bar. Clicking a sub-component name navigates to its details page. | 3-4 |
@@ -202,8 +208,8 @@ responses, and Page Object classes for each page.
 
 Write `.feature` files and step definitions for the feature areas listed
 in the coverage table above: dashboard, component details, sub-component
-details, outage details, navigation, theme, status history, and error
-states.
+details, outage actions, outage details, community issue reporting,
+navigation, theme, status history, and error states.
 
 ### 3. Additional Coverage
 
@@ -225,15 +231,14 @@ expanded to:
   custom styling, but visual regression testing could be a useful
   addition if there is a need for it down the line.
 
-## Open Questions
+### 4. CI Integration
 
-**CI integration.** Should the BDD tests run in CI, and if so, how?
-Playwright needs a browser binary and system libraries that are not in
-the current
+The BDD tests will run in CI by adding the necessary Playwright browser
+dependencies to the
 [buildroot image](https://github.com/openshift-eng/ship-status-dash/blob/main/Dockerfile.buildroot).
 The tests do not need the Go backend or database (API responses are
-mocked), just Node.js and a browser. Options include installing browser
-dependencies at test time via
-[`npx playwright install --with-deps`](https://playwright.dev/docs/ci),
-adding them to the buildroot image, or using the official
-[Playwright Docker image](https://playwright.dev/docs/docker).
+mocked), just Node.js and a browser. The buildroot already has Node.js;
+the Playwright Chromium binary and its system library dependencies can
+be installed by adding
+[`npx playwright install --with-deps chromium`](https://playwright.dev/docs/ci)
+to the Dockerfile.
