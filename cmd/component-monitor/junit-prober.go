@@ -193,7 +193,7 @@ func (p *JUnitProber) spyglassViewURL(buildID string) string {
 	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, p.bucket, p.jobName, buildID)
 }
 
-func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFile string) ([]string, error) {
+func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFile string, maxFinished int) ([]string, error) {
 	ids, err := p.listBuildIDPrefixes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing recent builds: %w", err)
@@ -220,6 +220,9 @@ func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFi
 		}
 		if done {
 			finished = append(finished, id)
+			if maxFinished > 0 && len(finished) >= maxFinished {
+				break
+			}
 			continue
 		}
 		if i == 0 {
@@ -377,7 +380,7 @@ func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, latestFromF
 	if p.settings.HistoryRuns <= 1 {
 		return []string{latestFromFile}, nil
 	}
-	finished, err := p.listFinishedBuildIDsDesc(ctx, latestFromFile)
+	finished, err := p.listFinishedBuildIDsDesc(ctx, latestFromFile, p.settings.HistoryRuns)
 	if err != nil {
 		return nil, err
 	}
