@@ -1,6 +1,6 @@
 import { Box, Card, CardContent, Tooltip, Typography, styled } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from 'react-router-dom'
 
 import { CARD_OUTAGE_HISTORY_DAYS } from '../../constants/history'
 import { useTags } from '../../contexts/TagsContext'

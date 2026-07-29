@@ -1,7 +1,7 @@
 import { driver, type DriveStep } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation } from 'react-router-dom'
 
 import { EXTERNAL_PAGES_PATH_PREFIX, externalPages } from '../../constants/externalPages'
 

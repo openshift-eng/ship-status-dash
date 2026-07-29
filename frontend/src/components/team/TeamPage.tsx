@@ -1,7 +1,7 @@
 import { ArrowBack } from '@mui/icons-material'
 import { Button, Container, Paper, styled, Typography } from '@mui/material'
 import { useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { getTeamColor } from '../../utils/teamColor'
 import SubComponentList from '../sub-component/SubComponentList'

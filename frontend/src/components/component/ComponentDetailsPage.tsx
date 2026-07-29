@@ -14,7 +14,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import useIntervalRefresh from '../../hooks/useIntervalRefresh'
 import type { Component } from '../../types'

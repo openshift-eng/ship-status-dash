@@ -1,6 +1,6 @@
 import { Visibility } from '@mui/icons-material'
 import { Button, Tooltip } from '@mui/material'
-import { useNavigate } from 'react-router'
+import { useNavigate } from 'react-router-dom'
 
 import type { Outage } from '../../types'
 

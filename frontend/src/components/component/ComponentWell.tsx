@@ -1,5 +1,5 @@
 import { Box, Button, Card, CardContent, styled, Typography } from '@mui/material'
-import { useNavigate } from 'react-router'
+import { useNavigate } from 'react-router-dom'
 
 import type { Component, SubComponent } from '../../types'
 import { formatStatusSeverityText } from '../../utils/helpers'

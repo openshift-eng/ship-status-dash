@@ -1,6 +1,6 @@
 import { ArrowBack } from '@mui/icons-material'
 import { Box, Button, CircularProgress, Container, Paper, styled, Typography } from '@mui/material'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { useTags } from '../../contexts/TagsContext'
 import SubComponentList from '../sub-component/SubComponentList'

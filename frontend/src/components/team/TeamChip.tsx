@@ -1,6 +1,6 @@
 import { Chip, styled } from '@mui/material'
 import { lighten } from '@mui/material/styles'
-import { Link } from 'react-router'
+import { Link } from 'react-router-dom'
 
 import { getTeamColor } from '../../utils/teamColor'
 
