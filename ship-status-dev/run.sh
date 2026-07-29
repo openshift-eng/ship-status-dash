@@ -2,6 +2,9 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/.venv"
+HASH_FILE="$VENV_DIR/.requirements.hash"
+LOCK_FILE="$SCRIPT_DIR/.venv-setup.lock"
 
 REQ_HASH=""
 if command -v shasum >/dev/null 2>&1; then
@@ -10,33 +13,47 @@ elif command -v sha256sum >/dev/null 2>&1; then
     REQ_HASH=$(sha256sum "$SCRIPT_DIR/requirements.txt" | cut -d' ' -f1)
 fi
 
-HASH_FILE="$SCRIPT_DIR/.venv/.requirements.hash"
-NEED_INSTALL=false
+_venv_ok() {
+    _py="$VENV_DIR/bin/python"
+    [ -x "$_py" ] && "$_py" -c "pass" >/dev/null 2>&1
+}
 
-if [ ! -d "$SCRIPT_DIR/.venv" ]; then
-    NEED_INSTALL=true
-elif [ -n "$REQ_HASH" ] && { [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE" 2>/dev/null)" != "$REQ_HASH" ]; }; then
-    NEED_INSTALL=true
-fi
-
-if [ -d "$SCRIPT_DIR/.venv" ]; then
-    _py="$SCRIPT_DIR/.venv/bin/python"
-    if [ ! -x "$_py" ] || ! "$_py" -c "pass" >/dev/null 2>&1; then
-        NEED_INSTALL=true
+_needs_install() {
+    if [ ! -d "$VENV_DIR" ]; then
+        return 0
     fi
-fi
-
-if [ "$NEED_INSTALL" = true ]; then
-    if [ -d "$SCRIPT_DIR/.venv" ]; then
-        chmod -R u+w "$SCRIPT_DIR/.venv" 2>/dev/null || true
-        rm -rf "$SCRIPT_DIR/.venv"
+    if [ -n "$REQ_HASH" ] && { [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE" 2>/dev/null)" != "$REQ_HASH" ]; }; then
+        return 0
     fi
-    python3.12 -m venv "$SCRIPT_DIR/.venv" 2>/dev/null || python3 -m venv "$SCRIPT_DIR/.venv"
-    "$SCRIPT_DIR/.venv/bin/pip" install --upgrade pip -q
-    "$SCRIPT_DIR/.venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
-    if [ -n "$REQ_HASH" ]; then
-        echo "$REQ_HASH" > "$HASH_FILE"
+    if ! _venv_ok; then
+        return 0
     fi
-fi
+    return 1
+}
 
-exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/server.py"
+_remove_venv() {
+    if [ ! -e "$VENV_DIR" ]; then
+        return 0
+    fi
+    chmod -R u+w "$VENV_DIR" 2>/dev/null || true
+    # Rename first so concurrent readers cannot race against rm on virtiofs.
+    stale="$SCRIPT_DIR/.venv.stale.$$"
+    mv "$VENV_DIR" "$stale"
+    rm -rf "$stale" 2>/dev/null || true
+}
+
+# Cursor can spawn CreateClient concurrently; serialize venv setup.
+(
+    flock 9
+    if _needs_install; then
+        _remove_venv
+        python3.12 -m venv "$VENV_DIR" 2>/dev/null || python3 -m venv "$VENV_DIR"
+        "$VENV_DIR/bin/pip" install --upgrade pip -q
+        "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" -q
+        if [ -n "$REQ_HASH" ]; then
+            echo "$REQ_HASH" > "$HASH_FILE"
+        fi
+    fi
+) 9>"$LOCK_FILE"
+
+exec "$VENV_DIR/bin/python" "$SCRIPT_DIR/server.py"
