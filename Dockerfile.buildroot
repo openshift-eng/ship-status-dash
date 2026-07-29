@@ -5,8 +5,8 @@
 #
 FROM registry.access.redhat.com/ubi9/ubi:latest
 ARG GOLANGCI_LINT_VERSION="2.10.1"
-RUN dnf module enable nodejs:22 -y && \
-    dnf install -y git go make nodejs python3.12 && \
+RUN dnf module install nodejs:22 -y && \
+    dnf install -y git go make python3.12 && \
     dnf clean all && \
     rm -rf /var/cache/dnf
 RUN curl -LsSf https://astral.sh/uv/0.11.28/install.sh | sh && \
