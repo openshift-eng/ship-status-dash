@@ -707,6 +707,94 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 	}
 }
 
+func TestJUnitProber_Probe_history_early_exit(t *testing.T) {
+	const job = "early-exit-job"
+	bucket := defaultGCSBucket
+	const latest = "200"
+
+	ok := readJUnitFixture(t, "ok_single.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+
+	latestURL := gcsProwObjectURL(bucket, job, prowObjectLatestBuild)
+	startedURL := gcsProwObjectURL(bucket, job, latest, prowObjectStarted)
+	finishedURL := gcsProwObjectURL(bucket, job, latest, prowObjectFinished)
+	finished199 := gcsProwObjectURL(bucket, job, "199", prowObjectFinished)
+	finished198 := gcsProwObjectURL(bucket, job, "198", prowObjectFinished)
+	xml200 := gcsProwObjectURL(bucket, job, "200", "artifacts", "junit_canary.xml")
+	xml199 := gcsProwObjectURL(bucket, job, "199", "artifacts", "junit_canary.xml")
+	xml198 := gcsProwObjectURL(bucket, job, "198", "artifacts", "junit_canary.xml")
+	listURL := gcsListObjectURLTest(bucket, job)
+
+	// List includes an old orphaned build (197) whose finished.json is NOT
+	// mocked. If the prober tried to check it the mock would return an
+	// error, failing the test. The early exit after collecting HistoryRuns
+	// finished builds must prevent that.
+	listBody := fmt.Sprintf(
+		`{"prefixes":["logs/%s/200/","logs/%s/199/","logs/%s/198/","logs/%s/197/"]}`,
+		job, job, job, job,
+	)
+
+	tests := []struct {
+		name           string
+		responses      map[string]mockHTTPResponse
+		expectedStatus types.Status
+	}{
+		{
+			name: "skips orphaned old builds once enough finished builds collected",
+			responses: map[string]mockHTTPResponse{
+				latestURL:   {body: latest},
+				startedURL:  {body: recentStarted()},
+				finishedURL: {body: finishedBody},
+				finished199: {body: finishedBody},
+				listURL:     {body: listBody},
+				xml200:      {body: ok},
+				xml199:      {body: ok},
+			},
+			expectedStatus: types.StatusHealthy,
+		},
+		{
+			name: "skips orphaned old builds when newest is unfinished",
+			responses: map[string]mockHTTPResponse{
+				latestURL:   {body: latest},
+				startedURL:  {body: recentStarted()},
+				finishedURL: {statusCode: 404, body: "not found"},
+				finished199: {body: finishedBody},
+				finished198: {body: finishedBody},
+				gcsProwObjectURL(bucket, job, "199", prowObjectStarted): {body: recentStarted()},
+				gcsProwObjectURL(bucket, job, "198", prowObjectStarted): {body: recentStarted()},
+				listURL: {body: listBody},
+				xml199:  {body: ok},
+				xml198:  {body: ok},
+			},
+			expectedStatus: types.StatusHealthy,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewJUnitProber(
+				testComponentSlug, testSubComponentSlug, bucket, job, 2*time.Hour, types.SeverityDegraded,
+				JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+				&mockHTTPDoer{responses: tt.responses},
+			)
+			results := make(chan ProbeResult, 1)
+			p.Probe(context.Background(), results)
+			var res ProbeResult
+			select {
+			case res = <-results:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("timeout waiting for result")
+			}
+			if res.Error != nil {
+				t.Fatalf("unexpected error: %v", res.Error)
+			}
+			if res.Status != tt.expectedStatus {
+				t.Errorf("want %s, got %s", tt.expectedStatus, res.Status)
+			}
+		})
+	}
+}
+
 func recentStarted() string {
 	return fmt.Sprintf(`{"timestamp": %d, "node": "node1"}`, time.Now().Add(-30*time.Minute).Unix())
 }
