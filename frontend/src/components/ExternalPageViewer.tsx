@@ -1,6 +1,6 @@
 import { Box, CircularProgress, Typography, useTheme } from '@mui/material'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams } from 'react-router'
 
 import { externalPages } from '../constants/externalPages'
 import { getExternalPageEndpoint } from '../utils/endpoints'

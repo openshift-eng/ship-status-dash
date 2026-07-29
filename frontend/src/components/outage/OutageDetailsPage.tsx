@@ -27,7 +27,7 @@ import {
   styled,
 } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 
 import { useAuth } from '../../contexts/AuthContext'
 import useIntervalRefresh from '../../hooks/useIntervalRefresh'
