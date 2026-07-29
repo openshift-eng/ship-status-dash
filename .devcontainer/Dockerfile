@@ -2,7 +2,7 @@ FROM registry.access.redhat.com/ubi9/ubi:latest
 
 ARG GOLANGCI_LINT_VERSION=2.10.1
 
-RUN dnf module enable nodejs:22 -y && \
+RUN dnf module install nodejs:22 -y && \
     dnf install -y --allowerasing \
     curl \
     git \
@@ -16,7 +16,6 @@ RUN dnf module enable nodejs:22 -y && \
     procps-ng \
     sudo \
     go \
-    nodejs \
     python3.12 \
     libstdc++ \
     postgresql \
