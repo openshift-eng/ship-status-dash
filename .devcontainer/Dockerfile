@@ -2,7 +2,7 @@ FROM registry.access.redhat.com/ubi9/ubi:latest
 
 ARG GOLANGCI_LINT_VERSION=2.10.1
 
-RUN dnf module install nodejs:22 -y && \
+RUN dnf module install nodejs:22/common -y && \
     dnf install -y --allowerasing \
     curl \
     git \
