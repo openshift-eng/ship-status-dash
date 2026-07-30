@@ -32,6 +32,11 @@ _needs_install() {
 }
 
 _remove_venv() {
+    # -e is false for dangling symlinks; clear any .venv link so venv recreate can proceed.
+    if [ -L "$VENV_DIR" ]; then
+        rm -f "$VENV_DIR"
+        return 0
+    fi
     if [ ! -e "$VENV_DIR" ]; then
         return 0
     fi
