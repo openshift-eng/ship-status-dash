@@ -44,12 +44,15 @@ go.work.sum
 # Cursor local commands
 .cursor/commands/local/
 
+# Claude Code local permissions / MCP prefs (machine-specific)
+.claude/settings.local.json
 
 # APM dependencies
 apm_modules/
 
 # MCP server virtualenv
 mcp/.venv/
+mcp/.venv-setup.lock
 ship-status-dev/.venv/
 ship-status-dev/.venv-setup.lock
 ship-status-dev/.venv.stale.*
