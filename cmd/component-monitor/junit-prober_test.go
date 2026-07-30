@@ -193,7 +193,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 				Reasons: []types.Reason{{
 					Type:    types.CheckTypeJUnit,
 					Check:   job,
-					Results: "build 123: 2/4 tests failed: git-clone, quay-pull",
+					Results: fmt.Sprintf("build 123: 2/4 tests failed: git-clone, quay-pull; %s", prowSpyglassViewURL(bucket, job, build)),
 				}},
 			},
 		},
@@ -304,7 +304,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 				Reasons: []types.Reason{{
 					Type:    types.CheckTypeJUnit,
 					Check:   job,
-					Results: "build 123: 2/4 tests failed: git-clone, quay-pull",
+					Results: fmt.Sprintf("build 123: 2/4 tests failed: git-clone, quay-pull; %s", prowSpyglassViewURL(bucket, job, build)),
 				}},
 			},
 		},
@@ -354,7 +354,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 				Reasons: []types.Reason{{
 					Type:    types.CheckTypeJUnit,
 					Check:   job,
-					Results: "build 123: zero tests found",
+					Results: fmt.Sprintf("build 123: zero tests found; %s", prowSpyglassViewURL(bucket, job, build)),
 				}},
 			},
 		},
@@ -579,11 +579,15 @@ func TestJUnitProber_Probe_history(t *testing.T) {
   <testcase name="flaky-b" classname="c"><failure/></testcase>
 </testsuite>`
 
+	spy200 := prowSpyglassViewURL(bucket, job, "200")
+	spy199 := prowSpyglassViewURL(bucket, job, "199")
+
 	tests := []struct {
 		name           string
 		responses      map[string]mockHTTPResponse
 		expectedError  bool
 		expectedStatus types.Status
+		wantReason     string
 	}{
 		{
 			name: "both builds fail with same pattern reports degraded",
@@ -597,6 +601,8 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				xml199:      {body: failing},
 			},
 			expectedStatus: types.StatusDegraded,
+			wantReason: "junit: 2 of the last 2 run(s) share the same failure pattern: failed: git-clone, quay-pull (threshold 2) — " +
+				fmt.Sprintf("build 200: 2/4 tests failed: git-clone, quay-pull; %s | build 199: 2/4 tests failed: git-clone, quay-pull; %s", spy200, spy199),
 		},
 		{
 			name: "one pass one fail stays healthy below threshold",
@@ -673,6 +679,8 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				xml199:      {statusCode: 404, body: "not found"},
 			},
 			expectedStatus: types.StatusDegraded,
+			wantReason: "junit: 2 of the last 2 run(s) share the same failure pattern: missing artifacts/junit_canary.xml (threshold 2) — " +
+				fmt.Sprintf("build 200: missing artifacts/junit_canary.xml; %s | build 199: missing artifacts/junit_canary.xml; %s", spy200, spy199),
 		},
 	}
 
@@ -702,6 +710,13 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 			}
 			if res.Status != tt.expectedStatus {
 				t.Errorf("want %s, got %s", tt.expectedStatus, res.Status)
+			}
+			if tt.wantReason == "" {
+				return
+			}
+			want := []types.Reason{{Type: types.CheckTypeJUnit, Check: job, Results: tt.wantReason}}
+			if diff := cmp.Diff(want, res.Reasons); diff != "" {
+				t.Errorf("Reasons mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -795,10 +810,143 @@ func TestJUnitProber_Probe_history_early_exit(t *testing.T) {
 	}
 }
 
+func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	const staleBuild = "200"
+	const successBuild = "199"
+	bucket := defaultGCSBucket
+	maxAge := 2 * time.Hour
+
+	latestURL := gcsProwObjectURL(bucket, job, prowObjectLatestBuild)
+	startedStale := gcsProwObjectURL(bucket, job, staleBuild, prowObjectStarted)
+	finishedStale := gcsProwObjectURL(bucket, job, staleBuild, prowObjectFinished)
+	finishedSuccess := gcsProwObjectURL(bucket, job, successBuild, prowObjectFinished)
+	xmlSuccess := gcsProwObjectURL(bucket, job, successBuild, "artifacts", "junit_canary.xml")
+	listURL := gcsListObjectURLTest(bucket, job)
+	staleSpyglass := prowSpyglassViewURL(bucket, job, staleBuild)
+
+	okXML := readJUnitFixture(t, "ok_single.xml")
+	failingXML := readJUnitFixture(t, "failing.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+
+	tests := []struct {
+		name       string
+		responses  func(startedAt time.Time) map[string]mockHTTPResponse
+		wantSuffix string // appended after "base; spyglass"
+	}{
+		{
+			name: "stale with prior success includes last success link",
+			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
+				return map[string]mockHTTPResponse{
+					latestURL:       {body: staleBuild},
+					startedStale:    {body: startedJSON(startedAt)},
+					finishedStale:   {statusCode: 404, body: "not found"},
+					listURL:         {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/","logs/%s/%s/"]}`, job, staleBuild, job, successBuild)},
+					finishedSuccess: {body: finishedBody},
+					xmlSuccess:      {body: okXML},
+				}
+			},
+			wantSuffix: fmt.Sprintf("last success: %s %s", successBuild, prowSpyglassViewURL(bucket, job, successBuild)),
+		},
+		{
+			name: "stale with no prior success notes none found",
+			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
+				return map[string]mockHTTPResponse{
+					latestURL:     {body: staleBuild},
+					startedStale:  {body: startedJSON(startedAt)},
+					finishedStale: {statusCode: 404, body: "not found"},
+					listURL:       {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, staleBuild)},
+				}
+			},
+			wantSuffix: "no recent successful run found",
+		},
+		{
+			name: "stale skips failing prior runs until success",
+			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
+				return map[string]mockHTTPResponse{
+					latestURL:     {body: staleBuild},
+					startedStale:  {body: startedJSON(startedAt)},
+					finishedStale: {statusCode: 404, body: "not found"},
+					listURL: {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/","logs/%s/199/","logs/%s/198/"]}`,
+						job, staleBuild, job, job)},
+					gcsProwObjectURL(bucket, job, "199", prowObjectFinished):              {body: finishedBody},
+					gcsProwObjectURL(bucket, job, "198", prowObjectFinished):              {body: finishedBody},
+					gcsProwObjectURL(bucket, job, "199", "artifacts", "junit_canary.xml"): {body: failingXML},
+					gcsProwObjectURL(bucket, job, "198", "artifacts", "junit_canary.xml"): {body: okXML},
+				}
+			},
+			wantSuffix: fmt.Sprintf("last success: 198 %s", prowSpyglassViewURL(bucket, job, "198")),
+		},
+		{
+			name: "stale still degraded when enrichment list fails",
+			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
+				return map[string]mockHTTPResponse{
+					latestURL:     {body: staleBuild},
+					startedStale:  {body: startedJSON(startedAt)},
+					finishedStale: {statusCode: 404, body: "not found"},
+					listURL:       {err: fmt.Errorf("gcs list unavailable")},
+				}
+			},
+			// Enrichment errors omit the last-success clause entirely.
+			wantSuffix: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			startedAt := time.Now().Add(-3 * time.Hour)
+			p := NewJUnitProber(
+				testComponentSlug, testSubComponentSlug, bucket, job, maxAge, types.SeverityDegraded,
+				JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+				&mockHTTPDoer{responses: tt.responses(startedAt)},
+			)
+			results := make(chan ProbeResult, 1)
+			p.Probe(context.Background(), results)
+			var res ProbeResult
+			select {
+			case res = <-results:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("timeout waiting for result")
+			}
+			if res.Error != nil {
+				t.Fatalf("unexpected error: %v", res.Error)
+			}
+			wantResults := formatStaleReason(staleBuild, startedAt, maxAge, staleSpyglass, tt.wantSuffix)
+			want := &types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    testComponentSlug,
+				SubComponentSlug: testSubComponentSlug,
+				Status:           types.StatusDegraded,
+				Reasons: []types.Reason{{
+					Type:    types.CheckTypeJUnit,
+					Check:   job,
+					Results: wantResults,
+				}},
+			}
+			if diff := cmp.Diff(want, &res.ComponentMonitorReportComponentStatus); diff != "" {
+				t.Errorf("Probe() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func recentStarted() string {
-	return fmt.Sprintf(`{"timestamp": %d, "node": "node1"}`, time.Now().Add(-30*time.Minute).Unix())
+	return startedJSON(time.Now().Add(-30 * time.Minute))
 }
 
 func staleStarted() string {
-	return fmt.Sprintf(`{"timestamp": %d, "node": "node1"}`, time.Now().Add(-3*time.Hour).Unix())
+	return startedJSON(time.Now().Add(-3 * time.Hour))
+}
+
+func startedJSON(ts time.Time) string {
+	return fmt.Sprintf(`{"timestamp": %d, "node": "node1"}`, ts.Unix())
+}
+
+// formatStaleReason mirrors enrichStaleResult output using the same age rounding as checkBuildStaleness.
+func formatStaleReason(buildID string, startedAt time.Time, maxAge time.Duration, spyglass, suffix string) string {
+	age := time.Since(startedAt).Round(time.Minute)
+	base := fmt.Sprintf("latest build %s started %s ago (max age %s); %s", buildID, age, maxAge, spyglass)
+	if suffix == "" {
+		return base
+	}
+	return base + "; " + suffix
 }

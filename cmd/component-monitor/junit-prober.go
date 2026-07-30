@@ -33,6 +33,10 @@ const (
 	junitSignatureZero         = "zero_tests"
 	junitSignatureFailedPfx    = "failed:" // + sorted, comma-joined test names
 	junitSignatureMissingJUnit = "missing_junit"
+
+	// defaultLastSuccessScanLimit is how many recent finished builds to scan for a
+	// last-success Spyglass link when enriching a stale canary reason and HistoryRuns is 1.
+	defaultLastSuccessScanLimit = 5
 )
 
 type httpStatusError struct {
@@ -193,6 +197,62 @@ func (p *JUnitProber) spyglassViewURL(buildID string) string {
 	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, p.bucket, p.jobName, buildID)
 }
 
+func (p *JUnitProber) lastSuccessScanLimit() int {
+	if p.settings.HistoryRuns > 1 {
+		return p.settings.HistoryRuns
+	}
+	return defaultLastSuccessScanLimit
+}
+
+// enrichStaleResult appends a Spyglass link for the stale build and, when possible,
+// a link to the most recent successful finished run among recent history.
+func (p *JUnitProber) enrichStaleResult(ctx context.Context, stale *ProbeResult, staleBuildID string) {
+	parts := []string{stale.Reasons[0].Results, p.spyglassViewURL(staleBuildID)}
+	lastID, err := p.findLastSuccessfulBuild(ctx, staleBuildID)
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{
+			"component":     p.componentSlug,
+			"sub_component": p.subComponentSlug,
+			"job":           p.jobName,
+			"stale_build":   staleBuildID,
+		}).Warn("failed to find last successful canary run for stale enrichment")
+	} else if lastID == "" {
+		parts = append(parts, "no recent successful run found")
+	} else {
+		parts = append(parts, fmt.Sprintf("last success: %s %s", lastID, p.spyglassViewURL(lastID)))
+	}
+	stale.Reasons[0].Results = strings.Join(parts, "; ")
+}
+
+// findLastSuccessfulBuild returns the newest finished build (excluding staleBuildID)
+// whose JUnit evaluation is healthy, scanning up to lastSuccessScanLimit runs.
+// An empty string with a nil error means none were found.
+func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID string) (string, error) {
+	limit := p.lastSuccessScanLimit()
+	finished, err := p.listFinishedBuildIDsDesc(ctx, staleBuildID, limit+1)
+	if err != nil {
+		return "", err
+	}
+	scanned := 0
+	for _, id := range finished {
+		if id == staleBuildID {
+			continue
+		}
+		if scanned >= limit {
+			break
+		}
+		scanned++
+		total, failed, artifactSig, evalErr := p.evaluateBuildJUnit(ctx, id)
+		if evalErr != nil {
+			return "", evalErr
+		}
+		if !junitEvalUnhealthy(total, failed, artifactSig) {
+			return id, nil
+		}
+	}
+	return "", nil
+}
+
 func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFile string, maxFinished int) ([]string, error) {
 	ids, err := p.listBuildIDPrefixes(ctx)
 	if err != nil {
@@ -257,6 +317,7 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 		return
 	}
 	if staleResult != nil {
+		p.enrichStaleResult(ctx, staleResult, latest)
 		results <- *staleResult
 		return
 	}
@@ -288,6 +349,7 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 			return
 		}
 		if staleResult != nil {
+			p.enrichStaleResult(ctx, staleResult, prevID)
 			results <- *staleResult
 			return
 		}
@@ -334,7 +396,7 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 			results <- p.formatErrorResult(fmt.Errorf("build %s: %w", b, perr))
 			return
 		}
-		summaries = append(summaries, fmt.Sprintf("build %s: %s", b, formatJunitBuildSummary(total, failed, artifactSig)))
+		summaries = append(summaries, fmt.Sprintf("build %s: %s; %s", b, formatJunitBuildSummary(total, failed, artifactSig), p.spyglassViewURL(b)))
 		if !junitEvalUnhealthy(total, failed, artifactSig) {
 			continue
 		}
@@ -663,13 +725,14 @@ func formatJunitBuildSummary(total int, failed []string, artifactSig string) str
 func (p *JUnitProber) makeStatusFromAggregates(buildID string, total int, failed []string) ProbeResult {
 	var status types.Status
 	var reasons []types.Reason
+	spyglass := p.spyglassViewURL(buildID)
 	switch {
 	case total == 0:
 		status = p.severity.ToStatus()
 		reasons = []types.Reason{{
 			Type:    types.CheckTypeJUnit,
 			Check:   p.jobName,
-			Results: fmt.Sprintf("build %s: zero tests found", buildID),
+			Results: fmt.Sprintf("build %s: zero tests found; %s", buildID, spyglass),
 		}}
 	case len(failed) == 0:
 		status = types.StatusHealthy
@@ -680,7 +743,7 @@ func (p *JUnitProber) makeStatusFromAggregates(buildID string, total int, failed
 		reasons = []types.Reason{{
 			Type:    types.CheckTypeJUnit,
 			Check:   p.jobName,
-			Results: fmt.Sprintf("build %s: %d/%d tests failed: %s", buildID, len(failed), total, strings.Join(failed, ", ")),
+			Results: fmt.Sprintf("build %s: %d/%d tests failed: %s; %s", buildID, len(failed), total, strings.Join(failed, ", "), spyglass),
 		}}
 	}
 	return ProbeResult{
