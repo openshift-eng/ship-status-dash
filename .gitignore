@@ -51,4 +51,6 @@ apm_modules/
 # MCP server virtualenv
 mcp/.venv/
 ship-status-dev/.venv/
+ship-status-dev/.venv-setup.lock
+ship-status-dev/.venv.stale.*
 __pycache__/
