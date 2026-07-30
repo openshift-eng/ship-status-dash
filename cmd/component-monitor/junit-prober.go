@@ -216,6 +216,7 @@ func (p *JUnitProber) enrichStaleResult(ctx context.Context, stale *ProbeResult,
 			"job":           p.jobName,
 			"stale_build":   staleBuildID,
 		}).Warn("failed to find last successful canary run for stale enrichment")
+		parts = append(parts, "last success lookup failed")
 	} else if lastID == "" {
 		parts = append(parts, "no recent successful run found")
 	} else {
@@ -226,7 +227,8 @@ func (p *JUnitProber) enrichStaleResult(ctx context.Context, stale *ProbeResult,
 
 // findLastSuccessfulBuild returns the newest finished build (excluding staleBuildID)
 // whose JUnit evaluation is healthy, scanning up to lastSuccessScanLimit runs.
-// An empty string with a nil error means none were found.
+// An empty string with a nil error means none were found. Per-build JUnit evaluation
+// errors are skipped so a single bad artifact does not abort the scan.
 func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID string) (string, error) {
 	limit := p.lastSuccessScanLimit()
 	finished, err := p.listFinishedBuildIDsDesc(ctx, staleBuildID, limit+1)
@@ -244,7 +246,7 @@ func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID 
 		scanned++
 		total, failed, artifactSig, evalErr := p.evaluateBuildJUnit(ctx, id)
 		if evalErr != nil {
-			return "", evalErr
+			continue
 		}
 		if !junitEvalUnhealthy(total, failed, artifactSig) {
 			return id, nil

@@ -831,11 +831,13 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		settings   JUnitProberSettings
 		responses  func(startedAt time.Time) map[string]mockHTTPResponse
 		wantSuffix string // appended after "base; spyglass"
 	}{
 		{
-			name: "stale with prior success includes last success link",
+			name:     "stale with prior success includes last success link",
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:       {body: staleBuild},
@@ -849,7 +851,8 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 			wantSuffix: fmt.Sprintf("last success: %s %s", successBuild, prowSpyglassViewURL(bucket, job, successBuild)),
 		},
 		{
-			name: "stale with no prior success notes none found",
+			name:     "stale with no prior success notes none found",
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
@@ -861,7 +864,8 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 			wantSuffix: "no recent successful run found",
 		},
 		{
-			name: "stale skips failing prior runs until success",
+			name:     "stale skips failing prior runs until success",
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
@@ -878,7 +882,30 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 			wantSuffix: fmt.Sprintf("last success: 198 %s", prowSpyglassViewURL(bucket, job, "198")),
 		},
 		{
-			name: "stale still degraded when enrichment list fails",
+			name: "stale history scan limit does not reach older healthy build",
+			// HistoryRuns 2 → scan at most two finished priors; 197 is healthy but beyond the limit.
+			settings: JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
+				return map[string]mockHTTPResponse{
+					latestURL:     {body: staleBuild},
+					startedStale:  {body: startedJSON(startedAt)},
+					finishedStale: {statusCode: 404, body: "not found"},
+					listURL: {body: fmt.Sprintf(
+						`{"prefixes":["logs/%s/%s/","logs/%s/199/","logs/%s/198/","logs/%s/197/"]}`,
+						job, staleBuild, job, job, job)},
+					gcsProwObjectURL(bucket, job, "199", prowObjectFinished):              {body: finishedBody},
+					gcsProwObjectURL(bucket, job, "198", prowObjectFinished):              {body: finishedBody},
+					gcsProwObjectURL(bucket, job, "197", prowObjectFinished):              {body: finishedBody},
+					gcsProwObjectURL(bucket, job, "199", "artifacts", "junit_canary.xml"): {body: failingXML},
+					gcsProwObjectURL(bucket, job, "198", "artifacts", "junit_canary.xml"): {body: failingXML},
+					// 197 junit deliberately unmocked: fetching it would fail the mock and the test.
+				}
+			},
+			wantSuffix: "no recent successful run found",
+		},
+		{
+			name:     "stale still degraded when enrichment list fails",
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
@@ -887,8 +914,7 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 					listURL:       {err: fmt.Errorf("gcs list unavailable")},
 				}
 			},
-			// Enrichment errors omit the last-success clause entirely.
-			wantSuffix: "",
+			wantSuffix: "last success lookup failed",
 		},
 	}
 
@@ -897,7 +923,7 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 			startedAt := time.Now().Add(-3 * time.Hour)
 			p := NewJUnitProber(
 				testComponentSlug, testSubComponentSlug, bucket, job, maxAge, types.SeverityDegraded,
-				JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+				tt.settings,
 				&mockHTTPDoer{responses: tt.responses(startedAt)},
 			)
 			results := make(chan ProbeResult, 1)
