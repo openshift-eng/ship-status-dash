@@ -199,9 +199,9 @@ def test_create_outage_success(tmp_path):
     assert mock.call_args.kwargs["acting_for"] == ""
 
 
-def test_create_outage_bot_initiated_forces_suspected(tmp_path):
+def test_create_outage_bot_initiated_forces_degraded(tmp_path):
     api = _authed_api(tmp_path)
-    response = {"ID": 3, "severity": "Suspected"}
+    response = {"ID": 3, "severity": "Degraded"}
     with patch.object(api.client, "public_get", return_value=[]):
         with patch.object(api.client, "protected_request", return_value=response) as mock:
             result = api.create_outage(
@@ -210,7 +210,7 @@ def test_create_outage_bot_initiated_forces_suspected(tmp_path):
             )
     assert result["ID"] == 3
     body = mock.call_args.kwargs["body"]
-    assert body["severity"] == "Suspected"
+    assert body["severity"] == "Degraded"
     assert body["confirmed"] is False
     assert body["discovered_from"] == "mcp"
     assert "acting_for" not in body
