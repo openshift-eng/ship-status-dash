@@ -484,9 +484,9 @@ class ShipStatusAPI:
 
         warning = ""
         if bot_initiated:
-            if severity != "Suspected":
-                warning = f"Severity overridden from {severity!r} to 'Suspected' for bot-initiated outage."
-            severity = "Suspected"
+            if severity != "Degraded":
+                warning = f"Severity overridden from {severity!r} to 'Degraded' for bot-initiated outage."
+            severity = "Degraded"
             confirmed = False
         else:
             confirmed = True

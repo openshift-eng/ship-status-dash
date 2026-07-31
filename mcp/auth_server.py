@@ -31,7 +31,7 @@ def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         initial_triage_note: str = "",
         bot_initiated: bool = False,
     ) -> dict:
-        """Create an outage on a sub-component. acting_for identifies the user/bot responsible (required in authenticated mode). Severity: Down, Degraded, Suspected, or CapacityExhausted. start_time is RFC3339 UTC (defaults to now). Set bot_initiated=true when creating autonomously (forces Suspected severity, unconfirmed, and checks for duplicates)."""
+        """Create an outage on a sub-component. acting_for identifies the user/bot responsible (required in authenticated mode). Severity: Down, Degraded, Suspected, or CapacityExhausted. start_time is RFC3339 UTC (defaults to now). Set bot_initiated=true when creating autonomously (forces Degraded severity, unconfirmed, and checks for duplicates)."""
         return api.create_outage(
             component_slug,
             sub_component_slug,
