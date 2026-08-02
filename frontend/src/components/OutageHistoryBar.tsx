@@ -110,9 +110,10 @@ const getNextDay = (dateStr: string): string => {
 
 const computeUptimePercent = (buckets: OutageDayBucket[]): number => {
   if (buckets.length === 0) return 100
-  const healthyDays = buckets.filter((b) => b.highest_severity === null).length
-  const percent = (healthyDays / buckets.length) * 100
-  return Math.round(percent * 100) / 100
+  const totalMinutes = buckets.length * 24 * 60
+  const totalOutageMinutes = buckets.reduce((sum, b) => sum + (b.total_outage_minutes || 0), 0)
+  const percent = ((totalMinutes - totalOutageMinutes) / totalMinutes) * 100
+  return Math.round(percent * 10000) / 10000
 }
 
 interface OutageHistoryBarProps {
