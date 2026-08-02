@@ -1,4 +1,4 @@
-.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
+.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd
 
 build: build-frontend build-dashboard
 
@@ -47,6 +47,9 @@ build-component-monitor:
 
 component-monitor-dry-run:
 	@./hack/component-monitor-dry-run/create-job.sh
+
+bdd: npm
+	@cd frontend && npm run test:e2e
 
 _uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
 apm:

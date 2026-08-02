@@ -85,7 +85,7 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
-    ignores: ['node_modules', 'build', 'dist', 'coverage'],
+    ignores: ['node_modules', 'build', 'dist', 'coverage', 'e2e/.features-gen'],
   },
   prettierConfig,
 )

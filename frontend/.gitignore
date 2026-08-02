@@ -7,6 +7,9 @@
 
 # testing
 /coverage
+/e2e/.features-gen
+/test-results
+/playwright-report
 
 # production
 /build
