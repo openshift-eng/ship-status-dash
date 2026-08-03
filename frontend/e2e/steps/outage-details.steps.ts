@@ -4,7 +4,7 @@ import { createBdd } from 'playwright-bdd'
 import { setupApiMocks } from '../fixtures/apiMocks'
 import { OutageDetailsPage } from '../pages/OutageDetailsPage'
 
-const { Given, Then } = createBdd()
+const { Given, When, Then } = createBdd()
 
 Given(
   'I navigate to outage {int} for {string} as a guest',
@@ -48,18 +48,20 @@ Then('I should see the triage note {string}', async ({ page }, noteText: string)
   await expect(page.getByText(noteText)).toBeVisible()
 })
 
-Then('I should be able to add a triage note', async ({ page }) => {
+When('I add a triage note {string}', async ({ page }, noteText: string) => {
   const outagePage = new OutageDetailsPage(page)
-  await expect(outagePage.triageNoteInput).toBeVisible()
+  await outagePage.triageNoteInput.fill(noteText)
+  await page.getByRole('button', { name: 'Post Note' }).click()
 })
 
 Then('I should see the outage link {string}', async ({ page }, linkText: string) => {
   await expect(page.getByRole('link', { name: linkText })).toBeVisible()
 })
 
-Then('I should be able to add an outage link', async ({ page }) => {
+When('I add an outage link {string}', async ({ page }, url: string) => {
   const outagePage = new OutageDetailsPage(page)
-  await expect(outagePage.addLinkButton).toBeVisible()
+  await page.getByPlaceholder('https://...').fill(url)
+  await outagePage.addLinkButton.click()
 })
 
 Then('I should see the audit log modal', async ({ page }) => {

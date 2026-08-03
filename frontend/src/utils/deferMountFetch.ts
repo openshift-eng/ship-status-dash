@@ -1,7 +1,14 @@
 /**
  * Schedules work after the current render commit.
- * Used for mount fetches that set state, so react-hooks/set-state-in-effect is satisfied.
+ * Returns a cancel function for use in effect cleanup (prevents stale
+ * microtasks from firing after React StrictMode re-mounts the component).
  */
-export function deferMountFetch(fn: () => void): void {
-  queueMicrotask(fn)
+export function deferMountFetch(fn: () => void): () => void {
+  let cancelled = false
+  queueMicrotask(() => {
+    if (!cancelled) fn()
+  })
+  return () => {
+    cancelled = true
+  }
 }

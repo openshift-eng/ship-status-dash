@@ -376,11 +376,12 @@ const SubComponentDetails = () => {
       return
     }
 
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchData(false)
     })
 
     return () => {
+      cancel()
       abortRef.current?.abort()
       foregroundInFlightRef.current = false
     }

@@ -73,10 +73,11 @@ const useOutageHistory = (
   )
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchHistory(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
       foregroundInFlightRef.current = false
     }

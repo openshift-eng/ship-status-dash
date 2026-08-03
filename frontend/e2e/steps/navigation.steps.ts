@@ -60,3 +60,19 @@ Then('I should be on the tag page for {string}', async ({ page }, tag: string) =
 Then('I should be on the main dashboard page', async ({ page }) => {
   await expect(page).toHaveURL(/\/$/)
 })
+
+Then('I should see incident history for {string}', async ({ page }, componentName: string) => {
+  await expect(page.getByText(componentName, { exact: true }).first()).toBeVisible()
+})
+
+When('I click the {string} team chip', async ({ page }, teamName: string) => {
+  await page.locator(`a[href="/team/${teamName}"]`).first().click()
+})
+
+Then('I should be on the team page for {string}', async ({ page }, team: string) => {
+  await expect(page).toHaveURL(new RegExp(`/team/${team}$`))
+})
+
+Then('I should see the team heading {string}', async ({ page }, heading: string) => {
+  await expect(page.getByText(heading)).toBeVisible()
+})

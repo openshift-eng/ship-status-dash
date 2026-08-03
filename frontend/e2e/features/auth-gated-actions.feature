@@ -17,7 +17,8 @@ Feature: Auth-gated actions
     Given I am logged in as an admin for "Prow"
     And I am on the "prow/deck" sub-component page
     When I click the "Report Outage" button
-    Then I should see the outage creation modal
+    And I fill in the outage form and submit
+    Then the "Report Outage" dialog should close
 
   Scenario: Admin sees all outage management actions
     Given I am logged in as an admin for "Prow"
@@ -32,7 +33,23 @@ Feature: Auth-gated actions
     And I navigate to outage 1 for "prow/deck"
     When I open the outage actions menu
     And I click the "Resolve" menu item
-    Then I should see the resolve confirmation dialog
+    And I confirm the "Resolve" dialog
+    Then the "Resolve" dialog should close
+
+  Scenario: Admin can delete an outage
+    Given I am logged in as an admin for "Prow"
+    And I navigate to outage 1 for "prow/deck"
+    When I open the outage actions menu
+    And I click the "Delete" menu item
+    And I confirm the "Delete" dialog
+    Then the "Delete" dialog should close
+
+  Scenario: Admin can confirm an outage
+    Given I am logged in as an admin for "Prow"
+    And I navigate to outage 1 for "prow/deck"
+    When I open the outage actions menu
+    And I confirm the outage
+    Then the outage details page should remain visible
 
   Scenario: Unauthenticated user does not see outage action buttons
     Given I am not logged in

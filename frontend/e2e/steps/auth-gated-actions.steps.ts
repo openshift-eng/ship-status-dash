@@ -44,10 +44,6 @@ When('I click the {string} button', async ({ page }, label: string) => {
   await page.getByRole('button', { name: label }).click()
 })
 
-Then('I should see the outage creation modal', async ({ page }) => {
-  await expect(page.getByRole('dialog')).toBeVisible()
-})
-
 Then('I should not see outage action controls', async ({ page }) => {
   const outagePage = new OutageDetailsPage(page)
   await expect(outagePage.outageActions).not.toBeVisible()
@@ -62,18 +58,38 @@ When('I click the {string} menu item', async ({ page }, label: string) => {
   await page.getByRole('menuitem', { name: label }).click()
 })
 
-When('I confirm the action dialog', async ({ page }) => {
-  const dialog = page.getByRole('dialog')
-  await dialog.waitFor()
-  await dialog.getByRole('button', { name: /confirm|yes|resolve/i }).click()
-})
-
 Then('I should see the {string} action', async ({ page }, label: string) => {
   await expect(page.getByRole('menuitem', { name: label })).toBeVisible()
 })
 
-Then('I should see the resolve confirmation dialog', async ({ page }) => {
+When('I fill in the outage form and submit', async ({ page }) => {
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Resolve' })).toBeVisible()
+  await dialog.waitFor()
+  await dialog.getByRole('combobox').click()
+  await page.getByRole('option', { name: 'Degraded' }).click()
+  await dialog.getByLabel('Description').fill('Test outage description')
+  await dialog.getByRole('button', { name: 'Report Outage' }).click()
+})
+
+When('I confirm the {string} dialog', async ({ page }, action: string) => {
+  const dialog = page.getByRole('dialog')
+  await dialog.waitFor()
+  await dialog.getByRole('button', { name: action }).click()
+})
+
+Then('the {string} dialog should close', async ({ page }, _action: string) => {
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+})
+
+When('I confirm the outage', async ({ page }) => {
+  const requestPromise = page.waitForRequest(
+    (req) => req.method() === 'PATCH' && req.url().includes('/outages/'),
+  )
+  await page.getByRole('menuitem', { name: 'Confirm' }).click()
+  await requestPromise
+})
+
+Then('the outage details page should remain visible', async ({ page }) => {
+  const outagePage = new OutageDetailsPage(page)
+  await expect(outagePage.outageActions).toBeVisible()
 })

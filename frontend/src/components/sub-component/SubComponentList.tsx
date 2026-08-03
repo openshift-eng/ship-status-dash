@@ -90,10 +90,11 @@ const SubComponentList = ({ filters }: SubComponentListProps) => {
   )
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchItems(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
     }
   }, [fetchItems])

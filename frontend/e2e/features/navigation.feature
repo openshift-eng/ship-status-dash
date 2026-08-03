@@ -23,6 +23,19 @@ Feature: Navigation
     When I click the "ci" tag
     Then I should be on the tag page for "ci"
 
+  Scenario: Status history page shows component history
+    Given I am on the main dashboard
+    When I navigate to "Incident History" via the header menu
+    Then I should see incident history for "Prow"
+    And I should see incident history for "Build Farm"
+    And I should see incident history for "Sippy"
+
+  Scenario: Clicking a team chip navigates to team page with filtered results
+    Given I am on the main dashboard
+    When I click the "TRT" team chip
+    Then I should be on the team page for "TRT"
+    And I should see the team heading "TRT Sub Components"
+
   Scenario: Browser back navigation works
     Given I am on the main dashboard
     When I click the "Details" button on the "Prow" component

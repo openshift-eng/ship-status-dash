@@ -10,17 +10,19 @@ Feature: Outage Details
     And the outage should show as unconfirmed
     And the outage end time should show "Not set"
 
-  Scenario: Admin sees triage notes with existing content
+  Scenario: Admin can view and add triage notes
     Given I am logged in as an admin for "Sippy"
     And I navigate to outage 2 for "sippy/sippy-ui" as an admin
     Then I should see the triage note "Investigating root cause"
-    And I should be able to add a triage note
+    When I add a triage note "New triage note"
+    Then I should see the triage note "New triage note"
 
-  Scenario: Outage links are visible with correct content
+  Scenario: Admin can view and add outage links
     Given I am logged in as an admin for "Sippy"
     And I navigate to outage 2 for "sippy/sippy-ui" as an admin
     Then I should see the outage link "Incident Channel/Thread"
-    And I should be able to add an outage link
+    When I add an outage link "https://example.com/rca"
+    Then I should see the outage link "RCA"
 
   Scenario: Audit log modal opens and shows change history
     Given I am logged in as an admin for "Prow"

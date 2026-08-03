@@ -186,10 +186,11 @@ const SubComponentCardComponent = ({ subComponent, componentName }: SubComponent
   )
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchStatus(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
       foregroundInFlightRef.current = false
     }

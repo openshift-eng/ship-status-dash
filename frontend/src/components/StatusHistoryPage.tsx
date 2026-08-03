@@ -165,10 +165,11 @@ const StatusHistoryPage = () => {
   }, [])
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchComponents(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
     }
   }, [fetchComponents])
