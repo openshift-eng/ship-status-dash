@@ -230,7 +230,7 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
       return json(route, mockOutages[0])
     }
     if (method === 'DELETE') {
-      return json(route, {}, 204)
+      return route.fulfill({ status: 204 })
     }
     return route.fallback()
   })
@@ -253,7 +253,7 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
       return json(route, { ...mockTriageNote, body: 'Updated note' })
     }
     if (method === 'DELETE') {
-      return json(route, {}, 204)
+      return route.fulfill({ status: 204 })
     }
     return route.fallback()
   })
@@ -272,7 +272,7 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
       return json(route, { ...mockOutageLink, description: 'Updated link' })
     }
     if (method === 'DELETE') {
-      return json(route, {}, 204)
+      return route.fulfill({ status: 204 })
     }
     return route.fallback()
   })
