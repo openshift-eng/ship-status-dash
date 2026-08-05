@@ -5,7 +5,7 @@ build: build-frontend build-dashboard
 local-e2e:
 	@./test/e2e/scripts/local-e2e.sh
 
-test:
+test: bdd
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
 
