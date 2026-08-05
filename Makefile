@@ -31,7 +31,7 @@ lint: npm verify-apm
 	@cd frontend && npm audit --omit=dev
 
 npm:
-	@cd frontend && npm ci --no-audit --ignore-scripts
+	@cd frontend && npm ci --no-audit --ignore-scripts --cache /tmp/npm-cache
 
 build-dashboard:
 	@go build -mod=vendor -o dashboard ./cmd/dashboard
