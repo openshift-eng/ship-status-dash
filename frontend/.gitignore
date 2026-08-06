@@ -7,7 +7,7 @@
 
 # testing
 /coverage
-/e2e/.features-gen
+/bdd/.features-gen
 /test-results
 /playwright-report
 

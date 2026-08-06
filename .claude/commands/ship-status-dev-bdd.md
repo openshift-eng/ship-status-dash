@@ -10,7 +10,7 @@ Run frontend BDD tests directly:
 make bdd
 ```
 
-This installs frontend dependencies (`npm ci`) and runs Playwright BDD tests against a mocked API (no backend required). Tests use feature files in `frontend/e2e/features/` with step definitions in `frontend/e2e/steps/`.
+This installs frontend dependencies (`npm ci`) and runs Playwright BDD tests against a mocked API (no backend required). Tests use feature files in `frontend/bdd/features/` with step definitions in `frontend/bdd/steps/`.
 
 ## Presenting results
 

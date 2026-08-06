@@ -92,7 +92,7 @@ for test locators.
 
 ```text
 frontend/
-  e2e/
+  bdd/
     features/           # Gherkin .feature files
     steps/              # TypeScript step definitions
     fixtures/           # Route interception helpers and typed test data
@@ -100,7 +100,7 @@ frontend/
     playwright.config.ts
 ```
 
-The `e2e/` directory lives inside `frontend/` to keep frontend test tooling
+The `bdd/` directory lives inside `frontend/` to keep frontend test tooling
 alongside the frontend code, consistent with where ESLint, Prettier, and
 Vite config already live.
 
@@ -192,7 +192,7 @@ Feature: Auth-gated actions
 
 Add `@playwright/test` and `playwright-bdd` as dev dependencies and
 install the Chromium browser binary. Create the Playwright config at
-`frontend/e2e/playwright.config.ts`, which does two things: connects
+`frontend/bdd/playwright.config.ts`, which does two things: connects
 `.feature` files to step definitions using
 [`defineBddConfig`](https://vitalets.github.io/playwright-bdd/#/configuration/index),
 and automatically starts the Vite dev server before tests run using

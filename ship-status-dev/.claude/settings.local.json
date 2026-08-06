@@ -1,0 +1,6 @@
+{
+  "disabledMcpjsonServers": [
+    "ship-status-dev",
+    "ship-status"
+  ]
+}

@@ -31,8 +31,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "echo 'Tests need to be configured with Vitest or Jest'",
-    "test:e2e": "npx bddgen -c e2e/playwright.config.ts && npx playwright test -c e2e/playwright.config.ts",
-    "test:e2e:headed": "npx bddgen -c e2e/playwright.config.ts && npx playwright test -c e2e/playwright.config.ts --headed",
+    "test:e2e": "npx bddgen -c bdd/playwright.config.ts && npx playwright test -c bdd/playwright.config.ts",
+    "test:e2e:headed": "npx bddgen -c bdd/playwright.config.ts && npx playwright test -c bdd/playwright.config.ts --headed",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."

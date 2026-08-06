@@ -196,4 +196,4 @@ Run the Playwright BDD test suite against the frontend:
 make bdd
 ```
 
-This starts the Vite dev server, launches headless Chromium, and runs all BDD scenarios defined in `frontend/e2e/features/`. Tests use mocked API responses and require no backend.
+This starts the Vite dev server, launches headless Chromium, and runs all BDD scenarios defined in `frontend/bdd/features/`. Tests use mocked API responses and require no backend.
