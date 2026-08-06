@@ -49,7 +49,7 @@ component-monitor-dry-run:
 	@./hack/component-monitor-dry-run/create-job.sh
 
 bdd: npm
-	@cd frontend && env -u PLAYWRIGHT_BROWSERS_PATH npm run test:e2e # unset to avoid Cursor sandbox override
+	@if [ -n "$$CI" ]; then cd frontend && npm run test:e2e; else cd frontend && env -u PLAYWRIGHT_BROWSERS_PATH npm run test:e2e; fi
 
 _uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
 apm:
