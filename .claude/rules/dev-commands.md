@@ -19,6 +19,8 @@ The lint script uses `golangci-lint` directly when available, falling back to a 
 
 Run unit tests: `make test`
 
+Run frontend BDD tests: `make bdd`
+
 Run e2e tests: `make local-e2e`
 
 ### Frontend

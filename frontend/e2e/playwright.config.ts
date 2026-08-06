@@ -10,7 +10,7 @@ export default defineConfig({
   testDir,
   timeout: 30_000,
   retries: 0,
-  reporter: [['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:3030',
     screenshot: 'only-on-failure',
