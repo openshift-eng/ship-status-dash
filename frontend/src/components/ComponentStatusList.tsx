@@ -131,9 +131,12 @@ const ComponentStatusList: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchComponents(false)
     })
+    return () => {
+      cancel()
+    }
   }, [fetchComponents])
 
   useIntervalRefresh(() => fetchComponents(true))

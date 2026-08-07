@@ -228,10 +228,11 @@ const ComponentDetailsPage = () => {
   )
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchComponent(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
     }
   }, [fetchComponent])

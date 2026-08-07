@@ -31,6 +31,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "echo 'Tests need to be configured with Vitest or Jest'",
+    "test:e2e": "npx bddgen -c bdd/playwright.config.ts && npx playwright test -c bdd/playwright.config.ts",
+    "test:e2e:headed": "npx bddgen -c bdd/playwright.config.ts && npx playwright test -c bdd/playwright.config.ts --headed",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.1.8",
@@ -58,6 +61,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.0",
     "globals": "^15.14.0",
+    "playwright-bdd": "^9.2.0",
     "prettier": "^3.6.2",
     "typescript-eslint": "^8.53.1",
     "vite": "^6.0.7"

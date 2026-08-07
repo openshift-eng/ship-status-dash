@@ -187,3 +187,13 @@ The e2e script (`test/e2e/scripts/local-e2e.sh`):
 The test suite includes:
 - **Dashboard tests** (`TestE2E_Dashboard`): Tests API endpoints, outages, component status, and user authentication
 - **Component-monitor tests** (`TestE2E_ComponentMonitor`): Tests component monitoring probes and integration with the dashboard
+
+### Frontend BDD Tests
+
+Run the Playwright BDD test suite against the frontend:
+
+```bash
+make bdd
+```
+
+This starts the Vite dev server, launches headless Chromium, and runs all BDD scenarios defined in `frontend/bdd/features/`. Tests use mocked API responses and require no backend.

@@ -136,10 +136,11 @@ const UnhealthyWell: React.FC<UnhealthyWellProps> = ({ onHasOutagesChange }) => 
   }, [])
 
   useEffect(() => {
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       fetchItems(false)
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
     }
   }, [fetchItems])

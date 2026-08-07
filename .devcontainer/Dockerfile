@@ -27,6 +27,13 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ]; then LINT_ARCH="arm64"; else LINT_ARCH="amd64"; fi && \
     rpm -i "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${LINT_ARCH}.rpm"
 
+# Playwright system library dependencies (Chromium requires these at runtime)
+RUN dnf install -y \
+    alsa-lib at-spi2-atk at-spi2-core atk cairo cups-libs dbus-libs \
+    expat glib2 libdrm libX11 libXcomposite libXdamage libXext libXfixes \
+    libXrandr libxcb libxkbcommon mesa-libgbm mesa-libGL nspr nss nss-util pango \
+    && dnf clean all && rm -rf /var/cache/dnf
+
 RUN groupadd -g 1000 vscode && \
     useradd -u 1000 -g 1000 -m -s /bin/bash vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode
@@ -41,6 +48,8 @@ COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uvx /usr/local/bin/uvx
 RUN uv --version && uvx --version
 
 USER vscode
+
+RUN npx playwright@1.62.1 install chromium
 
 RUN go install gotest.tools/gotestsum@latest
 

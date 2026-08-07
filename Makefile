@@ -1,11 +1,11 @@
-.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm
+.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd
 
 build: build-frontend build-dashboard
 
 local-e2e:
 	@./test/e2e/scripts/local-e2e.sh
 
-test:
+test: bdd
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
 
@@ -31,7 +31,7 @@ lint: npm verify-apm
 	@cd frontend && npm audit --omit=dev
 
 npm:
-	@cd frontend && npm ci --no-audit --ignore-scripts
+	@cd frontend && npm ci --no-audit --ignore-scripts --cache /tmp/npm-cache
 
 build-dashboard:
 	@go build -mod=vendor -o dashboard ./cmd/dashboard
@@ -47,6 +47,9 @@ build-component-monitor:
 
 component-monitor-dry-run:
 	@./hack/component-monitor-dry-run/create-job.sh
+
+bdd: npm
+	@if [ -n "$$CI" ]; then cd frontend && npm run test:e2e; else cd frontend && env -u PLAYWRIGHT_BROWSERS_PATH npm run test:e2e; fi
 
 _uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
 apm:

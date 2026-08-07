@@ -344,13 +344,14 @@ const OutageDetailsPage = () => {
       return
     }
 
-    deferMountFetch(() => {
+    const cancel = deferMountFetch(() => {
       setPollingEnabled(true)
       setUpdatesDialogOpen(false)
       setLastAuditableUpdate(null)
       fetchOutage()
     })
     return () => {
+      cancel()
       abortRef.current?.abort()
       watermarkRequestIdRef.current += 1
     }
