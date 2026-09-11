@@ -274,4 +274,4 @@ When a `duration` is specified for a Prometheus query, the component-monitor exe
 
 ## Configuration Testing
 
-To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md), and the `component-monitor-dry-run` make target.
+To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md) and the `component-monitor-dry-run` make target. The job runs on app.ci in the `ship-status` namespace, mounts the production `component-monitor-kubeconfigs` secret, and prints a JSON report without sending it to the dashboard.
