@@ -22,12 +22,12 @@ The job uses the same Prometheus access path as production: it mounts the `compo
 
 3. **View the output** (JSON report):
    ```bash
-   oc logs job/<job-name> -n ship-status --context=app.ci
+   oc logs job/<job-name> -n ${NAMESPACE:-ship-status} --context=app.ci
    ```
 
 4. **Follow logs in real-time**:
    ```bash
-   oc logs -f job/<job-name> -n ship-status --context=app.ci
+   oc logs -f job/<job-name> -n ${NAMESPACE:-ship-status} --context=app.ci
    ```
 
 ## Configuration
