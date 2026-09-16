@@ -16,6 +16,8 @@ The oauth-proxy is the bearer-token authentication boundary. The dashboard (`cmd
 
 Never mount secret tokens (service account tokens, API keys) on containers that accept unauthenticated inbound traffic. If a container is publicly accessible, it must not have access to credentials that grant write access to other services.
 
+`jira_monitor` searches Jira anonymously. It only sees issues the site grants **Browse** to Anyone (TRT and OCPBUGS on `redhat.atlassian.net` do). Do not mount a Jira token on any Ship Status pod.
+
 Services behind oauth-proxy (not publicly accessible) may hold credentials needed for downstream authenticated calls. This is acceptable because oauth-proxy ensures only authenticated callers can reach the service. Services that accept unauthenticated traffic must remain stateless and credential-free; the caller supplies their own bearer token, which is forwarded unmodified to oauth-proxy for authentication.
 
 ### Write endpoint authorization

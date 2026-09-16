@@ -71,6 +71,7 @@ const (
 	CheckTypeHTTP       CheckType = "http"
 	CheckTypeSystemd    CheckType = "systemd"
 	CheckTypeJUnit      CheckType = "junit"
+	CheckTypeJira       CheckType = "jira"
 )
 
 // Outage represents a component outage with tracking information for incident management.
@@ -239,17 +240,26 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 	return db.Create(&audit).Error
 }
 
+// ReportedLink is a URL carried on a component-monitor report reason.
+type ReportedLink struct {
+	URL      string   `json:"url"`
+	LinkType LinkType `json:"link_type,omitempty"`
+}
+
 type Reason struct {
 	gorm.Model
 	OutageID uint `json:"-" gorm:"column:outage_id;not null;index"`
 	// Type defines the type of monitoring check that was performed.
-	// Valid values are defined by CheckType: prometheus, http, systemd, or junit.
+	// Valid values are defined by CheckType: prometheus, http, systemd, junit, or jira.
 	Type CheckType `json:"type"`
 	// Check defines the specific check that was performed:
-	// prometheus query, HTTP URL, systemd unit name, or junit Prow job name.
+	// prometheus query, HTTP URL, systemd unit name, junit Prow job name, or Jira issue key.
 	Check string `json:"check"`
 	// Results summarizes the results of the check
 	Results string `json:"results"`
+	// Links are accepted on component-monitor reports and copied onto the outage
+	// as outage_links. They are not stored on the reasons table.
+	Links []ReportedLink `json:"links,omitempty" gorm:"-"`
 }
 
 // ComponentReportPing represents a ping report from a component monitor.
@@ -309,12 +319,13 @@ type LinkType string
 const (
 	LinkTypeIncidentChannelThread LinkType = "incident_channel_thread"
 	LinkTypeRCA                   LinkType = "rca"
+	LinkTypeJira                  LinkType = "jira"
 	LinkTypeOther                 LinkType = "other"
 )
 
 func IsValidLinkType(lt string) bool {
 	switch LinkType(lt) {
-	case LinkTypeIncidentChannelThread, LinkTypeRCA, LinkTypeOther:
+	case LinkTypeIncidentChannelThread, LinkTypeRCA, LinkTypeJira, LinkTypeOther:
 		return true
 	default:
 		return false

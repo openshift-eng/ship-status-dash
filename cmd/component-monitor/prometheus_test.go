@@ -801,6 +801,28 @@ func TestSetDefaultSeverityValues(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "sets default jira monitor severity when not specified",
+			config: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						JiraMonitor: &types.JiraMonitor{
+							URL: "https://redhat.atlassian.net",
+						},
+					},
+				},
+			},
+			expected: &types.ComponentMonitorConfig{
+				Components: []types.MonitoringComponent{
+					{
+						JiraMonitor: &types.JiraMonitor{
+							URL:      "https://redhat.atlassian.net",
+							Severity: types.SeverityDegraded,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

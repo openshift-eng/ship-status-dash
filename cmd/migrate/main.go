@@ -127,7 +127,6 @@ func main() {
 		WHERE end_time IS NULL AND severity = 'Suspected' AND deleted_at IS NULL`).Error; err != nil {
 		log.WithField("error", err).Fatal("Failed to create unique partial index for suspected outages")
 	}
-
 	// TODO: remove once all environments have run this migration (incident_channel renamed to incident_channel_thread)
 	if db.Migrator().HasTable("outage_links") {
 		if err = db.Exec("UPDATE outage_links SET link_type = 'incident_channel_thread' WHERE link_type = 'incident_channel'").Error; err != nil {

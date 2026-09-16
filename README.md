@@ -13,7 +13,7 @@ This project consists of multiple components:
   - Frontend: React application (`frontend/`)
 - **Component Monitor**: Monitoring service that periodically probes components and reports their status to the dashboard
   - Go service (`cmd/component-monitor`)
-  - Supports HTTP, Prometheus, and JUnit (Prow GCS canary) monitoring; see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md)
+  - Supports HTTP, Prometheus, JUnit (Prow GCS canary), systemd, and Jira monitoring; see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md)
 
 For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
 

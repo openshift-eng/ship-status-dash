@@ -3,6 +3,8 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -16,6 +18,8 @@ import (
 
 const (
 	ComponentMonitor = "component-monitor"
+
+	defaultMonitorOutageDescription = "Component monitor detected outage"
 
 	// flapWindow is the lookback period for finding recently-closed outages to reopen.
 	// Outages from the same probe that recur within this window are treated as the same issue.
@@ -115,112 +119,231 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			return err
 		}
 
-		// Find all the active outages that this component-monitor has reported. This will not pick up any outages that were created by other sources.
-		activeOutages, err := p.outageManager.GetActiveOutagesCreatedBy(status.ComponentSlug, status.SubComponentSlug, req.ComponentMonitor)
-		if err != nil {
-			statusLogger.WithField("error", err).Error("Failed to query active outages")
-			return err
-		}
-
-		if status.Status == types.StatusHealthy {
-			if len(activeOutages) == 0 {
-				statusLogger.Debug("Sub Component reported healthy, and no active outages to resolve")
-				continue
-			}
-
-			if subComponent.Monitoring == nil || !subComponent.Monitoring.AutoResolve {
-				statusLogger.Debug("Auto-resolve disabled, skipping healthy status processing")
-				continue
-			}
-			for i := range activeOutages {
-				activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
-				if err := p.outageManager.UpdateOutage(&activeOutages[i], req.ComponentMonitor); err != nil {
-					statusLogger.WithFields(logrus.Fields{
-						"outage_id": activeOutages[i].ID,
-						"error":     err,
-					}).Error("Failed to resolve outage")
-					continue
-				}
-				statusLogger.WithField("outage_id", activeOutages[i].ID).Info("Successfully auto-resolved outage")
-			}
+		var err error
+		if subComponent.Monitoring.OutagePerReason {
+			err = p.processPerReason(status, req.ComponentMonitor, subComponent, now, statusLogger)
 		} else {
-			severity := status.Status.ToSeverity()
-			if severity == "" {
-				statusLogger.Warn("Invalid status for severity conversion, skipping")
-				continue
-			}
-
-			if len(activeOutages) > 0 {
-				statusLogger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage from this component-monitor already exists, skipping creation")
-				continue
-			}
-
-			if len(status.Reasons) == 0 {
-				statusLogger.Warn("No reasons provided for unhealthy status, skipping")
-				continue
-			}
-
-			// Before creating a new outage, check if a recently-closed outage for the same
-			// probe exists within the flap window. If so, reopen it instead.
-			recentOutage, err := p.findReopenableOutage(status, req.ComponentMonitor, now)
-			if err != nil {
-				statusLogger.WithField("error", err).Error("Failed to query recently-closed outages")
-				return err
-			}
-
-			if recentOutage != nil {
-				recentOutage.EndTime = sql.NullTime{Valid: false}
-				recentOutage.Severity = severity
-				outageLogger := statusLogger.WithField("outage_id", recentOutage.ID)
-				if err := p.outageManager.UpdateOutage(recentOutage, req.ComponentMonitor); err != nil {
-					outageLogger.Errorf("Failed to reopen outage: %v", err)
-					continue
-				}
-				if added := newReasons(recentOutage.Reasons, status.Reasons); len(added) > 0 {
-					if err := p.outageManager.AppendReasons(recentOutage.ID, added); err != nil {
-						outageLogger.Errorf("Failed to append new reasons to reopened outage: %v", err)
-					}
-				}
-				outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
-				continue
-			}
-
-			description := "Component monitor detected outage"
-
-			outage := types.Outage{
-				ComponentName:    status.ComponentSlug,
-				SubComponentName: status.SubComponentSlug,
-				Severity:         severity,
-				StartTime:        now,
-				EndTime:          sql.NullTime{Valid: false},
-				Description:      description,
-				DiscoveredFrom:   ComponentMonitor,
-				CreatedBy:        req.ComponentMonitor,
-			}
-
-			if !subComponent.RequiresConfirmation {
-				outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
-			}
-
-			if message, valid := outage.Validate(); !valid {
-				return fmt.Errorf("validation failed: %s", message)
-			}
-
-			if err := p.outageManager.CreateOutage(&outage, status.Reasons, req.ComponentMonitor, ""); err != nil {
-				statusLogger.WithField("error", err).Error("Failed to create outage and reasons")
-				continue
-			}
-
-			statusLogger.WithField("reason_count", len(status.Reasons)).Info("Successfully created outage with reasons")
+			err = p.processSingleOutage(status, req.ComponentMonitor, subComponent, now, statusLogger)
+		}
+		if err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (p *ComponentMonitorReportProcessor) findReopenableOutage(status types.ComponentMonitorReportComponentStatus, componentMonitor string, now time.Time) (*types.Outage, error) {
-	since := now.Add(-flapWindow)
-	return p.outageManager.FindReopenableOutage(status.ComponentSlug, status.SubComponentSlug, componentMonitor, since, status.Reasons)
+func monitorOutageDescription(results string) string {
+	if results == "" {
+		return defaultMonitorOutageDescription
+	}
+	return results
+}
+
+// processSingleOutage keeps at most one active outage created by this monitor for the sub-component.
+func (p *ComponentMonitorReportProcessor) processSingleOutage(status types.ComponentMonitorReportComponentStatus, monitorName string, subComponent *types.SubComponent, now time.Time, logger *logrus.Entry) error {
+	activeOutages, err := p.activeMonitorOutages(status.ComponentSlug, status.SubComponentSlug, monitorName, logger)
+	if err != nil {
+		return err
+	}
+
+	if status.Status == types.StatusHealthy {
+		if len(activeOutages) == 0 {
+			logger.Debug("Sub Component reported healthy, and no active outages to resolve")
+			return nil
+		}
+		if !subComponent.Monitoring.AutoResolve {
+			logger.Debug("Auto-resolve disabled, skipping healthy status processing")
+			return nil
+		}
+		for i := range activeOutages {
+			p.resolveOutage(&activeOutages[i], now, monitorName, logger)
+		}
+		return nil
+	}
+
+	severity := status.Status.ToSeverity()
+	if severity == "" {
+		logger.Warn("Invalid status for severity conversion, skipping")
+		return nil
+	}
+
+	if len(activeOutages) > 0 {
+		logger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage from this component-monitor already exists, skipping creation")
+		return nil
+	}
+
+	if len(status.Reasons) == 0 {
+		logger.Warn("No reasons provided for unhealthy status, skipping")
+		return nil
+	}
+
+	return p.createOrReopenOutage(status, subComponent, now, severity, defaultMonitorOutageDescription, status.Reasons, nil, monitorName, logger)
+}
+
+// processPerReason keeps one active outage per incoming probe reason (Type+Check).
+func (p *ComponentMonitorReportProcessor) processPerReason(status types.ComponentMonitorReportComponentStatus, monitorName string, subComponent *types.SubComponent, now time.Time, logger *logrus.Entry) error {
+	activeOutages, err := p.activeMonitorOutages(status.ComponentSlug, status.SubComponentSlug, monitorName, logger)
+	if err != nil {
+		return err
+	}
+
+	activeByIdentity := make(map[string]*types.Outage, len(activeOutages))
+	for i := range activeOutages {
+		id, ok := outageReasonIdentity(activeOutages[i])
+		if !ok {
+			continue
+		}
+		activeByIdentity[id] = &activeOutages[i]
+	}
+
+	incomingIdentities := make(map[string]struct{}, len(status.Reasons))
+	severity := status.Status.ToSeverity()
+	if severity == "" {
+		severity = types.SeverityDown
+	}
+
+	for _, reason := range status.Reasons {
+		if reason.Check == "" {
+			continue
+		}
+		identity := reasonIdentity(reason)
+		incomingIdentities[identity] = struct{}{}
+
+		if existing, ok := activeByIdentity[identity]; ok {
+			p.syncOutageDescription(existing, reason.Results, monitorName, logger)
+			continue
+		}
+
+		description := monitorOutageDescription(reason.Results)
+		if err := p.createOrReopenOutage(status, subComponent, now, severity, description, []types.Reason{reason}, &description, monitorName, logger); err != nil {
+			return err
+		}
+	}
+
+	if !subComponent.Monitoring.AutoResolve {
+		return nil
+	}
+
+	for identity, existing := range activeByIdentity {
+		if _, keep := incomingIdentities[identity]; keep {
+			continue
+		}
+		p.resolveOutage(existing, now, monitorName, logger)
+	}
+
+	return nil
+}
+
+func (p *ComponentMonitorReportProcessor) activeMonitorOutages(componentSlug, subComponentSlug, monitorName string, logger *logrus.Entry) ([]types.Outage, error) {
+	activeOutages, err := p.outageManager.GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, monitorName)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query active outages")
+		return nil, err
+	}
+	return activeOutages, nil
+}
+
+func (p *ComponentMonitorReportProcessor) resolveOutage(o *types.Outage, now time.Time, monitorName string, logger *logrus.Entry) {
+	o.EndTime = sql.NullTime{Time: now, Valid: true}
+	outageLogger := logger.WithField("outage_id", o.ID)
+	if err := p.outageManager.UpdateOutage(o, monitorName); err != nil {
+		outageLogger.WithField("error", err).Error("Failed to resolve outage")
+		return
+	}
+	outageLogger.Info("Successfully auto-resolved outage")
+}
+
+func (p *ComponentMonitorReportProcessor) syncOutageDescription(o *types.Outage, description, monitorName string, logger *logrus.Entry) {
+	if description == "" || o.Description == description {
+		return
+	}
+	o.Description = description
+	if err := p.outageManager.UpdateOutage(o, monitorName); err != nil {
+		logger.WithFields(logrus.Fields{"outage_id": o.ID, "error": err}).Error("Failed to update outage description")
+	}
+}
+
+// createOrReopenOutage reopens a matching outage inside the flap window, otherwise creates one.
+// reopenDescription, when non-nil, is written onto a reopened outage.
+func (p *ComponentMonitorReportProcessor) createOrReopenOutage(
+	status types.ComponentMonitorReportComponentStatus,
+	subComponent *types.SubComponent,
+	now time.Time,
+	severity types.Severity,
+	description string,
+	reasons []types.Reason,
+	reopenDescription *string,
+	monitorName string,
+	logger *logrus.Entry,
+) error {
+	recent, err := p.outageManager.FindReopenableOutage(status.ComponentSlug, status.SubComponentSlug, monitorName, now.Add(-flapWindow), reasons)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query recently-closed outages")
+		return err
+	}
+	if recent != nil {
+		p.reopenOutage(recent, severity, reopenDescription, reasons, monitorName, logger)
+		return nil
+	}
+	return p.createMonitorOutage(status, subComponent, now, severity, description, reasons, monitorName, logger)
+}
+
+func (p *ComponentMonitorReportProcessor) reopenOutage(o *types.Outage, severity types.Severity, description *string, incoming []types.Reason, monitorName string, logger *logrus.Entry) {
+	o.EndTime = sql.NullTime{Valid: false}
+	o.Severity = severity
+	if description != nil {
+		o.Description = *description
+	}
+	outageLogger := logger.WithField("outage_id", o.ID)
+	if err := p.outageManager.UpdateOutage(o, monitorName); err != nil {
+		outageLogger.WithField("error", err).Error("Failed to reopen outage")
+		return
+	}
+	if added := newReasons(o.Reasons, incoming); len(added) > 0 {
+		if err := p.outageManager.AppendReasons(o.ID, added); err != nil {
+			outageLogger.WithField("error", err).Error("Failed to append new reasons to reopened outage")
+		}
+	}
+	outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
+}
+
+func (p *ComponentMonitorReportProcessor) createMonitorOutage(
+	status types.ComponentMonitorReportComponentStatus,
+	subComponent *types.SubComponent,
+	now time.Time,
+	severity types.Severity,
+	description string,
+	reasons []types.Reason,
+	monitorName string,
+	logger *logrus.Entry,
+) error {
+	outage := types.Outage{
+		ComponentName:    status.ComponentSlug,
+		SubComponentName: status.SubComponentSlug,
+		Severity:         severity,
+		StartTime:        now,
+		EndTime:          sql.NullTime{Valid: false},
+		Description:      description,
+		DiscoveredFrom:   ComponentMonitor,
+		CreatedBy:        monitorName,
+	}
+	if !subComponent.RequiresConfirmation {
+		outage.ConfirmedAt = sql.NullTime{Time: now, Valid: true}
+	}
+	if message, valid := outage.Validate(); !valid {
+		return fmt.Errorf("validation failed: %s", message)
+	}
+	if err := p.outageManager.CreateOutage(&outage, reasons, monitorName, ""); err != nil {
+		logger.WithField("error", err).Error("Failed to create outage")
+		return nil
+	}
+	p.applyReportedLinks(outage.ID, linksFromReasons(reasons), monitorName, logger)
+	logger.WithFields(logrus.Fields{
+		"outage_id":    outage.ID,
+		"reason_count": len(reasons),
+	}).Info("Successfully created outage with reasons")
+	return nil
 }
 
 // newReasons returns reasons from incoming that are not already present in existing,
@@ -240,4 +363,67 @@ func newReasons(existing, incoming []types.Reason) []types.Reason {
 		}
 	}
 	return result
+}
+
+func reasonIdentity(r types.Reason) string {
+	return string(r.Type) + "\x00" + r.Check
+}
+
+func outageReasonIdentity(o types.Outage) (string, bool) {
+	if len(o.Reasons) == 0 {
+		return "", false
+	}
+	return reasonIdentity(o.Reasons[0]), true
+}
+
+func linksFromReasons(reasons []types.Reason) []types.ReportedLink {
+	var links []types.ReportedLink
+	for _, reason := range reasons {
+		links = append(links, reason.Links...)
+	}
+	return links
+}
+
+func normalizeReportedLink(link types.ReportedLink) (string, types.LinkType, bool) {
+	raw := strings.TrimSpace(link.URL)
+	if raw == "" {
+		return "", "", false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", "", false
+	}
+	linkType := link.LinkType
+	if linkType == "" {
+		linkType = types.LinkTypeOther
+	} else if !types.IsValidLinkType(string(linkType)) {
+		return "", "", false
+	}
+	return raw, linkType, true
+}
+
+func (p *ComponentMonitorReportProcessor) applyReportedLinks(outageID uint, reported []types.ReportedLink, monitorName string, logger *logrus.Entry) {
+	seen := make(map[string]struct{}, len(reported))
+	for _, link := range reported {
+		rawURL, linkType, ok := normalizeReportedLink(link)
+		if !ok {
+			logger.WithField("url", link.URL).Warn("Skipping invalid reported link")
+			continue
+		}
+		if _, dup := seen[rawURL]; dup {
+			continue
+		}
+		seen[rawURL] = struct{}{}
+		if err := p.outageManager.AddOutageLink(&types.OutageLink{
+			OutageID: outageID,
+			URL:      rawURL,
+			LinkType: linkType,
+		}, monitorName); err != nil {
+			logger.WithFields(logrus.Fields{
+				"outage_id": outageID,
+				"url":       rawURL,
+				"error":     err,
+			}).Error("Failed to add reported link")
+		}
+	}
 }

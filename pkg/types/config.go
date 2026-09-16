@@ -107,6 +107,10 @@ type Monitoring struct {
 	// AutoResolve is a flag that indicates whether outages discovered by the component-monitor should be automatically resolved when
 	// the component-monitor reports the sub-component is healthy.
 	AutoResolve bool `json:"auto_resolve" yaml:"auto_resolve"`
+	// OutagePerReason, when true, treats each incoming probe Reason (Type+Check) as its own outage
+	// instead of one outage per sub-component. Extra active outages whose reasons left the set are
+	// auto-resolved when AutoResolve is true.
+	OutagePerReason bool `json:"outage_per_reason,omitempty" yaml:"outage_per_reason,omitempty"`
 }
 
 // Owner represents ownership information for a component, either via Rover group or service account.
@@ -122,13 +126,18 @@ type Owner struct {
 // ComponentMonitorConfig contains the configuration for the component monitor.
 type ComponentMonitorConfig struct {
 	Components []MonitoringComponent `json:"components" yaml:"components"`
-	Frequency  string                `json:"frequency" yaml:"frequency"`
+	// Frequency is the orchestrator tick and the default cadence for component entries
+	// that do not set their own frequency.
+	Frequency string `json:"frequency" yaml:"frequency"`
 }
 
 // MonitoringComponent contains the configuration for a sub-component monitor in the component monitor.
 type MonitoringComponent struct {
 	ComponentSlug    string `json:"component_slug" yaml:"component_slug"`
 	SubComponentSlug string `json:"sub_component_slug" yaml:"sub_component_slug"`
+	// Frequency overrides the instance-level probe cadence for every monitor on this entry.
+	// If empty, the instance frequency is used. Must be a duration >= the instance frequency.
+	Frequency string `json:"frequency,omitempty" yaml:"frequency,omitempty"`
 	// PrometheusMonitors is the configuration for the Prometheus monitor
 	PrometheusMonitor *PrometheusMonitor `json:"prometheus_monitor" yaml:"prometheus_monitor"`
 	// HTTPMonitor is the configuration for the HTTP monitor
@@ -137,6 +146,18 @@ type MonitoringComponent struct {
 	SystemdMonitor *SystemdMonitor `json:"systemd_monitor,omitempty" yaml:"systemd_monitor,omitempty"`
 	// JUnitMonitor configures Prow GCS JUnit probing when set (optional).
 	JUnitMonitor *JUnitMonitor `json:"junit_monitor,omitempty" yaml:"junit_monitor,omitempty"`
+	// JiraMonitor configures Jira JQL probing when set (optional).
+	JiraMonitor *JiraMonitor `json:"jira_monitor,omitempty" yaml:"jira_monitor,omitempty"`
+}
+
+// JiraMonitor configures searching Jira for issues that should surface as outages.
+type JiraMonitor struct {
+	// URL is the Jira Cloud base URL (e.g. https://redhat.atlassian.net).
+	URL string `json:"url" yaml:"url"`
+	// JQL is the query for currently open issues. Required.
+	JQL string `json:"jql" yaml:"jql"`
+	// Severity is the severity of the outage created for each matching issue. Defaults to Degraded.
+	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 }
 
 type PrometheusMonitor struct {

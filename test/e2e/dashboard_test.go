@@ -60,6 +60,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("Tags", testTags(client))
 	t.Run("User", testUser(client))
 	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
+	t.Run("ComponentMonitorPerReasonReport", testComponentMonitorPerReasonReport(client))
 	t.Run("TriageNotes", testTriageNotes(client))
 	t.Run("OutageLinks", testOutageLinks(client))
 	t.Run("ServiceAccountOutages", testServiceAccountOutages(client))
@@ -93,7 +94,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 6)
+		assert.Len(t, components, 7)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
@@ -150,6 +151,12 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "ERT", components[5].ShipTeam)
 		assert.Len(t, components[5].Subcomponents, 1)
 		assert.Equal(t, "systemd-test", components[5].Subcomponents[0].Name)
+
+		assert.Equal(t, "TRT Incidents", components[6].Name)
+		assert.Equal(t, "TRT Jira incidents labeled trt-incident", components[6].Description)
+		assert.Equal(t, "TRT", components[6].ShipTeam)
+		assert.Len(t, components[6].Subcomponents, 1)
+		assert.Equal(t, "Incidents", components[6].Subcomponents[0].Name)
 	}
 }
 
@@ -1173,8 +1180,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Prow, Downstream CI, Build Farm, Boskos, Sippy, and Errata Reliability
-			assert.Len(t, allStatuses, 6)
+			// Prow, Downstream CI, Build Farm, Boskos, Sippy, Errata Reliability, and TRT Incidents
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
@@ -1219,8 +1226,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Prow, Downstream CI, Build Farm, Boskos, Sippy, and Errata Reliability
-			assert.Len(t, allStatuses, 6)
+			// Prow, Downstream CI, Build Farm, Boskos, Sippy, Errata Reliability, and TRT Incidents
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1242,7 +1249,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1268,7 +1275,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
 				if allStatuses[i].ComponentName == prowComponentName {
@@ -1289,7 +1296,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1320,7 +1327,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1367,8 +1374,8 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("no filters returns all sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "", "", "")
-			// Prow 4 + Downstream CI 1 + Build Farm 2 + Boskos 2 + Sippy 5 + Errata Reliability 1
-			assert.Len(t, subs, 15)
+			// Prow 4 + Downstream CI 1 + Build Farm 2 + Boskos 2 + Sippy 5 + Errata Reliability 1 + TRT Incidents 1
+			assert.Len(t, subs, 16)
 			for _, sub := range subs {
 				assert.NotEmpty(t, sub.Status)
 			}
@@ -2163,6 +2170,209 @@ func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
 	}
 }
 
+const (
+	trtIncidentsComponent = "TRT Incidents"
+	trtIncidentsSub       = "Incidents"
+)
+
+func jiraBrowseURL(key string) string {
+	return "https://redhat.atlassian.net/browse/" + key
+}
+
+func jiraReportReason(key, summary string, withLink bool) types.Reason {
+	reason := types.Reason{
+		Type:    types.CheckTypeJira,
+		Check:   key,
+		Results: summary,
+	}
+	if withLink {
+		reason.Links = []types.ReportedLink{{
+			URL:      jiraBrowseURL(key),
+			LinkType: types.LinkTypeJira,
+		}}
+	}
+	return reason
+}
+
+func postTRTIncidentReport(t *testing.T, client *TestHTTPClient, status types.Status, reasons []types.Reason) {
+	t.Helper()
+	postComponentMonitorReport(t, client, componentMonitorSAToken, types.ComponentMonitorReportRequest{
+		ComponentMonitor: "app-ci-component-monitor",
+		Statuses: []types.ComponentMonitorReportComponentStatus{
+			{
+				ComponentSlug:    utils.Slugify(trtIncidentsComponent),
+				SubComponentSlug: utils.Slugify(trtIncidentsSub),
+				Status:           status,
+				Reasons:          reasons,
+			},
+		},
+	})
+}
+
+func activeJiraOutagesByCheck(outages []types.Outage) map[string]types.Outage {
+	byCheck := make(map[string]types.Outage)
+	for _, outage := range outages {
+		if outage.EndTime.Valid || outage.CreatedBy != "app-ci-component-monitor" || outage.DiscoveredFrom != "component-monitor" {
+			continue
+		}
+		if len(outage.Reasons) == 0 || outage.Reasons[0].Type != types.CheckTypeJira {
+			continue
+		}
+		byCheck[outage.Reasons[0].Check] = outage
+	}
+	return byCheck
+}
+
+func jiraOutageByCheck(outages []types.Outage, check string) *types.Outage {
+	var found *types.Outage
+	for i := range outages {
+		outage := &outages[i]
+		if outage.CreatedBy != "app-ci-component-monitor" || outage.DiscoveredFrom != "component-monitor" {
+			continue
+		}
+		if len(outage.Reasons) == 0 || outage.Reasons[0].Type != types.CheckTypeJira || outage.Reasons[0].Check != check {
+			continue
+		}
+		if found == nil || outage.ID > found.ID {
+			found = outage
+		}
+	}
+	return found
+}
+
+func testComponentMonitorPerReasonReport(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+
+		t.Run("two Jira reasons create two active outages with summaries and links", func(t *testing.T) {
+			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-1", "First incident", true),
+				jiraReportReason("TRT-2", "Second incident", true),
+			})
+
+			byCheck := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Len(t, byCheck, 2)
+			first, ok := byCheck["TRT-1"]
+			require.True(t, ok, "expected active outage for TRT-1")
+			second, ok := byCheck["TRT-2"]
+			require.True(t, ok, "expected active outage for TRT-2")
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, first.ID)
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, second.ID)
+
+			assert.Equal(t, "First incident", first.Description)
+			assert.Equal(t, "Second incident", second.Description)
+			assert.Equal(t, "app-ci-component-monitor", first.CreatedBy)
+			assert.Equal(t, "app-ci-component-monitor", second.CreatedBy)
+			assert.Equal(t, string(types.SeverityDegraded), string(first.Severity))
+			assert.Equal(t, string(types.SeverityDegraded), string(second.Severity))
+
+			fetchedFirst := getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, first.ID)
+			require.Len(t, fetchedFirst.Links, 1)
+			assert.Equal(t, jiraBrowseURL("TRT-1"), fetchedFirst.Links[0].URL)
+			assert.Equal(t, types.LinkTypeJira, fetchedFirst.Links[0].LinkType)
+
+			fetchedSecond := getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, second.ID)
+			require.Len(t, fetchedSecond.Links, 1)
+			assert.Equal(t, jiraBrowseURL("TRT-2"), fetchedSecond.Links[0].URL)
+			assert.Equal(t, types.LinkTypeJira, fetchedSecond.Links[0].LinkType)
+		})
+
+		t.Run("second report with only TRT-2 auto-resolves TRT-1", func(t *testing.T) {
+			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-1", "First incident", true),
+				jiraReportReason("TRT-2", "Second incident", true),
+			})
+			created := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Len(t, created, 2)
+			firstID := created["TRT-1"].ID
+			secondID := created["TRT-2"].ID
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, firstID)
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, secondID)
+
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-2", "Second incident", true),
+			})
+
+			outages := getOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			active := activeJiraOutagesByCheck(outages)
+			require.Len(t, active, 1)
+			_, ok := active["TRT-2"]
+			require.True(t, ok, "TRT-2 should stay active")
+			_, ok = active["TRT-1"]
+			require.False(t, ok, "TRT-1 should no longer be active")
+
+			resolved := jiraOutageByCheck(outages, "TRT-1")
+			require.NotNil(t, resolved)
+			assert.Equal(t, firstID, resolved.ID)
+			assert.True(t, resolved.EndTime.Valid)
+		})
+
+		t.Run("empty healthy reasons auto-resolve remaining outage", func(t *testing.T) {
+			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-2", "Second incident", true),
+			})
+			created := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Contains(t, created, "TRT-2")
+			remainingID := created["TRT-2"].ID
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, remainingID)
+
+			postTRTIncidentReport(t, client, types.StatusHealthy, nil)
+
+			outages := getOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			assert.Empty(t, activeJiraOutagesByCheck(outages))
+			resolved := jiraOutageByCheck(outages, "TRT-2")
+			require.NotNil(t, resolved)
+			assert.Equal(t, remainingID, resolved.ID)
+			assert.True(t, resolved.EndTime.Valid)
+		})
+
+		t.Run("reporting the same two keys again does not duplicate", func(t *testing.T) {
+			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			reasons := []types.Reason{
+				jiraReportReason("TRT-1", "First incident", true),
+				jiraReportReason("TRT-2", "Second incident", true),
+			}
+			postTRTIncidentReport(t, client, types.StatusDegraded, reasons)
+			first := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Len(t, first, 2)
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, first["TRT-1"].ID)
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, first["TRT-2"].ID)
+
+			postTRTIncidentReport(t, client, types.StatusDegraded, reasons)
+
+			second := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Len(t, second, 2)
+			assert.Equal(t, first["TRT-1"].ID, second["TRT-1"].ID)
+			assert.Equal(t, first["TRT-2"].ID, second["TRT-2"].ID)
+		})
+
+		t.Run("reporting links later does not backfill an existing outage", func(t *testing.T) {
+			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-1", "First incident", false),
+			})
+			created := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Contains(t, created, "TRT-1")
+			outageID := created["TRT-1"].ID
+			defer deleteOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID)
+
+			assert.Empty(t, getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID).Links)
+
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-1", "First incident", true),
+			})
+
+			assert.Empty(t, getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID).Links)
+			active := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
+			require.Len(t, active, 1)
+			assert.Equal(t, outageID, active["TRT-1"].ID)
+		})
+	}
+}
+
 func testAbsentReport(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("Absent report checker creates outage when no ping exists, and resolves when ping is received", func(t *testing.T) {
@@ -2421,16 +2631,19 @@ func cleanupAbsentReportOutages(t *testing.T, client *TestHTTPClient) {
 	// Seed pings for monitored sub-components to prevent absent report checker from creating outages
 	sendAllClearPing(t, client, "Prow", "Hook")
 	sendAllClearPing(t, client, "Prow", "Plank")
+	sendAllClearPing(t, client, "TRT Incidents", "Incidents")
 
 	// Clean up any outages created by absent report checker before the pings were seeded
 	deleteOutagesFromAbsentReport(t, client, "Prow", "Hook")
 	deleteOutagesFromAbsentReport(t, client, "Prow", "Plank")
+	deleteOutagesFromAbsentReport(t, client, "TRT Incidents", "Incidents")
 }
 
 // sendAllClearPing sends a healthy component monitor report to seed a ping in the database,
 // preventing the absent report checker from creating an immediate outage.
 func sendAllClearPing(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
-	reportPayload := types.ComponentMonitorReportRequest{
+	t.Helper()
+	postComponentMonitorReport(t, client, componentMonitorSAToken, types.ComponentMonitorReportRequest{
 		ComponentMonitor: "app-ci-component-monitor",
 		Statuses: []types.ComponentMonitorReportComponentStatus{
 			{
@@ -2440,15 +2653,7 @@ func sendAllClearPing(t *testing.T, client *TestHTTPClient, componentName, subCo
 				Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 			},
 		},
-	}
-
-	payloadBytes, err := json.Marshal(reportPayload)
-	require.NoError(t, err)
-
-	resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-	require.NoError(t, err)
-	resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Failed to send all-clear ping for %s/%s", componentName, subComponentName)
+	})
 }
 
 // cleanupAbsentReportOutages deletes any outages created by the absent report checker for a given component.

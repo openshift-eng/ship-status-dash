@@ -19,6 +19,7 @@ type MockOutageManager struct {
 		Reasons []types.Reason
 	}
 	UpdatedOutages []*types.Outage
+	AddedLinks     []*types.OutageLink
 
 	// Mock functions
 	CreateOutageFn                          func(*types.Outage, []types.Reason, string) error
@@ -31,6 +32,7 @@ type MockOutageManager struct {
 	GetActiveSuspectedOutagesForComponentFn func(string) ([]types.Outage, error)
 	GetActiveSuspectedOutagesFn             func(string, string) ([]types.Outage, error)
 	FindReopenableOutageFn                  func(string, string, string, time.Time, []types.Reason) (*types.Outage, error)
+	nextCreatedID                           uint
 	GetOutagesDuringFn                      func(time.Time, time.Time, []types.SubComponentRef) ([]types.Outage, error)
 	GetStaleSuspectedOutagesFn              func(time.Time) ([]types.Outage, error)
 
@@ -54,6 +56,10 @@ func (m *MockOutageManager) GetActiveOutagesCreatedBy(componentSlug, subComponen
 func (m *MockOutageManager) CreateOutage(outage *types.Outage, reasons []types.Reason, user, initialTriageNote string) error {
 	if m.CreateOutageFn != nil {
 		return m.CreateOutageFn(outage, reasons, initialTriageNote)
+	}
+	if outage.ID == 0 {
+		m.nextCreatedID++
+		outage.ID = m.nextCreatedID
 	}
 	// Capture the outage and reasons
 	outageCopy := *outage
@@ -215,6 +221,10 @@ func (m *MockOutageManager) DeleteTriageNote(outageID, noteID uint, user string)
 }
 
 func (m *MockOutageManager) AddOutageLink(link *types.OutageLink, user string) error {
+	if link != nil {
+		linkCopy := *link
+		m.AddedLinks = append(m.AddedLinks, &linkCopy)
+	}
 	return nil
 }
 

@@ -58,6 +58,9 @@ func setDefaultSeverityValues(config *types.ComponentMonitorConfig) {
 				}
 			}
 		}
+		if config.Components[i].JiraMonitor != nil && config.Components[i].JiraMonitor.Severity == "" {
+			config.Components[i].JiraMonitor.Severity = types.SeverityDegraded
+		}
 	}
 }
 

@@ -10,6 +10,7 @@ The component-monitor supports these types of monitoring:
 2. **Prometheus Monitoring**: Executes Prometheus queries (both instant and range queries) to check component health
 3. **JUnit Monitoring**: Fetches a Prow canary’s JUnit XML from GCS (or the GCSweb URL style) and derives health from that file
 4. **Systemd Monitoring** (if enabled in config): Probes a systemd unit on a host
+5. **Jira Monitoring**: Searches Jira Cloud for matching issues and reports each as a probe reason
 
 ## Architecture
 
@@ -54,6 +55,32 @@ junit_monitor:
   failed_runs_threshold: 3            # 3+ runs in last 5 must share one failure pattern
 ```
 
+## Jira monitor (`jira_monitor`)
+
+Use this to surface matching Jira issues as dashboard outages. Only the issue summary is sent as `Reason.Results` and stored on `Outage.Description`. The Jira description body is never copied.
+
+Requests are unauthenticated. The JQL must match issues that anonymous callers can Browse (for example TRT and OCPBUGS on `redhat.atlassian.net`). Restricted issues are omitted by Jira itself. Do not add Jira credentials to the component-monitor.
+
+If omitted, **jira_monitor.severity** defaults to **Degraded**. `jql` is required.
+
+Set `frequency` on the component entry (sibling of `jira_monitor`) to run this probe less often than the instance default. The orchestrator only starts due probes and omits the rest from the report. Set the dashboard sub-component `monitoring.frequency` to the same value so the absent-report checker does not treat the silence as a missing monitor (its threshold is 5x frequency).
+
+Dashboard sub-components that should create one outage per Jira issue must set `monitoring.outage_per_reason: true` (with `auto_resolve: true`). Without that flag, the dashboard still creates at most one active outage per sub-component.
+
+The example JQL matches the Refinement and In Progress columns on the [TRT Incidents board](https://redhat.atlassian.net/jira/software/c/projects/TRT/boards/10048). `statusCategory != Done` is too broad: statuses such as `ON_QA` are still "In Progress" in Jira but sit in that board's Done column.
+
+**Example:**
+
+```yaml
+- component_slug: "trt-incidents"
+  sub_component_slug: "incidents"
+  frequency: 5m
+  jira_monitor:
+    url: "https://redhat.atlassian.net"
+    jql: 'labels = trt-incident AND status in ("Planning", "New", "Refinement", "To Do", "Approved", "Dev Complete", "Review", "In Progress", "Testing", "ASSIGNED", "POST")'
+    severity: "Degraded"
+```
+
 ## Configuration
 
 The component-monitor is configured via command-line flags and a YAML configuration file:
@@ -87,7 +114,15 @@ components:
           duration: "5m"
           step: "30s"
           severity: "Down"  # Optional: severity when query fails (defaults to "Down")
+  - component_slug: "trt-incidents"
+    sub_component_slug: "incidents"
+    frequency: 30m
+    jira_monitor:
+      url: "https://redhat.atlassian.net"
+      jql: 'labels = trt-incident AND status in ("Planning", "New", "Refinement", "To Do", "Approved", "Dev Complete", "Review", "In Progress", "Testing", "ASSIGNED", "POST")'
 ```
+
+Instance `frequency` is the orchestrator tick and the default cadence. An entry may set its own `frequency` (sibling of the `*_monitor` blocks) to run less often. The override must be at least the instance frequency. Every monitor on that entry shares the same cadence. Multiple YAML entries for the same component/sub-component must resolve to the same frequency.
 
 **Prometheus Query Configuration:**
 - `query`: The Prometheus query to run (must return results for healthy state)
@@ -207,8 +242,8 @@ components:
 ## How It Works
 
 1. The component-monitor loads the configuration file and validates all settings
-2. For each configured component, it creates appropriate probers (HTTP, Prometheus, JUnit, systemd, etc.)
-3. At the configured frequency, it runs all probes concurrently
+2. For each configured component, it creates appropriate probers (HTTP, Prometheus, JUnit, systemd, Jira, etc.)
+3. At the instance frequency, it starts probes that are due, waits for those results, and reports only the probes that ran
 4. Probe results are aggregated and sent to the dashboard API via POST to `/api/component-monitor/report` with bearer token authentication
 5. The dashboard API processes the reports and creates/resolves outages accordingly
 

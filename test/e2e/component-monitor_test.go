@@ -336,6 +336,26 @@ func cleanupActiveOutages(t *testing.T, client *TestHTTPClient, componentName, s
 	}
 }
 
+// cleanupOutages deletes all outages for a component/sub-component, including resolved ones.
+func cleanupOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
+	t.Helper()
+	outages := getOutages(t, client, componentName, subComponentName)
+	deleted := 0
+	for _, outage := range outages {
+		resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+			utils.Slugify(componentName), utils.Slugify(subComponentName), outage.ID))
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusNoContent {
+				deleted++
+			}
+		}
+	}
+	if deleted > 0 {
+		time.Sleep(2 * time.Second)
+	}
+}
+
 // waitForOutageCreated polls the outage API until an outage is created by component-monitor or times out.
 func waitForOutageCreated(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, timeout time.Duration) *types.Outage {
 	var foundOutage *types.Outage

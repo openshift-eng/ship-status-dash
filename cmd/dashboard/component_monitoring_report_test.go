@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestComponentMonitorReportProcessor_Process(t *testing.T) {
@@ -452,6 +453,37 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				assert.Equal(t, "test-component", created.Outage.ComponentName)
 				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
 				assert.Len(t, created.Reasons, 3, "Should create all three reasons")
+				assert.Equal(t, "Component monitor detected outage", created.Outage.Description)
+				assert.Empty(t, m.AddedLinks)
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
+			name:   "unions reason links onto one outage",
+			config: repositories.TestConfig(true, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReasonWithLink("TRT-1", "First incident", "https://redhat.atlassian.net/browse/TRT-1"),
+							jiraReasonWithLink("TRT-2", "Second incident", "https://redhat.atlassian.net/browse/TRT-2"),
+						},
+					},
+				},
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				require.Len(t, m.AddedLinks, 2)
+				assert.Equal(t, m.CreatedOutages[0].Outage.ID, m.AddedLinks[0].OutageID)
+				assert.Equal(t, m.CreatedOutages[0].Outage.ID, m.AddedLinks[1].OutageID)
+				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
+				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-2", m.AddedLinks[1].URL)
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -489,6 +521,310 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 
 			if tt.verifyPingExpectations != nil {
 				tt.verifyPingExpectations(t, pingRepo)
+			}
+		})
+	}
+}
+
+func perReasonTestConfig(autoResolve bool) *types.DashboardConfig {
+	cfg := repositories.TestConfig(autoResolve, false)
+	cfg.Components[0].Subcomponents[0].Monitoring.OutagePerReason = true
+	return cfg
+}
+
+func jiraReason(key, summary string) types.Reason {
+	return types.Reason{Type: types.CheckTypeJira, Check: key, Results: summary}
+}
+
+func jiraReasonWithLink(key, summary, browse string) types.Reason {
+	reason := jiraReason(key, summary)
+	reason.Links = []types.ReportedLink{{URL: browse, LinkType: types.LinkTypeJira}}
+	return reason
+}
+
+func jiraOutage(id uint, key, summary string) types.Outage {
+	outage := types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-subcomponent",
+		CreatedBy:        "test-monitor",
+		Description:      summary,
+		Reasons:          []types.Reason{jiraReason(key, summary)},
+	}
+	outage.ID = id
+	return outage
+}
+
+func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	tests := []struct {
+		name                     string
+		config                   *types.DashboardConfig
+		request                  *types.ComponentMonitorReportRequest
+		setupOutageManager       func(*outage.MockOutageManager)
+		verifyOutageExpectations func(*testing.T, *outage.MockOutageManager)
+	}{
+		{
+			name:   "two reasons create two outages",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReason("TRT-1", "First incident"),
+							jiraReason("TRT-2", "Second incident"),
+						},
+					},
+				},
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 2)
+				assert.Equal(t, "First incident", m.CreatedOutages[0].Outage.Description)
+				assert.Equal(t, "Second incident", m.CreatedOutages[1].Outage.Description)
+				assert.Equal(t, []types.Reason{jiraReason("TRT-1", "First incident")}, m.CreatedOutages[0].Reasons)
+				assert.Equal(t, []types.Reason{jiraReason("TRT-2", "Second incident")}, m.CreatedOutages[1].Reasons)
+			},
+		},
+		{
+			name:   "dropping one reason resolves only that outage",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{jiraReason("TRT-2", "Second incident")},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				a := jiraOutage(1, "TRT-1", "First incident")
+				a.ID = 1
+				b := jiraOutage(2, "TRT-2", "Second incident")
+				b.ID = 2
+				m.ActiveOutagesCreatedBy = []types.Outage{a, b}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages)
+				assert.Len(t, m.UpdatedOutages, 1)
+				assert.Equal(t, uint(1), m.UpdatedOutages[0].ID)
+				assert.True(t, m.UpdatedOutages[0].EndTime.Valid)
+			},
+		},
+		{
+			name:   "healthy empty reasons resolve remaining outages",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusHealthy,
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				a := jiraOutage(1, "TRT-1", "First incident")
+				a.ID = 1
+				m.ActiveOutagesCreatedBy = []types.Outage{a}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages)
+				assert.Len(t, m.UpdatedOutages, 1)
+				assert.True(t, m.UpdatedOutages[0].EndTime.Valid)
+			},
+		},
+		{
+			name:   "does not duplicate an active reason",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{jiraReason("TRT-1", "First incident")},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				a := jiraOutage(1, "TRT-1", "First incident")
+				a.ID = 1
+				m.ActiveOutagesCreatedBy = []types.Outage{a}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages)
+				assert.Empty(t, m.UpdatedOutages)
+				assert.Empty(t, m.AddedLinks)
+			},
+		},
+		{
+			name:   "updates description when summary changes",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{jiraReason("TRT-1", "Updated summary")},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				a := jiraOutage(1, "TRT-1", "Old summary")
+				a.ID = 1
+				m.ActiveOutagesCreatedBy = []types.Outage{a}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages)
+				assert.Len(t, m.UpdatedOutages, 1)
+				assert.Equal(t, "Updated summary", m.UpdatedOutages[0].Description)
+				assert.False(t, m.UpdatedOutages[0].EndTime.Valid)
+			},
+		},
+		{
+			name:   "reopens flap-window outage by type and check",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons:          []types.Reason{jiraReason("TRT-1", "First incident")},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				closed := jiraOutage(7, "TRT-1", "First incident")
+				closed.ID = 7
+				closed.EndTime = sql.NullTime{Time: time.Now().Add(-10 * time.Minute), Valid: true}
+				m.RecentlyClosedOutages = []types.Outage{closed}
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Empty(t, m.CreatedOutages)
+				assert.Len(t, m.UpdatedOutages, 1)
+				assert.Equal(t, uint(7), m.UpdatedOutages[0].ID)
+				assert.False(t, m.UpdatedOutages[0].EndTime.Valid)
+			},
+		},
+		{
+			name:   "two reasons with links attach one link per outage",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReasonWithLink("TRT-1", "First incident", "https://redhat.atlassian.net/browse/TRT-1"),
+							jiraReasonWithLink("TRT-2", "Second incident", "https://redhat.atlassian.net/browse/TRT-2"),
+						},
+					},
+				},
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 2)
+				require.Len(t, m.AddedLinks, 2)
+				assert.Equal(t, uint(1), m.AddedLinks[0].OutageID)
+				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
+				assert.Equal(t, types.LinkTypeJira, m.AddedLinks[0].LinkType)
+				assert.Equal(t, uint(2), m.AddedLinks[1].OutageID)
+				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-2", m.AddedLinks[1].URL)
+				assert.Equal(t, types.LinkTypeJira, m.AddedLinks[1].LinkType)
+			},
+		},
+		{
+			name:   "invalid reported link is skipped",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    types.CheckTypeJira,
+								Check:   "TRT-1",
+								Results: "First incident",
+								Links: []types.ReportedLink{
+									{URL: "not-a-url", LinkType: types.LinkTypeJira},
+									{URL: "https://redhat.atlassian.net/browse/TRT-1", LinkType: types.LinkTypeJira},
+								},
+							},
+						},
+					},
+				},
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 1)
+				require.Len(t, m.AddedLinks, 1)
+				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
+			},
+		},
+		{
+			name:   "empty link type defaults to other",
+			config: perReasonTestConfig(true),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							{
+								Type:    types.CheckTypeJira,
+								Check:   "TRT-1",
+								Results: "First incident",
+								Links:   []types.ReportedLink{{URL: "https://example.com/runbook"}},
+							},
+						},
+					},
+				},
+			},
+			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
+				require.Len(t, m.AddedLinks, 1)
+				assert.Equal(t, types.LinkTypeOther, m.AddedLinks[0].LinkType)
+				assert.Equal(t, "https://example.com/runbook", m.AddedLinks[0].URL)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pingRepo := &repositories.MockComponentPingRepository{}
+			mockOutageManager := &outage.MockOutageManager{}
+			if tt.setupOutageManager != nil {
+				tt.setupOutageManager(mockOutageManager)
+			}
+			processor := &ComponentMonitorReportProcessor{
+				outageManager: mockOutageManager,
+				pingRepo:      pingRepo,
+				configManager: config.CreateTestConfigManager(tt.config),
+				logger:        logger,
+			}
+			err := processor.Process(tt.request)
+			assert.NoError(t, err)
+			assert.Len(t, pingRepo.UpsertedPings, 1)
+			if tt.verifyOutageExpectations != nil {
+				tt.verifyOutageExpectations(t, mockOutageManager)
 			}
 		})
 	}

@@ -22,3 +22,9 @@ components:
       queries:
         - query: "data_load_failure == 0"
           failure_query: "data_load_failure"
+  - component_slug: "trt-incidents"
+    sub_component_slug: "incidents"
+    frequency: 5m
+    jira_monitor:
+      url: "https://redhat.atlassian.net"
+      jql: 'labels = trt-incident AND status in ("Planning", "New", "Refinement", "To Do", "Approved", "Dev Complete", "Review", "In Progress", "Testing", "ASSIGNED", "POST")'

@@ -65,6 +65,7 @@ const AddLinkRow = styled(Box)(({ theme }) => ({
 const LINK_TYPE_OPTIONS = [
   { value: 'incident_channel_thread', label: 'Incident Channel/Thread' },
   { value: 'rca', label: 'RCA' },
+  { value: 'jira', label: 'Jira' },
   { value: 'other', label: 'Other' },
 ] as const
 

@@ -160,6 +160,22 @@ components:
     owners:
       - user: developer
       - service_account: system:serviceaccount:ship-status:component-monitor
+  - name: TRT Incidents
+    description: TRT Jira incidents labeled trt-incident
+    ship_team: TRT
+    sub_components:
+      - name: Incidents
+        description: Currently open TRT incidents
+        critical: true
+        requires_confirmation: false
+        monitoring:
+          frequency: 5m
+          component_monitor: "app-ci-component-monitor"
+          auto_resolve: true
+          outage_per_reason: true
+    owners:
+      - user: developer
+      - service_account: system:serviceaccount:ship-status:component-monitor
 tags:
   - name: CI
     description: "Core CI infrastructure components"

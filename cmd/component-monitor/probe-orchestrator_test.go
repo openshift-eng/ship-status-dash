@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,7 +75,7 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 			}
 
 			orchestrator := NewProbeOrchestrator(
-				probers,
+				scheduleAtFrequency(probers, 100*time.Millisecond),
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
@@ -91,8 +93,13 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				}()
 			}
 
+			expected := len(tt.probeResults)
 			if tt.timeout {
 				orchestrator.frequency = 10 * time.Millisecond
+				expected = 1
+			}
+			if tt.cancelContext {
+				expected = 1
 			}
 
 			go func() {
@@ -102,7 +109,7 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				}
 			}()
 
-			results := orchestrator.collectProbeResults(ctx)
+			results := orchestrator.collectProbeResults(ctx, expected)
 			if diff := cmp.Diff(tt.probeResults, results, testhelper.EquateErrorMessage); diff != "" {
 				t.Errorf("collectProbeResults() mismatch (-want +got):\n%s", diff)
 			}
@@ -151,7 +158,7 @@ func TestProbeOrchestrator_drainChannels(t *testing.T) {
 			log.SetLevel(logrus.ErrorLevel)
 
 			orchestrator := NewProbeOrchestrator(
-				[]Prober{},
+				scheduleAtFrequency([]Prober{}, 100*time.Millisecond),
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
@@ -212,7 +219,7 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 			log.SetLevel(logrus.ErrorLevel)
 
 			orchestrator := NewProbeOrchestrator(
-				[]Prober{},
+				scheduleAtFrequency([]Prober{}, tt.frequency),
 				tt.frequency,
 				"http://test",
 				"test-monitor",
@@ -519,5 +526,255 @@ func TestMergeStatusesByComponent(t *testing.T) {
 				t.Errorf("mergeStatusesByComponent() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+type countingProber struct {
+	calls  *atomic.Int32
+	result ProbeResult
+}
+
+func (p *countingProber) Probe(ctx context.Context, results chan<- ProbeResult) {
+	p.calls.Add(1)
+	results <- p.result
+}
+
+type fakeReporter struct {
+	mu      sync.Mutex
+	reports [][]types.ComponentMonitorReportComponentStatus
+	prints  int
+}
+
+func (f *fakeReporter) SendReport(results []types.ComponentMonitorReportComponentStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	copied := append([]types.ComponentMonitorReportComponentStatus(nil), results...)
+	f.reports = append(f.reports, copied)
+	return nil
+}
+
+func (f *fakeReporter) PrintReport(results []types.ComponentMonitorReportComponentStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prints++
+	return nil
+}
+
+func (f *fakeReporter) reportCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.reports)
+}
+
+func TestScheduledProberDue(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name      string
+		frequency time.Duration
+		hasOK     bool
+		lastOKAgo time.Duration
+		want      bool
+	}{
+		{
+			name:      "never succeeded is due",
+			frequency: time.Minute,
+			want:      true,
+		},
+		{
+			name:      "success within frequency is not due",
+			frequency: time.Minute,
+			hasOK:     true,
+			lastOKAgo: 10 * time.Second,
+			want:      false,
+		},
+		{
+			name:      "success older than frequency is due",
+			frequency: time.Minute,
+			hasOK:     true,
+			lastOKAgo: 2 * time.Minute,
+			want:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &scheduledProber{frequency: tt.frequency, hasOK: tt.hasOK}
+			if tt.hasOK {
+				s.lastOK = now.Add(-tt.lastOKAgo)
+			}
+			if got := s.due(now); got != tt.want {
+				t.Errorf("due() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProbeOrchestrator_runOnce(t *testing.T) {
+	healthy := ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    "comp",
+			SubComponentSlug: "sub",
+			Status:           types.StatusHealthy,
+		},
+		ProbeType: ProbeTypeHTTP,
+	}
+	errored := ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    "comp",
+			SubComponentSlug: "slow",
+		},
+		ProbeType: ProbeTypeJira,
+		Error:     errors.New("search failed"),
+	}
+
+	t.Run("override frequency probe is not invoked until due", func(t *testing.T) {
+		var defaultCalls, overrideCalls atomic.Int32
+		reporter := &fakeReporter{}
+		log := logrus.New()
+		log.SetLevel(logrus.ErrorLevel)
+		o := NewProbeOrchestrator(
+			[]scheduledProber{
+				{prober: &countingProber{calls: &defaultCalls, result: healthy}, frequency: 10 * time.Millisecond},
+				{prober: &countingProber{calls: &overrideCalls, result: healthy}, frequency: time.Hour, hasOK: true, lastOK: time.Now()},
+			},
+			10*time.Millisecond,
+			"http://test",
+			"test-monitor",
+			"",
+			log,
+		)
+		o.reportClient = reporter
+
+		o.runOnce(context.Background())
+
+		if defaultCalls.Load() != 1 {
+			t.Errorf("default probe calls = %d, want 1", defaultCalls.Load())
+		}
+		if overrideCalls.Load() != 0 {
+			t.Errorf("override probe calls = %d, want 0", overrideCalls.Load())
+		}
+		if reporter.reportCount() != 1 {
+			t.Errorf("reports = %d, want 1", reporter.reportCount())
+		}
+	})
+
+	t.Run("success defers until frequency elapses", func(t *testing.T) {
+		var calls atomic.Int32
+		reporter := &fakeReporter{}
+		log := logrus.New()
+		log.SetLevel(logrus.ErrorLevel)
+		o := NewProbeOrchestrator(
+			[]scheduledProber{
+				{prober: &countingProber{calls: &calls, result: healthy}, frequency: time.Hour},
+			},
+			10*time.Millisecond,
+			"http://test",
+			"test-monitor",
+			"",
+			log,
+		)
+		o.reportClient = reporter
+
+		o.runOnce(context.Background())
+		o.runOnce(context.Background())
+
+		if calls.Load() != 1 {
+			t.Errorf("probe calls = %d, want 1", calls.Load())
+		}
+		if reporter.reportCount() != 1 {
+			t.Errorf("reports = %d, want 1", reporter.reportCount())
+		}
+	})
+
+	t.Run("error does not advance lastOK", func(t *testing.T) {
+		var calls atomic.Int32
+		reporter := &fakeReporter{}
+		log := logrus.New()
+		log.SetLevel(logrus.ErrorLevel)
+		o := NewProbeOrchestrator(
+			[]scheduledProber{
+				{prober: &countingProber{calls: &calls, result: errored}, frequency: time.Hour},
+			},
+			10*time.Millisecond,
+			"http://test",
+			"test-monitor",
+			"",
+			log,
+		)
+		o.reportClient = reporter
+
+		o.runOnce(context.Background())
+		o.runOnce(context.Background())
+
+		if calls.Load() != 2 {
+			t.Errorf("erroring probe calls = %d, want 2", calls.Load())
+		}
+	})
+
+	t.Run("empty due set does not send report", func(t *testing.T) {
+		var calls atomic.Int32
+		reporter := &fakeReporter{}
+		log := logrus.New()
+		log.SetLevel(logrus.ErrorLevel)
+		o := NewProbeOrchestrator(
+			[]scheduledProber{
+				{prober: &countingProber{calls: &calls, result: healthy}, frequency: time.Hour, hasOK: true, lastOK: time.Now()},
+			},
+			10*time.Millisecond,
+			"http://test",
+			"test-monitor",
+			"",
+			log,
+		)
+		o.reportClient = reporter
+
+		o.runOnce(context.Background())
+
+		if calls.Load() != 0 {
+			t.Errorf("probe calls = %d, want 0", calls.Load())
+		}
+		if reporter.reportCount() != 0 {
+			t.Errorf("reports = %d, want 0", reporter.reportCount())
+		}
+	})
+}
+
+func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
+	var calls atomic.Int32
+	reporter := &fakeReporter{}
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	o := NewProbeOrchestrator(
+		[]scheduledProber{
+			{
+				prober: &countingProber{
+					calls: &calls,
+					result: ProbeResult{
+						ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+							ComponentSlug:    "comp",
+							SubComponentSlug: "sub",
+							Status:           types.StatusHealthy,
+						},
+					},
+				},
+				frequency: time.Hour,
+				hasOK:     true,
+				lastOK:    time.Now(),
+			},
+		},
+		10*time.Millisecond,
+		"http://test",
+		"test-monitor",
+		"",
+		log,
+	)
+	o.reportClient = reporter
+
+	o.DryRun(context.Background())
+
+	if calls.Load() != 1 {
+		t.Errorf("dry-run probe calls = %d, want 1", calls.Load())
+	}
+	if reporter.prints != 1 {
+		t.Errorf("print reports = %d, want 1", reporter.prints)
 	}
 }
