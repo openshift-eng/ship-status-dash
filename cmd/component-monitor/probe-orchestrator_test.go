@@ -442,7 +442,7 @@ func TestMergeStatusesByComponent(t *testing.T) {
 						Reasons: []types.Reason{{
 							Type:    types.CheckTypeJUnit,
 							Check:   "periodic-build-farm-canary-build03",
-							Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-build-farm-canary-build03/123",
+							Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs/periodic-build-farm-canary-build03/123",
 						}},
 					},
 					ProbeType: ProbeTypeJUnit,
@@ -469,7 +469,7 @@ func TestMergeStatusesByComponent(t *testing.T) {
 					Reasons: []types.Reason{{
 						Type:    types.CheckTypeJUnit,
 						Check:   "periodic-build-farm-canary-build03",
-						Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-build-farm-canary-build03/123",
+						Results: "build 123: missing artifacts/junit_canary.xml; https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs/periodic-build-farm-canary-build03/123",
 					}},
 				},
 			},

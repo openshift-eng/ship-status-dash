@@ -214,7 +214,7 @@ const JUnitDefaultProwSpyglassBase = "https://prow.ci.openshift.org"
 // failed testcase names, or runs all bucketed as zero JUnit tests)—not merely “any Y failing runs out of N,”
 // which avoids noisy alerts from unrelated flake patterns.
 type JUnitMonitor struct {
-	// GCSBucket is the Prow GCS bucket name. If not provided, test-platform-results is used.
+	// GCSBucket is the Prow GCS bucket name. If not provided, test-platform-results-public is used.
 	GCSBucket string `json:"gcs_bucket,omitempty" yaml:"gcs_bucket,omitempty"`
 	// JobName is the Prow job name (under logs/ in the bucket).
 	JobName string `json:"job_name" yaml:"job_name"`

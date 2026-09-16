@@ -22,7 +22,7 @@ The component-monitor runs as a standalone service that:
 
 ## JUnit monitor (`junit_monitor`)
 
-Use this for Prow jobs that write a canary JUnit file into `test-platform-results` (or another GCS bucket), under `logs/<job_name>/`.
+Use this for Prow jobs that write a canary JUnit file into `test-platform-results-public` (or another GCS bucket), under `logs/<job_name>/`.
 
 If omitted, **junit_monitor.severity** defaults to **Degraded**.
 
@@ -46,7 +46,7 @@ If omitted, **junit_monitor.severity** defaults to **Degraded**.
 ```yaml
 junit_monitor:
   job_name: "periodic-build-farm-canary-build11"
-  gcs_bucket: "test-platform-results"  # default if omitted
+  gcs_bucket: "test-platform-results-public"  # default if omitted
   max_age: "2h"                        # from started.json of latest only
   severity: "Degraded"
   artifact_url_style: "gcs"            # or "gcsweb" for the app.ci GCSweb host

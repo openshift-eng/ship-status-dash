@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultGCSBucket      = "test-platform-results"
+	defaultGCSBucket      = "test-platform-results-public"
 	prowObjectLatestBuild = "latest-build.txt"
 	prowObjectStarted     = "started.json"
 	prowObjectFinished    = "finished.json"

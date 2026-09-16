@@ -96,7 +96,7 @@ func TestAggregateJunitFromSuites_errorElement(t *testing.T) {
 
 func TestProwLogObjectURL(t *testing.T) {
 	job := "periodic-ci-foo"
-	bucket := "test-platform-results"
+	bucket := "test-platform-results-public"
 	cases := []struct {
 		name  string
 		p     *JUnitProber
@@ -107,13 +107,13 @@ func TestProwLogObjectURL(t *testing.T) {
 			name:  "gcs",
 			p:     NewJUnitProber("c", "s", bucket, job, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCS, HistoryRuns: 1}, &http.Client{}),
 			extra: []string{"1", "started.json"},
-			want:  "https://storage.googleapis.com/test-platform-results/logs/periodic-ci-foo/1/started.json",
+			want:  "https://storage.googleapis.com/test-platform-results-public/logs/periodic-ci-foo/1/started.json",
 		},
 		{
 			name:  "gcsweb",
 			p:     NewJUnitProber("c", "s", bucket, job, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCSWeb, GCSWebBaseURL: "https://example-gcsweb.test", HistoryRuns: 1}, &http.Client{}),
 			extra: []string{"1", "artifacts", "junit.xml"},
-			want:  "https://example-gcsweb.test/gcs/test-platform-results/logs/periodic-ci-foo/1/artifacts/junit.xml",
+			want:  "https://example-gcsweb.test/gcs/test-platform-results-public/logs/periodic-ci-foo/1/artifacts/junit.xml",
 		},
 	}
 	for _, tc := range cases {
