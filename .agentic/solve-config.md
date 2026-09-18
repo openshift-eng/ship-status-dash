@@ -39,8 +39,8 @@ Use the `ship-status-dev` MCP tools:
 
 For frontend changes, use Playwright MCP tools.
 
-Run `make local-e2e` only when full service integration coverage is needed.
-Per `AGENTS.md`, do not run it more than once per solve.
+Run `make local-e2e` whenever it is useful to verify full service integration.
+Avoid rerunning it unless relevant changes were made after the previous run.
 
 ## Environment
 
