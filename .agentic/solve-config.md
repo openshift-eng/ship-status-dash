@@ -35,7 +35,8 @@ Use the `ship-status-dev` MCP tools:
 - `component_monitor_start` runs the component monitor. Start the dashboard with
   `dashboard_serve` first, and ensure a local `prometheus` binary is available
   on `PATH`.
-- `run_tests` runs lint and unit tests.
+- `run_tests` runs lint and then unit tests. If lint fails, it skips the test
+  phase. Fix the lint failure and rerun `run_tests` to complete verification.
 
 For frontend changes, use Playwright MCP tools.
 
