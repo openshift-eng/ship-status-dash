@@ -32,7 +32,9 @@ Use the `ship-status-dev` MCP tools:
 - `dashboard_serve` starts the API and mock OAuth proxy.
 - `frontend_start` starts the React frontend.
 - `run_migrate` applies database migrations.
-- `component_monitor_start` runs the component monitor.
+- `component_monitor_start` runs the component monitor. Start the dashboard with
+  `dashboard_serve` first, and ensure a local `prometheus` binary is available
+  on `PATH`.
 - `run_tests` runs lint and unit tests.
 
 For frontend changes, use Playwright MCP tools.
