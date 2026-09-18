@@ -1,0 +1,46 @@
+## Write Tests for New Code
+
+You MUST write tests for any new functionality you introduce. PRs that add new
+code without corresponding tests are incomplete.
+
+### Go (backend)
+
+- Write unit tests for new exported functions and non-trivial logic.
+- Use table-driven tests with descriptive case names. Search the same package
+  for existing test patterns before writing new ones.
+- Place test files next to the code they test.
+
+### React (frontend)
+
+Add or update BDD coverage for user-visible behavior under `frontend/`.
+Follow the existing Playwright test patterns.
+
+### MCP servers
+
+Add pytest coverage for changes under `mcp/` or `ship-status-dev/`.
+
+## Build, Test, and Verify
+
+1. Run `make test` to verify your changes work.
+2. Run `make mcp-test` when MCP code changes.
+3. Run `make lint` to check for linting issues.
+
+## Test Locally
+
+Use the `ship-status-dev` MCP tools:
+
+- `dashboard_serve` starts the API and mock OAuth proxy.
+- `frontend_start` starts the React frontend.
+- `run_migrate` applies database migrations.
+- `component_monitor_start` runs the component monitor.
+- `run_tests` runs lint and unit tests.
+
+For frontend changes, use Playwright MCP tools.
+
+Run `make local-e2e` only when full service integration coverage is needed.
+Per `AGENTS.md`, do not run it more than once per solve.
+
+## Environment
+
+PostgreSQL is available at localhost:5433 (user: `postgres`, password:
+`password`, database: `ship_status`).
