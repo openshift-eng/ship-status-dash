@@ -106,15 +106,20 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
 	o.drainChannels()
 
-	due := o.dueProbers(time.Now())
+	cycleStart := time.Now()
+	due := o.dueProbers(cycleStart)
 	if len(due) == 0 {
 		o.log.Info("No probes due this cycle")
 		return
 	}
 
-	o.startProbes(ctx, due)
+	o.startProbes(ctx, due, cycleStart)
 	results := o.collectProbeResults(ctx, len(due))
 	mergedResults := mergeStatuses(results)
+	if len(mergedResults) == 0 {
+		o.log.Info("No statuses to report this cycle")
+		return
+	}
 	if err := o.reportClient.SendReport(mergedResults); err != nil {
 		o.log.Errorf("Error sending report: %v", err)
 	} else {
@@ -128,7 +133,7 @@ func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
 	for i := range o.schedule {
 		due[i] = &o.schedule[i]
 	}
-	o.startProbes(ctx, due)
+	o.startProbes(ctx, due, time.Now())
 	results := o.collectProbeResults(ctx, len(due))
 	mergedResults := mergeStatuses(results)
 	if err := o.reportClient.PrintReport(mergedResults); err != nil {
@@ -147,7 +152,7 @@ func (o *ProbeOrchestrator) dueProbers(now time.Time) []*scheduledProber {
 	return due
 }
 
-func (o *ProbeOrchestrator) startProbes(ctx context.Context, due []*scheduledProber) {
+func (o *ProbeOrchestrator) startProbes(ctx context.Context, due []*scheduledProber, cycleStart time.Time) {
 	o.log.Infof("Probing %d of %d components...", len(due), len(o.schedule))
 	for _, s := range due {
 		s := s
@@ -156,7 +161,7 @@ func (o *ProbeOrchestrator) startProbes(ctx context.Context, due []*scheduledPro
 			s.prober.Probe(ctx, ch)
 			r := <-ch
 			if r.Error == nil {
-				s.recordSuccess(time.Now())
+				s.recordSuccess(cycleStart)
 			}
 			o.results <- r
 		}()

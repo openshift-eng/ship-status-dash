@@ -526,8 +526,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 	}
 }
 
-func perReasonTestConfig(autoResolve bool) *types.DashboardConfig {
-	cfg := repositories.TestConfig(autoResolve, false)
+func perReasonTestConfig() *types.DashboardConfig {
+	cfg := repositories.TestConfig(true, false)
 	cfg.Components[0].Subcomponents[0].Monitoring.OutagePerReason = true
 	return cfg
 }
@@ -567,7 +567,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 	}{
 		{
 			name:   "two reasons create two outages",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -592,7 +592,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "dropping one reason resolves only that outage",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -620,7 +620,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "healthy empty reasons resolve remaining outages",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -644,7 +644,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "does not duplicate an active reason",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -669,7 +669,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "updates description when summary changes",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -695,7 +695,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "reopens flap-window outage by type and check",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -722,7 +722,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "two reasons with links attach one link per outage",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -750,7 +750,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "invalid reported link is skipped",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{
@@ -780,7 +780,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 		},
 		{
 			name:   "empty link type defaults to other",
-			config: perReasonTestConfig(true),
+			config: perReasonTestConfig(),
 			request: &types.ComponentMonitorReportRequest{
 				ComponentMonitor: "test-monitor",
 				Statuses: []types.ComponentMonitorReportComponentStatus{

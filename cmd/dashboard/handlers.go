@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -784,7 +783,7 @@ func (h *Handlers) AddOutageLinkJSON(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "URL is required")
 		return
 	}
-	if parsed, err := url.Parse(rawURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if _, ok := parseHTTPURL(rawURL); !ok {
 		respondWithError(w, http.StatusBadRequest, "URL must use http or https")
 		return
 	}
@@ -902,7 +901,7 @@ func (h *Handlers) UpdateOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, http.StatusBadRequest, "URL is required")
 		return
 	}
-	if parsed, err := url.Parse(rawURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if _, ok := parseHTTPURL(rawURL); !ok {
 		respondWithError(w, http.StatusBadRequest, "URL must use http or https")
 		return
 	}

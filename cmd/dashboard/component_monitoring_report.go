@@ -384,13 +384,27 @@ func linksFromReasons(reasons []types.Reason) []types.ReportedLink {
 	return links
 }
 
+// parseHTTPURL parses raw and returns the URL when the scheme is http or https.
+func parseHTTPURL(raw string) (*url.URL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, false
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+		return parsed, true
+	default:
+		return nil, false
+	}
+}
+
 func normalizeReportedLink(link types.ReportedLink) (string, types.LinkType, bool) {
 	raw := strings.TrimSpace(link.URL)
 	if raw == "" {
 		return "", "", false
 	}
-	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	parsed, ok := parseHTTPURL(raw)
+	if !ok || parsed.Host == "" {
 		return "", "", false
 	}
 	linkType := link.LinkType

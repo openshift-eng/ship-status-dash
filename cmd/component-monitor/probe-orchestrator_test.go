@@ -532,9 +532,13 @@ func TestMergeStatusesByComponent(t *testing.T) {
 type countingProber struct {
 	calls  *atomic.Int32
 	result ProbeResult
+	delay  time.Duration
 }
 
 func (p *countingProber) Probe(ctx context.Context, results chan<- ProbeResult) {
+	if p.delay > 0 {
+		time.Sleep(p.delay)
+	}
 	p.calls.Add(1)
 	results <- p.result
 }
@@ -707,6 +711,41 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 
 		if calls.Load() != 2 {
 			t.Errorf("erroring probe calls = %d, want 2", calls.Load())
+		}
+		if reporter.reportCount() != 0 {
+			t.Errorf("reports = %d, want 0", reporter.reportCount())
+		}
+	})
+
+	t.Run("success is due on the next tick even if the probe ran long", func(t *testing.T) {
+		var calls atomic.Int32
+		freq := 40 * time.Millisecond
+		reporter := &fakeReporter{}
+		log := logrus.New()
+		log.SetLevel(logrus.ErrorLevel)
+		o := NewProbeOrchestrator(
+			[]scheduledProber{
+				{prober: &countingProber{calls: &calls, result: healthy, delay: 15 * time.Millisecond}, frequency: freq},
+			},
+			freq,
+			"http://test",
+			"test-monitor",
+			"",
+			log,
+		)
+		o.reportClient = reporter
+
+		cycleStart := time.Now()
+		o.runOnce(context.Background())
+		if calls.Load() != 1 {
+			t.Fatalf("first cycle probe calls = %d, want 1", calls.Load())
+		}
+		if remaining := time.Until(cycleStart.Add(freq)); remaining > 0 {
+			time.Sleep(remaining)
+		}
+		o.runOnce(context.Background())
+		if calls.Load() != 2 {
+			t.Errorf("second cycle probe calls = %d, want 2", calls.Load())
 		}
 	})
 
