@@ -59,10 +59,16 @@ spec:
         - name: config
           mountPath: /config
           readOnly: true
+        - name: kubeconfig
+          mountPath: /kubeconfigs
+          readOnly: true
       volumes:
       - name: config
         configMap:
           name: ${CONFIG_MAP_NAME}
+      - name: kubeconfig
+        secret:
+          secretName: component-monitor-kubeconfigs
 EOF
 
 echo "Job ${JOB_NAME} created. To view the output:"
