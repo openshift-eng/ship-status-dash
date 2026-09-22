@@ -490,8 +490,8 @@ func TestScheduledProberDue(t *testing.T) {
 	tests := []struct {
 		name      string
 		frequency time.Duration
-		hasOK     bool
-		lastOKAgo time.Duration
+		lastOKAgo time.Duration // 0 means never succeeded
+		setLastOK bool
 		want      bool
 	}{
 		{
@@ -502,22 +502,22 @@ func TestScheduledProberDue(t *testing.T) {
 		{
 			name:      "success within frequency is not due",
 			frequency: time.Minute,
-			hasOK:     true,
+			setLastOK: true,
 			lastOKAgo: 10 * time.Second,
 			want:      false,
 		},
 		{
 			name:      "success older than frequency is due",
 			frequency: time.Minute,
-			hasOK:     true,
+			setLastOK: true,
 			lastOKAgo: 2 * time.Minute,
 			want:      true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &scheduledProber{frequency: tt.frequency, hasOK: tt.hasOK}
-			if tt.hasOK {
+			s := &scheduledProber{frequency: tt.frequency}
+			if tt.setLastOK {
 				s.lastOK = now.Add(-tt.lastOKAgo)
 			}
 			if got := s.due(now); got != tt.want {
@@ -525,6 +525,13 @@ func TestScheduledProberDue(t *testing.T) {
 			}
 		})
 	}
+}
+
+type runOnceProbeSpec struct {
+	frequency   time.Duration
+	recentlyRan bool
+	delay       time.Duration
+	err         bool
 }
 
 func TestProbeOrchestrator_runOnce(t *testing.T) {
@@ -545,151 +552,115 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 		Error:     errors.New("search failed"),
 	}
 
-	t.Run("override frequency probe is not invoked until due", func(t *testing.T) {
-		var defaultCalls, overrideCalls atomic.Int32
-		reporter := &fakeReporter{}
-		log := logrus.New()
-		log.SetLevel(logrus.ErrorLevel)
-		o := NewProbeOrchestrator(
-			[]scheduledProber{
-				{prober: &countingProber{calls: &defaultCalls, result: healthy}, frequency: 10 * time.Millisecond},
-				{prober: &countingProber{calls: &overrideCalls, result: healthy}, frequency: time.Hour, hasOK: true, lastOK: time.Now()},
+	tests := []struct {
+		name            string
+		tick            time.Duration
+		probes          []runOnceProbeSpec
+		runs            int
+		waitForNextTick bool
+		wantCalls       []int32
+		wantReports     int
+	}{
+		{
+			name: "override frequency probe is not invoked until due",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 10 * time.Millisecond},
+				{frequency: time.Hour, recentlyRan: true},
 			},
-			10*time.Millisecond,
-			"http://test",
-			"test-monitor",
-			"",
-			log,
-		)
-		o.reportClient = reporter
-
-		o.runOnce(context.Background())
-
-		if defaultCalls.Load() != 1 {
-			t.Errorf("default probe calls = %d, want 1", defaultCalls.Load())
-		}
-		if overrideCalls.Load() != 0 {
-			t.Errorf("override probe calls = %d, want 0", overrideCalls.Load())
-		}
-		if reporter.reportCount() != 1 {
-			t.Errorf("reports = %d, want 1", reporter.reportCount())
-		}
-	})
-
-	t.Run("success defers until frequency elapses", func(t *testing.T) {
-		var calls atomic.Int32
-		reporter := &fakeReporter{}
-		log := logrus.New()
-		log.SetLevel(logrus.ErrorLevel)
-		o := NewProbeOrchestrator(
-			[]scheduledProber{
-				{prober: &countingProber{calls: &calls, result: healthy}, frequency: time.Hour},
+			runs:        1,
+			wantCalls:   []int32{1, 0},
+			wantReports: 1,
+		},
+		{
+			name: "success defers until frequency elapses",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour},
 			},
-			10*time.Millisecond,
-			"http://test",
-			"test-monitor",
-			"",
-			log,
-		)
-		o.reportClient = reporter
-
-		o.runOnce(context.Background())
-		o.runOnce(context.Background())
-
-		if calls.Load() != 1 {
-			t.Errorf("probe calls = %d, want 1", calls.Load())
-		}
-		if reporter.reportCount() != 1 {
-			t.Errorf("reports = %d, want 1", reporter.reportCount())
-		}
-	})
-
-	t.Run("error does not advance lastOK", func(t *testing.T) {
-		var calls atomic.Int32
-		reporter := &fakeReporter{}
-		log := logrus.New()
-		log.SetLevel(logrus.ErrorLevel)
-		o := NewProbeOrchestrator(
-			[]scheduledProber{
-				{prober: &countingProber{calls: &calls, result: errored}, frequency: time.Hour},
+			runs:        2,
+			wantCalls:   []int32{1},
+			wantReports: 1,
+		},
+		{
+			name: "error does not advance lastOK",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour, err: true},
 			},
-			10*time.Millisecond,
-			"http://test",
-			"test-monitor",
-			"",
-			log,
-		)
-		o.reportClient = reporter
-
-		o.runOnce(context.Background())
-		o.runOnce(context.Background())
-
-		if calls.Load() != 2 {
-			t.Errorf("erroring probe calls = %d, want 2", calls.Load())
-		}
-		if reporter.reportCount() != 0 {
-			t.Errorf("reports = %d, want 0", reporter.reportCount())
-		}
-	})
-
-	t.Run("success is due on the next tick even if the probe ran long", func(t *testing.T) {
-		var calls atomic.Int32
-		freq := 40 * time.Millisecond
-		reporter := &fakeReporter{}
-		log := logrus.New()
-		log.SetLevel(logrus.ErrorLevel)
-		o := NewProbeOrchestrator(
-			[]scheduledProber{
-				{prober: &countingProber{calls: &calls, result: healthy, delay: 15 * time.Millisecond}, frequency: freq},
+			runs:        2,
+			wantCalls:   []int32{2},
+			wantReports: 0,
+		},
+		{
+			name: "success is due on the next tick even if the probe ran long",
+			tick: 40 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 40 * time.Millisecond, delay: 15 * time.Millisecond},
 			},
-			freq,
-			"http://test",
-			"test-monitor",
-			"",
-			log,
-		)
-		o.reportClient = reporter
-
-		cycleStart := time.Now()
-		o.runOnce(context.Background())
-		if calls.Load() != 1 {
-			t.Fatalf("first cycle probe calls = %d, want 1", calls.Load())
-		}
-		if remaining := time.Until(cycleStart.Add(freq)); remaining > 0 {
-			time.Sleep(remaining)
-		}
-		o.runOnce(context.Background())
-		if calls.Load() != 2 {
-			t.Errorf("second cycle probe calls = %d, want 2", calls.Load())
-		}
-	})
-
-	t.Run("empty due set does not send report", func(t *testing.T) {
-		var calls atomic.Int32
-		reporter := &fakeReporter{}
-		log := logrus.New()
-		log.SetLevel(logrus.ErrorLevel)
-		o := NewProbeOrchestrator(
-			[]scheduledProber{
-				{prober: &countingProber{calls: &calls, result: healthy}, frequency: time.Hour, hasOK: true, lastOK: time.Now()},
+			runs:            2,
+			waitForNextTick: true,
+			wantCalls:       []int32{2},
+			wantReports:     2,
+		},
+		{
+			name: "empty due set does not send report",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour, recentlyRan: true},
 			},
-			10*time.Millisecond,
-			"http://test",
-			"test-monitor",
-			"",
-			log,
-		)
-		o.reportClient = reporter
+			runs:        1,
+			wantCalls:   []int32{0},
+			wantReports: 0,
+		},
+	}
 
-		o.runOnce(context.Background())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			counters := make([]atomic.Int32, len(tt.probes))
+			schedule := make([]scheduledProber, len(tt.probes))
+			for i, spec := range tt.probes {
+				result := healthy
+				if spec.err {
+					result = errored
+				}
+				entry := scheduledProber{
+					prober:    &countingProber{calls: &counters[i], result: result, delay: spec.delay},
+					frequency: spec.frequency,
+				}
+				if spec.recentlyRan {
+					entry.lastOK = time.Now()
+				}
+				schedule[i] = entry
+			}
 
-		if calls.Load() != 0 {
-			t.Errorf("probe calls = %d, want 0", calls.Load())
-		}
-		if reporter.reportCount() != 0 {
-			t.Errorf("reports = %d, want 0", reporter.reportCount())
-		}
-	})
+			reporter := &fakeReporter{}
+			log := logrus.New()
+			log.SetLevel(logrus.ErrorLevel)
+			o := NewProbeOrchestrator(schedule, tt.tick, "http://test", "test-monitor", "", log)
+			o.reportClient = reporter
+
+			ctx := context.Background()
+			cycleStart := time.Now()
+			for run := 0; run < tt.runs; run++ {
+				if run > 0 && tt.waitForNextTick {
+					if remaining := time.Until(cycleStart.Add(tt.tick)); remaining > 0 {
+						time.Sleep(remaining)
+					}
+				}
+				o.runOnce(ctx)
+			}
+
+			for i, want := range tt.wantCalls {
+				if got := counters[i].Load(); got != want {
+					t.Errorf("probe %d calls = %d, want %d", i, got, want)
+				}
+			}
+			if got := reporter.reportCount(); got != tt.wantReports {
+				t.Errorf("reports = %d, want %d", got, tt.wantReports)
+			}
+		})
+	}
 }
 
 func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
@@ -711,7 +682,6 @@ func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
 					},
 				},
 				frequency: time.Hour,
-				hasOK:     true,
 				lastOK:    time.Now(),
 			},
 		},

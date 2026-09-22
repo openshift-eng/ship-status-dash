@@ -18,6 +18,7 @@ import (
 
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 )
 
 // Options contains command-line configuration options for the component monitor.
@@ -105,18 +106,14 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	}
 	log.Infof("Probing Frequency configured to: %s", frequency)
 
-	type subKey struct {
-		component string
-		sub       string
-	}
-	resolvedBySub := make(map[subKey]time.Duration)
+	resolvedBySub := make(map[types.SubComponentRef]time.Duration)
 
 	for _, component := range cfg.Components {
 		resolved, err := resolvedComponentFrequency(component, frequency)
 		if err != nil {
 			return nil, err
 		}
-		key := subKey{component.ComponentSlug, component.SubComponentSlug}
+		key := types.SubComponentRef{ComponentSlug: component.ComponentSlug, SubSlug: component.SubComponentSlug}
 		if prev, ok := resolvedBySub[key]; ok && prev != resolved {
 			return nil, fmt.Errorf("frequency mismatch for component %s/%s: %s vs %s", component.ComponentSlug, component.SubComponentSlug, prev, resolved)
 		}
@@ -174,7 +171,7 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 			if strings.TrimSpace(component.JiraMonitor.URL) == "" {
 				return nil, fmt.Errorf("url is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
 			}
-			if !isURL(component.JiraMonitor.URL) {
+			if _, ok := utils.ParseHTTPURL(component.JiraMonitor.URL); !ok {
 				return nil, fmt.Errorf("url must be a valid URL for jira_monitor on component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, component.JiraMonitor.URL)
 			}
 			if strings.TrimSpace(component.JiraMonitor.JQL) == "" {
@@ -275,14 +272,14 @@ func createProbers(components []types.MonitoringComponent, instanceFrequency tim
 			add(junitProber)
 		}
 		if component.JiraMonitor != nil {
-			jiraProber := NewJiraProber(JiraProberConfig{
-				ComponentSlug:    component.ComponentSlug,
-				SubComponentSlug: component.SubComponentSlug,
-				BaseURL:          component.JiraMonitor.URL,
-				JQL:              strings.TrimSpace(component.JiraMonitor.JQL),
-				Severity:         component.JiraMonitor.Severity,
-				HTTPClient:       &http.Client{Timeout: 30 * time.Second},
-			})
+			jiraProber := NewJiraProber(
+				component.ComponentSlug,
+				component.SubComponentSlug,
+				component.JiraMonitor.URL,
+				component.JiraMonitor.JQL,
+				component.JiraMonitor.Severity,
+				&http.Client{Timeout: 30 * time.Second},
+			)
 			componentLogger.Info("Added Jira prober for component")
 			add(jiraProber)
 		}

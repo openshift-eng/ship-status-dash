@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"ship-status-dash/pkg/types"
 )
@@ -19,16 +18,6 @@ const (
 	jiraMaxResults     = "100"
 	jiraMaxSearchPages = 10
 )
-
-// JiraProberConfig holds construction options for JiraProber.
-type JiraProberConfig struct {
-	ComponentSlug    string
-	SubComponentSlug string
-	BaseURL          string
-	JQL              string
-	Severity         types.Severity
-	HTTPClient       *http.Client
-}
 
 type JiraProber struct {
 	componentSlug    string
@@ -54,23 +43,17 @@ type jiraIssueFields struct {
 	Summary string `json:"summary"`
 }
 
-func NewJiraProber(cfg JiraProberConfig) *JiraProber {
-	severity := cfg.Severity
+func NewJiraProber(componentSlug, subComponentSlug, baseURL, jql string, severity types.Severity, httpClient *http.Client) *JiraProber {
 	if severity == "" {
 		severity = types.SeverityDegraded
 	}
-	jql := strings.TrimSpace(cfg.JQL)
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
 	return &JiraProber{
-		componentSlug:    cfg.ComponentSlug,
-		subComponentSlug: cfg.SubComponentSlug,
-		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),
-		jql:              jql,
+		componentSlug:    componentSlug,
+		subComponentSlug: subComponentSlug,
+		baseURL:          strings.TrimRight(baseURL, "/"),
+		jql:              strings.TrimSpace(jql),
 		severity:         severity,
-		httpClient:       client,
+		httpClient:       httpClient,
 	}
 }
 
@@ -106,7 +89,7 @@ func (p *JiraProber) search(ctx context.Context) ProbeResult {
 			Check:   key,
 			Results: issue.Fields.Summary,
 			Links: []types.ReportedLink{{
-				URL:      p.baseURL + "/browse/" + key,
+				URL:      p.browseURL(key),
 				LinkType: types.LinkTypeJira,
 			}},
 		})
@@ -126,6 +109,10 @@ func (p *JiraProber) search(ctx context.Context) ProbeResult {
 		},
 		ProbeType: ProbeTypeJira,
 	}
+}
+
+func (p *JiraProber) browseURL(key string) string {
+	return p.baseURL + "/browse/" + key
 }
 
 func (p *JiraProber) searchIssues(ctx context.Context) ([]jiraIssue, error) {

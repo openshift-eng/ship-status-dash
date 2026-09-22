@@ -3,8 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -400,42 +398,10 @@ func linksFromReasons(reasons []types.Reason) []types.ReportedLink {
 	return links
 }
 
-// parseHTTPURL parses raw and returns the URL when the scheme is http or https.
-func parseHTTPURL(raw string) (*url.URL, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return nil, false
-	}
-	switch parsed.Scheme {
-	case "http", "https":
-		return parsed, true
-	default:
-		return nil, false
-	}
-}
-
-func normalizeReportedLink(link types.ReportedLink) (string, types.LinkType, bool) {
-	raw := strings.TrimSpace(link.URL)
-	if raw == "" {
-		return "", "", false
-	}
-	parsed, ok := parseHTTPURL(raw)
-	if !ok || parsed.Host == "" {
-		return "", "", false
-	}
-	linkType := link.LinkType
-	if linkType == "" {
-		linkType = types.LinkTypeOther
-	} else if !types.IsValidLinkType(string(linkType)) {
-		return "", "", false
-	}
-	return raw, linkType, true
-}
-
 func (p *ComponentMonitorReportProcessor) applyReportedLinks(outageID uint, reported []types.ReportedLink, monitorName string, logger *logrus.Entry) {
 	seen := make(map[string]struct{}, len(reported))
 	for _, link := range reported {
-		rawURL, linkType, ok := normalizeReportedLink(link)
+		rawURL, linkType, ok := link.Normalize()
 		if !ok {
 			logger.WithField("url", link.URL).Warn("Skipping invalid reported link")
 			continue

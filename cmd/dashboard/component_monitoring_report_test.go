@@ -18,18 +18,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type createdOutageExpectation struct {
+	Outage      types.Outage
+	Reasons     []types.Reason // nil skips reason content comparison
+	ReasonCount int            // used when Reasons is nil
+	Confirmed   *bool          // when set, asserts ConfirmedAt.Valid
+}
+
+type outageExpectations struct {
+	created []createdOutageExpectation
+	updated []types.Outage
+	links   []types.OutageLink
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func outageWithID(id uint, o types.Outage) types.Outage {
+	o.ID = id
+	return o
+}
+
+func assertOutageExpectations(t *testing.T, m *outage.MockOutageManager, exp *outageExpectations) {
+	if exp == nil {
+		return
+	}
+	require.Len(t, m.CreatedOutages, len(exp.created))
+	for i, want := range exp.created {
+		got := m.CreatedOutages[i]
+		if diff := cmp.Diff(want.Outage, *got.Outage, testhelper.OutageCompareOptions(want.Outage, false)); diff != "" {
+			t.Errorf("created outage[%d] mismatch (-want +got):\n%s", i, diff)
+		}
+		if want.Confirmed != nil {
+			assert.Equal(t, *want.Confirmed, got.Outage.ConfirmedAt.Valid)
+		}
+		if want.Reasons != nil {
+			if diff := cmp.Diff(want.Reasons, got.Reasons, testhelper.ReasonCompareOptions()); diff != "" {
+				t.Errorf("created outage[%d] reasons mismatch (-want +got):\n%s", i, diff)
+			}
+		} else if want.ReasonCount > 0 {
+			assert.Len(t, got.Reasons, want.ReasonCount)
+		}
+	}
+	require.Len(t, m.UpdatedOutages, len(exp.updated))
+	for i, want := range exp.updated {
+		got := m.UpdatedOutages[i]
+		compareEnd := testhelper.OutageComparesEndTime(want)
+		if diff := cmp.Diff(want, *got, testhelper.OutageCompareOptions(want, compareEnd)); diff != "" {
+			t.Errorf("updated outage[%d] mismatch (-want +got):\n%s", i, diff)
+		}
+	}
+	require.Len(t, m.AddedLinks, len(exp.links))
+	for i, want := range exp.links {
+		got := m.AddedLinks[i]
+		if diff := cmp.Diff(want, *got, testhelper.OutageLinkCompareOptions(want)); diff != "" {
+			t.Errorf("added link[%d] mismatch (-want +got):\n%s", i, diff)
+		}
+	}
+}
+
 func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
 	tests := []struct {
-		name                     string
-		config                   *types.DashboardConfig
-		request                  *types.ComponentMonitorReportRequest
-		setupOutageManager       func(*outage.MockOutageManager)
-		wantErr                  error
-		verifyOutageExpectations func(*testing.T, *outage.MockOutageManager)
-		verifyPingExpectations   func(*testing.T, *repositories.MockComponentPingRepository)
+		name                   string
+		config                 *types.DashboardConfig
+		request                *types.ComponentMonitorReportRequest
+		setupOutageManager     func(*outage.MockOutageManager)
+		wantErr                error
+		wantOutages            *outageExpectations
+		verifyPingExpectations func(*testing.T, *repositories.MockComponentPingRepository)
 	}{
 		{
 			name:   "healthy status with no active outages",
@@ -76,12 +136,11 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					{ComponentName: "test-component", SubComponentName: "test-subcomponent", CreatedBy: "test-monitor"},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.UpdatedOutages, 2, "Should update 2 outages")
-				assert.Empty(t, m.CreatedOutages, "Should not create new outages")
-				for _, outage := range m.UpdatedOutages {
-					assert.True(t, outage.EndTime.Valid)
-				}
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{
+					{EndTime: sql.NullTime{Valid: true}},
+					{EndTime: sql.NullTime{Valid: true}},
+				},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -109,10 +168,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					{ComponentName: "test-component", SubComponentName: "test-subcomponent"},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.UpdatedOutages, "No outages should be updated")
-				assert.Empty(t, m.CreatedOutages, "No new outages should be created")
-			},
+			wantOutages: &outageExpectations{},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
 			},
@@ -140,14 +196,15 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				created := m.CreatedOutages[0]
-				assert.Len(t, created.Reasons, 1)
-				assert.Equal(t, types.CheckTypePrometheus, created.Reasons[0].Type)
-				assert.Equal(t, "test-component", created.Outage.ComponentName)
-				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
-				assert.True(t, created.Outage.ConfirmedAt.Valid)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{
+					Outage: types.Outage{
+						ComponentName: "test-component",
+						Severity:      types.SeverityDown,
+						ConfirmedAt:   sql.NullTime{Valid: true},
+					},
+					ReasonCount: 1,
+				}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -179,11 +236,11 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				created := m.CreatedOutages[0]
-				assert.Len(t, created.Reasons, 1)
-				assert.False(t, created.Outage.ConfirmedAt.Valid)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{
+					ReasonCount: 1,
+					Confirmed:   boolPtr(false),
+				}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -215,9 +272,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages, "Should not create new outage")
-			},
+			wantOutages: &outageExpectations{},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
 			},
@@ -250,11 +305,11 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages, "should reopen existing outage, not create new")
-				assert.Len(t, m.UpdatedOutages, 1, "should update the existing outage")
-				assert.False(t, m.UpdatedOutages[0].EndTime.Valid, "end_time should be cleared on reopen")
-				assert.Equal(t, types.SeverityDown, m.UpdatedOutages[0].Severity, "severity should be updated to current incoming severity")
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{{
+					EndTime:  sql.NullTime{Valid: false},
+					Severity: types.SeverityDown,
+				}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -288,9 +343,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1, "should create new outage when no probe matches")
-				assert.Empty(t, m.UpdatedOutages)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -318,9 +372,8 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					return nil, nil
 				}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1, "should create new outage when matching outage is outside flap window")
-				assert.Empty(t, m.UpdatedOutages)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -447,14 +500,15 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			setupOutageManager: func(m *outage.MockOutageManager) {
 				// No initial data needed
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				created := m.CreatedOutages[0]
-				assert.Equal(t, "test-component", created.Outage.ComponentName)
-				assert.Equal(t, types.SeverityDown, created.Outage.Severity)
-				assert.Len(t, created.Reasons, 3, "Should create all three reasons")
-				assert.Equal(t, "Component monitor detected outage", created.Outage.Description)
-				assert.Empty(t, m.AddedLinks)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{
+					Outage: types.Outage{
+						ComponentName: "test-component",
+						Description:   "Component monitor detected outage",
+						Severity:      types.SeverityDown,
+					},
+					ReasonCount: 3,
+				}},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -477,13 +531,12 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 					},
 				},
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				require.Len(t, m.AddedLinks, 2)
-				assert.Equal(t, m.CreatedOutages[0].Outage.ID, m.AddedLinks[0].OutageID)
-				assert.Equal(t, m.CreatedOutages[0].Outage.ID, m.AddedLinks[1].OutageID)
-				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
-				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-2", m.AddedLinks[1].URL)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}},
+				links: []types.OutageLink{
+					{OutageID: 1, URL: "https://redhat.atlassian.net/browse/TRT-1"},
+					{OutageID: 1, URL: "https://redhat.atlassian.net/browse/TRT-2"},
+				},
 			},
 			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
 				assert.Len(t, pingRepo.UpsertedPings, 1)
@@ -515,9 +568,7 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 				t.Errorf("Process() error mismatch (-want +got):\n%s", diff)
 			}
 
-			if tt.verifyOutageExpectations != nil {
-				tt.verifyOutageExpectations(t, mockOutageManager)
-			}
+			assertOutageExpectations(t, mockOutageManager, tt.wantOutages)
 
 			if tt.verifyPingExpectations != nil {
 				tt.verifyPingExpectations(t, pingRepo)
@@ -559,11 +610,11 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 	logger.SetLevel(logrus.ErrorLevel)
 
 	tests := []struct {
-		name                     string
-		config                   *types.DashboardConfig
-		request                  *types.ComponentMonitorReportRequest
-		setupOutageManager       func(*outage.MockOutageManager)
-		verifyOutageExpectations func(*testing.T, *outage.MockOutageManager)
+		name               string
+		config             *types.DashboardConfig
+		request            *types.ComponentMonitorReportRequest
+		setupOutageManager func(*outage.MockOutageManager)
+		wantOutages        *outageExpectations
 	}{
 		{
 			name:   "two reasons create two outages",
@@ -582,12 +633,17 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 					},
 				},
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 2)
-				assert.Equal(t, "First incident", m.CreatedOutages[0].Outage.Description)
-				assert.Equal(t, "Second incident", m.CreatedOutages[1].Outage.Description)
-				assert.Equal(t, []types.Reason{jiraReason("TRT-1", "First incident")}, m.CreatedOutages[0].Reasons)
-				assert.Equal(t, []types.Reason{jiraReason("TRT-2", "Second incident")}, m.CreatedOutages[1].Reasons)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{
+					{
+						Outage:  types.Outage{Description: "First incident"},
+						Reasons: []types.Reason{jiraReason("TRT-1", "First incident")},
+					},
+					{
+						Outage:  types.Outage{Description: "Second incident"},
+						Reasons: []types.Reason{jiraReason("TRT-2", "Second incident")},
+					},
+				},
 			},
 		},
 		{
@@ -611,11 +667,10 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 				b.ID = 2
 				m.ActiveOutagesCreatedBy = []types.Outage{a, b}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages)
-				assert.Len(t, m.UpdatedOutages, 1)
-				assert.Equal(t, uint(1), m.UpdatedOutages[0].ID)
-				assert.True(t, m.UpdatedOutages[0].EndTime.Valid)
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{
+					outageWithID(1, types.Outage{EndTime: sql.NullTime{Valid: true}}),
+				},
 			},
 		},
 		{
@@ -636,10 +691,10 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 				a.ID = 1
 				m.ActiveOutagesCreatedBy = []types.Outage{a}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages)
-				assert.Len(t, m.UpdatedOutages, 1)
-				assert.True(t, m.UpdatedOutages[0].EndTime.Valid)
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{{
+					EndTime: sql.NullTime{Valid: true},
+				}},
 			},
 		},
 		{
@@ -661,11 +716,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 				a.ID = 1
 				m.ActiveOutagesCreatedBy = []types.Outage{a}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages)
-				assert.Empty(t, m.UpdatedOutages)
-				assert.Empty(t, m.AddedLinks)
-			},
+			wantOutages: &outageExpectations{},
 		},
 		{
 			name:   "updates description when summary changes",
@@ -686,11 +737,11 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 				a.ID = 1
 				m.ActiveOutagesCreatedBy = []types.Outage{a}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages)
-				assert.Len(t, m.UpdatedOutages, 1)
-				assert.Equal(t, "Updated summary", m.UpdatedOutages[0].Description)
-				assert.False(t, m.UpdatedOutages[0].EndTime.Valid)
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{{
+					Description: "Updated summary",
+					EndTime:     sql.NullTime{Valid: false},
+				}},
 			},
 		},
 		{
@@ -713,11 +764,10 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 				closed.EndTime = sql.NullTime{Time: time.Now().Add(-10 * time.Minute), Valid: true}
 				m.RecentlyClosedOutages = []types.Outage{closed}
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Empty(t, m.CreatedOutages)
-				assert.Len(t, m.UpdatedOutages, 1)
-				assert.Equal(t, uint(7), m.UpdatedOutages[0].ID)
-				assert.False(t, m.UpdatedOutages[0].EndTime.Valid)
+			wantOutages: &outageExpectations{
+				updated: []types.Outage{
+					outageWithID(7, types.Outage{EndTime: sql.NullTime{Valid: false}}),
+				},
 			},
 		},
 		{
@@ -737,15 +787,12 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 					},
 				},
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 2)
-				require.Len(t, m.AddedLinks, 2)
-				assert.Equal(t, uint(1), m.AddedLinks[0].OutageID)
-				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
-				assert.Equal(t, types.LinkTypeJira, m.AddedLinks[0].LinkType)
-				assert.Equal(t, uint(2), m.AddedLinks[1].OutageID)
-				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-2", m.AddedLinks[1].URL)
-				assert.Equal(t, types.LinkTypeJira, m.AddedLinks[1].LinkType)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}, {}},
+				links: []types.OutageLink{
+					{OutageID: 1, URL: "https://redhat.atlassian.net/browse/TRT-1", LinkType: types.LinkTypeJira},
+					{OutageID: 2, URL: "https://redhat.atlassian.net/browse/TRT-2", LinkType: types.LinkTypeJira},
+				},
 			},
 		},
 		{
@@ -772,10 +819,12 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 					},
 				},
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				assert.Len(t, m.CreatedOutages, 1)
-				require.Len(t, m.AddedLinks, 1)
-				assert.Equal(t, "https://redhat.atlassian.net/browse/TRT-1", m.AddedLinks[0].URL)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}},
+				links: []types.OutageLink{{
+					OutageID: 1,
+					URL:      "https://redhat.atlassian.net/browse/TRT-1",
+				}},
 			},
 		},
 		{
@@ -799,10 +848,13 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 					},
 				},
 			},
-			verifyOutageExpectations: func(t *testing.T, m *outage.MockOutageManager) {
-				require.Len(t, m.AddedLinks, 1)
-				assert.Equal(t, types.LinkTypeOther, m.AddedLinks[0].LinkType)
-				assert.Equal(t, "https://example.com/runbook", m.AddedLinks[0].URL)
+			wantOutages: &outageExpectations{
+				created: []createdOutageExpectation{{}},
+				links: []types.OutageLink{{
+					OutageID: 1,
+					URL:      "https://example.com/runbook",
+					LinkType: types.LinkTypeOther,
+				}},
 			},
 		},
 	}
@@ -823,9 +875,7 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 			err := processor.Process(tt.request)
 			assert.NoError(t, err)
 			assert.Len(t, pingRepo.UpsertedPings, 1)
-			if tt.verifyOutageExpectations != nil {
-				tt.verifyOutageExpectations(t, mockOutageManager)
-			}
+			assertOutageExpectations(t, mockOutageManager, tt.wantOutages)
 		})
 	}
 }

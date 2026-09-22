@@ -41,19 +41,17 @@ type scheduledProber struct {
 
 	mu     sync.Mutex
 	lastOK time.Time
-	hasOK  bool
 }
 
 func (s *scheduledProber) due(now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return !s.hasOK || now.Sub(s.lastOK) >= s.frequency
+	return s.lastOK.IsZero() || now.Sub(s.lastOK) >= s.frequency
 }
 
 func (s *scheduledProber) recordSuccess(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.hasOK = true
 	s.lastOK = at
 }
 

@@ -74,14 +74,14 @@ func collectJiraProbe(t *testing.T, prober *JiraProber) ProbeResult {
 }
 
 func newTestJiraProber(baseURL string) *JiraProber {
-	return NewJiraProber(JiraProberConfig{
-		ComponentSlug:    "trt-incidents",
-		SubComponentSlug: "incidents",
-		BaseURL:          baseURL,
-		JQL:              "labels = trt-incident AND statusCategory != Done",
-		Severity:         types.SeverityDown,
-		HTTPClient:       &http.Client{Timeout: 5 * time.Second},
-	})
+	return NewJiraProber(
+		"trt-incidents",
+		"incidents",
+		baseURL,
+		"labels = trt-incident AND statusCategory != Done",
+		types.SeverityDown,
+		&http.Client{Timeout: 5 * time.Second},
+	)
 }
 
 func jiraReason(baseURL, key, summary string) types.Reason {

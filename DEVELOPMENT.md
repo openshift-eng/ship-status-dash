@@ -185,8 +185,9 @@ The e2e script (`test/e2e/scripts/local-e2e.sh`):
 - Cleans up all processes and containers on completion
 
 The test suite includes:
-- **Dashboard tests** (`TestE2E_Dashboard`): Tests API endpoints, outages, component status, and user authentication
-- **Component-monitor tests** (`TestE2E_ComponentMonitor`): Tests component monitoring probes and integration with the dashboard
+- **Dashboard tests** (`TestE2E_Dashboard` in `dashboard_test.go`): Tests API endpoints, outages, component status, and user authentication
+- **Component-monitor report tests** (`TestE2E_ComponentMonitorReport` in `component-monitor-report_test.go`): Tests the dashboard `/api/component-monitor/report` endpoint, including per-reason outages
+- **Component-monitor tests** (`TestE2E_ComponentMonitor` in `component-monitor_test.go`): Tests component monitoring probes and integration with the dashboard
 
 ### Frontend BDD Tests
 

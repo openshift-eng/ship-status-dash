@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"ship-status-dash/pkg/utils"
 )
 
 type Severity string
@@ -244,6 +246,26 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 type ReportedLink struct {
 	URL      string   `json:"url"`
 	LinkType LinkType `json:"link_type,omitempty"`
+}
+
+// Normalize validates and normalizes a reported link for storage on an outage.
+// It returns the trimmed URL, resolved link type, and whether the link is valid.
+func (l ReportedLink) Normalize() (string, LinkType, bool) {
+	raw := strings.TrimSpace(l.URL)
+	if raw == "" {
+		return "", "", false
+	}
+	parsed, ok := utils.ParseHTTPURL(raw)
+	if !ok || parsed.Host == "" {
+		return "", "", false
+	}
+	linkType := l.LinkType
+	if linkType == "" {
+		linkType = LinkTypeOther
+	} else if !IsValidLinkType(string(linkType)) {
+		return "", "", false
+	}
+	return raw, linkType, true
 }
 
 type Reason struct {
