@@ -35,7 +35,7 @@ RUN dnf install -y \
     && dnf clean all && rm -rf /var/cache/dnf
 
 RUN groupadd -g 1000 vscode && \
-    useradd -u 1000 -g 1000 -m -s /bin/bash vscode && \
+    useradd -u 1000 -g 0 -G 1000 -m -s /bin/bash vscode && \
     echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode
 
 ENV GOPATH=/home/vscode/go
