@@ -13,6 +13,9 @@ func ParseHTTPURL(raw string) (*url.URL, bool) {
 	}
 	switch parsed.Scheme {
 	case "http", "https":
+		if parsed.Host == "" {
+			return nil, false
+		}
 		return parsed, true
 	default:
 		return nil, false

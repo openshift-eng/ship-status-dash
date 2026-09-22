@@ -53,6 +53,16 @@ func TestParseHTTPURL(t *testing.T) {
 			wantOK: false,
 		},
 		{
+			name:   "invalid http without host",
+			input:  "http://",
+			wantOK: false,
+		},
+		{
+			name:   "invalid https without host",
+			input:  "https://",
+			wantOK: false,
+		},
+		{
 			name:   "invalid cluster name",
 			input:  "app.ci",
 			wantOK: false,

@@ -199,7 +199,7 @@ func (r *gormOutageRepository) GetStaleSuspectedOutages(cutoff time.Time) ([]typ
 // An outage is considered active if its end_time is NULL.
 func (r *gormOutageRepository) GetActiveOutagesCreatedBy(componentSlug, subComponentSlug, createdBy string) ([]types.Outage, error) {
 	var activeOutages []types.Outage
-	err := r.db.Preload("Reasons").
+	err := r.db.Preload("Reasons").Preload("Links").
 		Where("component_name = ? AND sub_component_name = ? AND end_time IS NULL AND created_by = ?",
 			componentSlug, subComponentSlug, createdBy).
 		Find(&activeOutages).Error
@@ -247,7 +247,7 @@ func (r *gormOutageRepository) FindReopenableOutage(componentSlug, subComponentS
 		reasonArgs = append(reasonArgs, reason.Type, reason.Check)
 	}
 	var outage types.Outage
-	err := r.db.Preload("Reasons").
+	err := r.db.Preload("Reasons").Preload("Links").
 		Joins("JOIN reasons r ON r.outage_id = outages.id AND r.deleted_at IS NULL").
 		Where("outages.component_name = ? AND outages.sub_component_name = ? AND outages.created_by = ? AND outages.end_time IS NOT NULL AND outages.end_time >= ?",
 			componentSlug, subComponentSlug, createdBy, since.UTC()).

@@ -278,6 +278,46 @@ func TestComponentMonitorReportProcessor_Process(t *testing.T) {
 			},
 		},
 		{
+			name:   "repeats reported links onto an existing outage",
+			config: repositories.TestConfig(false, false),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReasonWithLink("TRT-1", "First incident", "https://redhat.atlassian.net/browse/TRT-1"),
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{
+					{
+						ComponentName:    "test-component",
+						SubComponentName: "test-subcomponent",
+						CreatedBy:        "test-monitor",
+						Severity:         types.SeverityDown,
+						StartTime:        time.Now().Add(-10 * time.Minute),
+						DiscoveredFrom:   ComponentMonitor,
+					},
+				}
+				m.ActiveOutagesCreatedBy[0].ID = 7
+			},
+			wantOutages: &outageExpectations{
+				links: []types.OutageLink{{
+					OutageID: 7,
+					URL:      "https://redhat.atlassian.net/browse/TRT-1",
+					LinkType: types.LinkTypeJira,
+				}},
+			},
+			verifyPingExpectations: func(t *testing.T, pingRepo *repositories.MockComponentPingRepository) {
+				assert.Len(t, pingRepo.UpsertedPings, 1)
+			},
+		},
+		{
 			name:   "unhealthy status reopens recently-closed outage with matching probe",
 			config: repositories.TestConfig(false, false),
 			request: &types.ComponentMonitorReportRequest{
@@ -714,6 +754,60 @@ func TestComponentMonitorReportProcessor_ProcessPerReason(t *testing.T) {
 			setupOutageManager: func(m *outage.MockOutageManager) {
 				a := jiraOutage(1, "TRT-1", "First incident")
 				a.ID = 1
+				m.ActiveOutagesCreatedBy = []types.Outage{a}
+			},
+			wantOutages: &outageExpectations{},
+		},
+		{
+			name:   "repeats reported links onto an existing per-reason outage",
+			config: perReasonTestConfig(),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReasonWithLink("TRT-1", "First incident", "https://redhat.atlassian.net/browse/TRT-1"),
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.ActiveOutagesCreatedBy = []types.Outage{jiraOutage(1, "TRT-1", "First incident")}
+			},
+			wantOutages: &outageExpectations{
+				links: []types.OutageLink{{
+					OutageID: 1,
+					URL:      "https://redhat.atlassian.net/browse/TRT-1",
+					LinkType: types.LinkTypeJira,
+				}},
+			},
+		},
+		{
+			name:   "does not re-add an existing reported link",
+			config: perReasonTestConfig(),
+			request: &types.ComponentMonitorReportRequest{
+				ComponentMonitor: "test-monitor",
+				Statuses: []types.ComponentMonitorReportComponentStatus{
+					{
+						ComponentSlug:    "test-component",
+						SubComponentSlug: "test-subcomponent",
+						Status:           types.StatusDown,
+						Reasons: []types.Reason{
+							jiraReasonWithLink("TRT-1", "First incident", "https://redhat.atlassian.net/browse/TRT-1"),
+						},
+					},
+				},
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				a := jiraOutage(1, "TRT-1", "First incident")
+				a.Links = []types.OutageLink{{
+					OutageID: 1,
+					URL:      "https://redhat.atlassian.net/browse/TRT-1",
+					LinkType: types.LinkTypeJira,
+				}}
 				m.ActiveOutagesCreatedBy = []types.Outage{a}
 			},
 			wantOutages: &outageExpectations{},

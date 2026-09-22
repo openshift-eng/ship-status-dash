@@ -839,7 +839,7 @@ func testComponentMonitorPerReasonReport(client *TestHTTPClient) func(*testing.T
 			assert.Equal(t, first["TRT-2"].ID, second["TRT-2"].ID)
 		})
 
-		t.Run("reporting links later does not backfill an existing outage", func(t *testing.T) {
+		t.Run("reporting links later backfills an existing outage", func(t *testing.T) {
 			cleanupOutages(t, client, trtIncidentsComponent, trtIncidentsSub)
 			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
 				jiraReportReason("TRT-1", "First incident", false),
@@ -855,7 +855,16 @@ func testComponentMonitorPerReasonReport(client *TestHTTPClient) func(*testing.T
 				jiraReportReason("TRT-1", "First incident", true),
 			})
 
-			assert.Empty(t, getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID).Links)
+			fetched := getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID)
+			require.Len(t, fetched.Links, 1)
+			assert.Equal(t, jiraBrowseURL("TRT-1"), fetched.Links[0].URL)
+			assert.Equal(t, types.LinkTypeJira, fetched.Links[0].LinkType)
+
+			postTRTIncidentReport(t, client, types.StatusDegraded, []types.Reason{
+				jiraReportReason("TRT-1", "First incident", true),
+			})
+			assert.Len(t, getOutage(t, client, trtIncidentsComponent, trtIncidentsSub, outageID).Links, 1)
+
 			active := activeJiraOutagesByCheck(getOutages(t, client, trtIncidentsComponent, trtIncidentsSub))
 			require.Len(t, active, 1)
 			assert.Equal(t, outageID, active["TRT-1"].ID)

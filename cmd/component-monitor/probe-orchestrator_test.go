@@ -624,14 +624,11 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 				if spec.err {
 					result = errored
 				}
-				entry := scheduledProber{
-					prober:    &countingProber{calls: &counters[i], result: result, delay: spec.delay},
-					frequency: spec.frequency,
-				}
+				schedule[i].prober = &countingProber{calls: &counters[i], result: result, delay: spec.delay}
+				schedule[i].frequency = spec.frequency
 				if spec.recentlyRan {
-					entry.lastOK = time.Now()
+					schedule[i].lastOK = time.Now()
 				}
-				schedule[i] = entry
 			}
 
 			reporter := &fakeReporter{}
@@ -644,7 +641,7 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			cycleStart := time.Now()
 			for run := 0; run < tt.runs; run++ {
 				if run > 0 && tt.waitForNextTick {
-					if remaining := time.Until(cycleStart.Add(tt.tick)); remaining > 0 {
+					if remaining := time.Until(cycleStart.Add(tt.tick + time.Millisecond)); remaining > 0 {
 						time.Sleep(remaining)
 					}
 				}

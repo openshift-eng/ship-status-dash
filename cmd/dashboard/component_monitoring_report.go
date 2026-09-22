@@ -168,6 +168,7 @@ func (p *ComponentMonitorReportProcessor) processSingleOutage(status types.Compo
 
 	if len(activeOutages) > 0 {
 		logger.WithField("outage_id", activeOutages[0].ID).Debug("Active outage from this component-monitor already exists, skipping creation")
+		p.applyReportedLinks(activeOutages[0].ID, linksFromReasons(status.Reasons), activeOutages[0].Links, monitorName, logger)
 		return nil
 	}
 
@@ -226,6 +227,7 @@ func (p *ComponentMonitorReportProcessor) processPerReason(status types.Componen
 
 		if existing, ok := activeByIdentity[identity]; ok {
 			p.syncOutageDescription(existing, reason.Results, monitorName, logger)
+			p.applyReportedLinks(existing.ID, linksFromReasons([]types.Reason{reason}), existing.Links, monitorName, logger)
 			continue
 		}
 
@@ -319,6 +321,7 @@ func (p *ComponentMonitorReportProcessor) reopenOutage(o *types.Outage, severity
 			outageLogger.WithField("error", err).Error("Failed to append new reasons to reopened outage")
 		}
 	}
+	p.applyReportedLinks(o.ID, linksFromReasons(incoming), o.Links, monitorName, logger)
 	outageLogger.Info("Reopened recently-closed outage due to recurring probe failure")
 }
 
@@ -352,7 +355,7 @@ func (p *ComponentMonitorReportProcessor) createMonitorOutage(
 		logger.WithField("error", err).Error("Failed to create outage")
 		return nil
 	}
-	p.applyReportedLinks(outage.ID, linksFromReasons(reasons), monitorName, logger)
+	p.applyReportedLinks(outage.ID, linksFromReasons(reasons), nil, monitorName, logger)
 	logger.WithFields(logrus.Fields{
 		"outage_id":    outage.ID,
 		"reason_count": len(reasons),
@@ -398,8 +401,13 @@ func linksFromReasons(reasons []types.Reason) []types.ReportedLink {
 	return links
 }
 
-func (p *ComponentMonitorReportProcessor) applyReportedLinks(outageID uint, reported []types.ReportedLink, monitorName string, logger *logrus.Entry) {
-	seen := make(map[string]struct{}, len(reported))
+func (p *ComponentMonitorReportProcessor) applyReportedLinks(outageID uint, reported []types.ReportedLink, existing []types.OutageLink, monitorName string, logger *logrus.Entry) {
+	seen := make(map[string]struct{}, len(reported)+len(existing))
+	for _, link := range existing {
+		if link.URL != "" {
+			seen[link.URL] = struct{}{}
+		}
+	}
 	for _, link := range reported {
 		rawURL, linkType, ok := link.Normalize()
 		if !ok {
