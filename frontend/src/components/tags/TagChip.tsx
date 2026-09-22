@@ -2,11 +2,9 @@ import { Chip, styled } from '@mui/material'
 import { lighten } from '@mui/material/styles'
 import { Link } from 'react-router'
 
-const StyledTagChip = styled(Chip)<{ size?: 'small' | 'medium'; tagColor?: string }>(({
-  theme,
-  size,
-  tagColor,
-}) => {
+const StyledTagChip = styled(Chip, {
+  shouldForwardProp: (prop) => prop !== 'tagColor',
+})<{ size?: 'small' | 'medium'; tagColor?: string }>(({ theme, size, tagColor }) => {
   const isDark = theme.palette.mode === 'dark'
   const textColor = tagColor
     ? isDark

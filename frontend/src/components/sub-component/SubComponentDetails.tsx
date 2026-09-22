@@ -124,14 +124,18 @@ const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   },
 }))
 
-const SubComponentDescription = styled(Typography)<{
+const SubComponentDescription = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'hasLongDescription' && prop !== 'hasTags',
+})<{
   hasLongDescription?: boolean
   hasTags?: boolean
 }>(({ theme, hasLongDescription, hasTags }) => ({
   marginBottom: hasLongDescription || hasTags ? theme.spacing(2) : 0,
 }))
 
-const SubComponentLongDescription = styled(Typography)<{
+const SubComponentLongDescription = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'hasDocumentation' && prop !== 'hasTags',
+})<{
   hasDocumentation?: boolean
   hasTags?: boolean
 }>(({ theme, hasDocumentation, hasTags }) => ({

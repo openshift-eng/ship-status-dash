@@ -89,8 +89,11 @@ type SubComponent struct {
 	RequiresConfirmation bool        `json:"requires_confirmation" yaml:"requires_confirmation"`
 	// Critical indicates that an outage on this sub-component should propagate its severity
 	// to the parent component status, bypassing the generic "partial" roll-up.
-	Critical       bool                   `json:"critical,omitempty" yaml:"critical,omitempty"`
-	SlackReporting []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
+	Critical bool `json:"critical,omitempty" yaml:"critical,omitempty"`
+	// ExcludeFromMainOutageWell, when true, keeps this sub-component out of the home-page
+	// "In Outage" well and does not light the ship-logo fire.
+	ExcludeFromMainOutageWell bool                   `json:"exclude_from_main_outage_well,omitempty" yaml:"exclude_from_main_outage_well,omitempty"`
+	SlackReporting            []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
 	// ReportThreshold is the number of community reports required to upgrade a suspected outage
 	// to degraded and trigger Slack notifications. Defaults to 3 when unset.
 	ReportThreshold int `json:"report_threshold,omitempty" yaml:"report_threshold,omitempty"`

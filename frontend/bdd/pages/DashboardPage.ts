@@ -8,6 +8,7 @@ export class DashboardPage {
   readonly unhealthyWell: Locator
   readonly loadingSpinner: Locator
   readonly errorAlert: Locator
+  readonly shipLogo: Locator
 
   constructor(page: Page) {
     this.page = page
@@ -17,6 +18,7 @@ export class DashboardPage {
     this.unhealthyWell = page.locator('[data-tour="unhealthy-well"]')
     this.loadingSpinner = page.getByRole('progressbar')
     this.errorAlert = page.getByRole('alert')
+    this.shipLogo = page.getByAltText('SHIP Logo')
   }
 
   async goto() {
@@ -29,6 +31,10 @@ export class DashboardPage {
 
   subComponentCards(componentName: string): Locator {
     return this.componentWellByName(componentName).locator('[data-tour="subcomponent-card"]')
+  }
+
+  unhealthyWellCard(name: string): Locator {
+    return this.unhealthyWell.locator('[data-tour="subcomponent-card"]').filter({ hasText: name })
   }
 
   detailsButton(componentName: string): Locator {

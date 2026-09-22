@@ -168,6 +168,7 @@ components:
         description: Currently open TRT incidents
         critical: true
         requires_confirmation: false
+        exclude_from_main_outage_well: true
         monitoring:
           frequency: 5m
           component_monitor: "app-ci-component-monitor"

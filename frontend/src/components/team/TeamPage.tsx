@@ -15,7 +15,9 @@ const BackButton = styled(Button)(({ theme }) => ({
   marginBottom: theme.spacing(3),
 }))
 
-const TeamHeader = styled(Paper)<{ teamColor?: string }>(({ theme, teamColor }) => {
+const TeamHeader = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'teamColor',
+})<{ teamColor?: string }>(({ theme, teamColor }) => {
   const isDark = theme.palette.mode === 'dark'
   return {
     padding: theme.spacing(4),

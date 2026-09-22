@@ -123,6 +123,7 @@ export interface SubComponent {
   tags?: string[]
   requires_confirmation: boolean
   critical?: boolean
+  exclude_from_main_outage_well?: boolean
   monitoring?: Monitoring
   slack_reporting?: SlackReportingConfig[]
   status?: Status

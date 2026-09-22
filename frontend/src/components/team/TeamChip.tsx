@@ -4,11 +4,9 @@ import { Link } from 'react-router'
 
 import { getTeamColor } from '../../utils/teamColor'
 
-const StyledTeamChip = styled(Chip)<{ size?: 'small' | 'medium'; teamColor: string }>(({
-  theme,
-  size,
-  teamColor,
-}) => {
+const StyledTeamChip = styled(Chip, {
+  shouldForwardProp: (prop) => prop !== 'teamColor',
+})<{ size?: 'small' | 'medium'; teamColor: string }>(({ theme, size, teamColor }) => {
   const isDark = theme.palette.mode === 'dark'
   const textColor = isDark ? lighten(teamColor, 0.4) : theme.palette.text.primary
 

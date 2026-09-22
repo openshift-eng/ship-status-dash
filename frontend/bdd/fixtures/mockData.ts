@@ -67,6 +67,14 @@ const sippyUISubComponent: SubComponent = {
   requires_confirmation: false,
 }
 
+export const incidentsSubComponent: SubComponent = {
+  name: 'Incidents',
+  slug: 'incidents',
+  description: 'Currently open TRT incidents',
+  requires_confirmation: false,
+  exclude_from_main_outage_well: true,
+}
+
 export const mockComponents: Component[] = [
   {
     name: 'Prow',
@@ -233,6 +241,13 @@ export const mockUnhealthySubComponents: SubComponentListItem[] = [
     active_outages: [],
   },
 ]
+
+export const mockExcludedUnhealthySubComponent: SubComponentListItem = {
+  ...incidentsSubComponent,
+  component_name: 'TRT Incidents',
+  status: 'Degraded',
+  active_outages: [],
+}
 
 export const mockAuthUser: MockAuthUser = {
   username: 'testuser',
