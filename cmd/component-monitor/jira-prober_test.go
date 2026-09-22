@@ -23,6 +23,12 @@ type jiraTestServer struct {
 	sawAuth      bool
 }
 
+func (s *jiraTestServer) snapshot() (sawAuth bool, searchHits int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sawAuth, s.searchHits
+}
+
 func newJiraTestServer(t *testing.T, searchBody []byte) (*httptest.Server, *jiraTestServer) {
 	t.Helper()
 	state := &jiraTestServer{
@@ -151,11 +157,12 @@ func TestJiraProber_Probe(t *testing.T) {
 			prober := newTestJiraProber(server.URL)
 			got := collectJiraProbe(t, prober)
 
-			if state.sawAuth {
+			sawAuth, searchHits := state.snapshot()
+			if sawAuth {
 				t.Fatal("jira probe must not send credentials")
 			}
-			if tt.wantSearchHits != 0 && state.searchHits != tt.wantSearchHits {
-				t.Errorf("search hits = %d, want %d", state.searchHits, tt.wantSearchHits)
+			if tt.wantSearchHits != 0 && searchHits != tt.wantSearchHits {
+				t.Errorf("search hits = %d, want %d", searchHits, tt.wantSearchHits)
 			}
 
 			if tt.wantErrorContains != "" {

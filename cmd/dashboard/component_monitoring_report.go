@@ -188,6 +188,27 @@ func (p *ComponentMonitorReportProcessor) processPerReason(status types.Componen
 		return err
 	}
 
+	if status.Status == types.StatusHealthy {
+		if len(activeOutages) == 0 {
+			logger.Debug("Sub Component reported healthy, and no active outages to resolve")
+			return nil
+		}
+		if !subComponent.Monitoring.AutoResolve {
+			logger.Debug("Auto-resolve disabled, skipping healthy status processing")
+			return nil
+		}
+		for i := range activeOutages {
+			p.resolveOutage(&activeOutages[i], now, monitorName, logger)
+		}
+		return nil
+	}
+
+	severity := status.Status.ToSeverity()
+	if severity == "" {
+		logger.Warn("Invalid status for severity conversion, skipping")
+		return nil
+	}
+
 	activeByIdentity := make(map[string]*types.Outage, len(activeOutages))
 	for i := range activeOutages {
 		id, ok := outageReasonIdentity(activeOutages[i])
@@ -198,11 +219,6 @@ func (p *ComponentMonitorReportProcessor) processPerReason(status types.Componen
 	}
 
 	incomingIdentities := make(map[string]struct{}, len(status.Reasons))
-	severity := status.Status.ToSeverity()
-	if severity == "" {
-		severity = types.SeverityDown
-	}
-
 	for _, reason := range status.Reasons {
 		if reason.Check == "" {
 			continue

@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -57,25 +55,8 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 			log := logrus.New()
 			log.SetLevel(logrus.ErrorLevel)
 
-			probers := make([]Prober, len(tt.probeResults))
-			for i := 0; i < len(tt.probeResults); i++ {
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusOK)
-				}))
-				defer server.Close()
-
-				probers[i] = NewHTTPProber(
-					"comp",
-					"sub",
-					server.URL,
-					http.StatusOK,
-					10*time.Millisecond,
-					types.SeverityDown,
-				)
-			}
-
 			orchestrator := NewProbeOrchestrator(
-				scheduleAtFrequency(probers, 100*time.Millisecond),
+				nil,
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
@@ -102,83 +83,17 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				expected = 1
 			}
 
+			outcomes := make(chan probeOutcome, len(tt.probeResults))
 			go func() {
 				time.Sleep(20 * time.Millisecond)
 				for _, result := range tt.probeResults {
-					orchestrator.results <- result
+					outcomes <- probeOutcome{result: result}
 				}
 			}()
 
-			results := orchestrator.collectProbeResults(ctx, expected)
+			results := orchestrator.collectProbeResults(ctx, outcomes, expected)
 			if diff := cmp.Diff(tt.probeResults, results, testhelper.EquateErrorMessage); diff != "" {
 				t.Errorf("collectProbeResults() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-func TestProbeOrchestrator_drainChannels(t *testing.T) {
-	tests := []struct {
-		name         string
-		probeResults []ProbeResult
-		expectDrain  bool
-	}{
-		{
-			name: "drain old results",
-			probeResults: []ProbeResult{
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown}},
-			},
-			expectDrain: true,
-		},
-		{
-			name: "drain old errors",
-			probeResults: []ProbeResult{
-				{Error: assert.AnError},
-			},
-			expectDrain: true,
-		},
-		{
-			name: "drain mixed results and errors",
-			probeResults: []ProbeResult{
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
-				{Error: assert.AnError},
-			},
-			expectDrain: true,
-		},
-		{
-			name:        "no items to drain",
-			expectDrain: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			log := logrus.New()
-			log.SetLevel(logrus.ErrorLevel)
-
-			orchestrator := NewProbeOrchestrator(
-				scheduleAtFrequency([]Prober{}, 100*time.Millisecond),
-				100*time.Millisecond,
-				"http://test",
-				"test-monitor",
-				"",
-				log,
-			)
-
-			go func() {
-				for _, result := range tt.probeResults {
-					orchestrator.results <- result
-				}
-			}()
-
-			time.Sleep(10 * time.Millisecond)
-			orchestrator.drainChannels()
-
-			select {
-			case <-orchestrator.results:
-				t.Error("results channel should be empty after draining")
-			default:
 			}
 		})
 	}

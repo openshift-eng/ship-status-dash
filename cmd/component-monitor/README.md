@@ -48,7 +48,7 @@ components:
 Rules:
 
 - An entry override must be a positive duration at least the instance `frequency`. Faster polling means lowering the instance value. Faster than the tick cannot work: collection timeout and HTTP `retry_after` are bounded by the tick (production HTTP uses `retry_after: 4m` inside a 5m tick).
-- HTTP `retry_after` must be less than that entry's resolved frequency (instance default or override).
+- HTTP `retry_after` must not exceed that entry's resolved frequency (instance default or override).
 - Every `*_monitor` on the same YAML entry shares the resolved frequency.
 - Multiple YAML entries for the same `component_slug` / `sub_component_slug` (for example two build-farm `build01` items) must resolve to the same frequency. A report is the dashboard's full picture for that sub-component. If one entry ran and the other did not, the dashboard could auto-resolve outages from the missing probe.
 

@@ -344,12 +344,10 @@ func cleanupOutages(t *testing.T, client *TestHTTPClient, componentName, subComp
 	for _, outage := range outages {
 		resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/%d",
 			utils.Slugify(componentName), utils.Slugify(subComponentName), outage.ID))
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusNoContent {
-				deleted++
-			}
-		}
+		require.NoError(t, err, "delete outage %d", outage.ID)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode, "delete outage %d", outage.ID)
+		resp.Body.Close()
+		deleted++
 	}
 	if deleted > 0 {
 		time.Sleep(2 * time.Second)
