@@ -77,6 +77,19 @@ OpenShift Deployment/Route changes are maintained in [openshift/release](https:/
 
 Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not these servers.
 
+## Open Graph Metadata
+
+The SPA handler injects Open Graph (`og:title`, `og:description`) and standard HTML metadata (`<title>`, `<meta name="description">`) into the `index.html` response for each route. This enables rich link previews in Slack, social media, and other clients that read OG tags.
+
+Metadata resolution (`cmd/dashboard/meta.go`) uses `gorilla/mux` route patterns that mirror the frontend's React Router definitions:
+
+- `/{componentSlug}` -- component name and description from config
+- `/{componentSlug}/{subComponentSlug}` -- sub-component details
+- `/{componentSlug}/{subComponentSlug}/outages/{outageID}` -- outage status, severity, and description
+- Static routes (`/status-history`, `/pages/*`, `/tags/*`, `/team/*`) -- fixed descriptive titles
+
+When a new frontend route is added, a corresponding pattern should be added to `metaRoutes` in `meta.go` so link previews render correctly. If the route does not have a matching pattern, the default dashboard title and description are used.
+
 ## Slack Integration
 
 The dashboard supports Slack integration for outage reporting. When enabled, the dashboard will:

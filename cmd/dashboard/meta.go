@@ -7,12 +7,23 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/types"
 )
+
+var metaRoutes = newMetaRouter()
+
+func newMetaRouter() *mux.Router {
+	r := mux.NewRouter()
+	r.Path("/{componentSlug}/{subComponentSlug}/outages/{outageID}")
+	r.Path("/{componentSlug}/{subComponentSlug}")
+	r.Path("/{componentSlug}")
+	return r
+}
 
 type pageMetadata struct {
 	Title       string
@@ -71,16 +82,18 @@ func resolveMetadata(r *http.Request, configManager *config.Manager[types.Dashbo
 		return defaultMetadata()
 	}
 
-	if len(segments) == 4 && segments[2] == "outages" {
-		return resolveOutageMetadata(segments[0], segments[1], segments[3], cfg, outageManager, logger)
-	}
-
-	if len(segments) == 2 {
-		return resolveSubComponentMetadata(segments[0], segments[1], cfg)
-	}
-
-	if len(segments) == 1 {
-		return resolveComponentMetadata(segments[0], cfg)
+	var match mux.RouteMatch
+	matchReq, _ := http.NewRequest(http.MethodGet, path, nil)
+	if metaRoutes.Match(matchReq, &match) {
+		vars := match.Vars
+		switch {
+		case vars["outageID"] != "":
+			return resolveOutageMetadata(vars["componentSlug"], vars["subComponentSlug"], vars["outageID"], cfg, outageManager, logger)
+		case vars["subComponentSlug"] != "":
+			return resolveSubComponentMetadata(vars["componentSlug"], vars["subComponentSlug"], cfg)
+		case vars["componentSlug"] != "":
+			return resolveComponentMetadata(vars["componentSlug"], cfg)
+		}
 	}
 
 	return defaultMetadata()

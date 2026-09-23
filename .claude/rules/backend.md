@@ -9,3 +9,4 @@ paths:
 * Authentication uses HMAC signature verification -- never bypass `SKIP_AUTH` in production paths.
 * Outage modifications must go through the audit logging system (`outage_audit_logs` table).
 * All mutating endpoints (create, update, delete) must be served exclusively on the protected route. The oauth-proxy is the bearer-token authentication boundary; the dashboard is the sole application-level enforcement point for HMAC validation and authorization on all write operations.
+* The SPA handler injects Open Graph metadata into `index.html` for link previews (Slack, social media). Route patterns in `metaRoutes` (`cmd/dashboard/meta.go`) mirror the frontend's React Router definitions. When adding a new frontend route, add a corresponding `metaRoutes` pattern so link previews render correctly.
