@@ -27,3 +27,13 @@ func Slugify(text string) string {
 
 	return text
 }
+
+func Deslugify(slug string) string {
+	words := strings.Split(slug, "-")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}

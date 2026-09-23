@@ -153,63 +153,87 @@ func TestResolveOutageMetadata(t *testing.T) {
 	cfg := testConfig()
 	logger := logrus.New()
 
-	t.Run("active outage", func(t *testing.T) {
-		mock := &outage.MockOutageManager{
-			GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
-				return &types.Outage{
-					Severity:    types.SeverityDown,
-					Description: "Deck is not responding to health checks",
-				}, nil
+	tests := []struct {
+		name            string
+		compSlug        string
+		subSlug         string
+		outageID        string
+		outageManager   outage.OutageManager
+		wantTitle       string
+		wantDescContain []string
+		maxDescLen      int
+	}{
+		{
+			name:     "active outage",
+			compSlug: "prow", subSlug: "deck", outageID: "42",
+			outageManager: &outage.MockOutageManager{
+				GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+					return &types.Outage{
+						Severity:    types.SeverityDown,
+						Description: "Deck is not responding to health checks",
+					}, nil
+				},
 			},
-		}
-		meta := resolveOutageMetadata("prow", "deck", "42", cfg, mock, logger)
-		assert.Equal(t, "Outage #42 - Deck (Prow) - SHIP Status Dashboard", meta.Title)
-		assert.Contains(t, meta.Description, "Active")
-		assert.Contains(t, meta.Description, "Down")
-		assert.Contains(t, meta.Description, "Deck (Prow)")
-		assert.Contains(t, meta.Description, "Deck is not responding")
-	})
-
-	t.Run("resolved outage", func(t *testing.T) {
-		mock := &outage.MockOutageManager{
-			GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
-				return &types.Outage{
-					Severity:    types.SeverityDegraded,
-					EndTime:     sql.NullTime{Time: time.Now(), Valid: true},
-					Description: "Intermittent failures",
-				}, nil
+			wantTitle:       "Outage #42 - Deck (Prow) - SHIP Status Dashboard",
+			wantDescContain: []string{"Active", "Down", "Deck (Prow)", "Deck is not responding"},
+		},
+		{
+			name:     "resolved outage",
+			compSlug: "prow", subSlug: "deck", outageID: "10",
+			outageManager: &outage.MockOutageManager{
+				GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+					return &types.Outage{
+						Severity:    types.SeverityDegraded,
+						EndTime:     sql.NullTime{Time: time.Now(), Valid: true},
+						Description: "Intermittent failures",
+					}, nil
+				},
 			},
-		}
-		meta := resolveOutageMetadata("prow", "deck", "10", cfg, mock, logger)
-		assert.Contains(t, meta.Description, "Resolved")
-		assert.Contains(t, meta.Description, "Degraded")
-	})
-
-	t.Run("long description is truncated", func(t *testing.T) {
-		longDesc := strings.Repeat("x", 200)
-		mock := &outage.MockOutageManager{
-			GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
-				return &types.Outage{
-					Severity:    types.SeverityDown,
-					Description: longDesc,
-				}, nil
+			wantDescContain: []string{"Resolved", "Degraded"},
+		},
+		{
+			name:     "long description is truncated",
+			compSlug: "prow", subSlug: "deck", outageID: "1",
+			outageManager: &outage.MockOutageManager{
+				GetOutageByIDFn: func(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
+					return &types.Outage{
+						Severity:    types.SeverityDown,
+						Description: strings.Repeat("x", 200),
+					}, nil
+				},
 			},
-		}
-		meta := resolveOutageMetadata("prow", "deck", "1", cfg, mock, logger)
-		assert.LessOrEqual(t, len(meta.Description), 300)
-		assert.Contains(t, meta.Description, "...")
-	})
+			wantDescContain: []string{"..."},
+			maxDescLen:      300,
+		},
+		{
+			name:     "nil outage manager returns fallback",
+			compSlug: "prow", subSlug: "deck", outageID: "5",
+			outageManager:   nil,
+			wantTitle:       "Outage #5 - Deck (Prow) - SHIP Status Dashboard",
+			wantDescContain: []string{"Outage details for Deck"},
+		},
+		{
+			name:     "invalid outage ID returns fallback",
+			compSlug: "prow", subSlug: "deck", outageID: "abc",
+			outageManager: nil,
+			wantTitle:     "Outage - Deck (Prow) - SHIP Status Dashboard",
+		},
+	}
 
-	t.Run("nil outage manager returns fallback", func(t *testing.T) {
-		meta := resolveOutageMetadata("prow", "deck", "5", cfg, nil, logger)
-		assert.Equal(t, "Outage #5 - Deck (Prow) - SHIP Status Dashboard", meta.Title)
-		assert.Contains(t, meta.Description, "Outage details for Deck")
-	})
-
-	t.Run("invalid outage ID returns fallback", func(t *testing.T) {
-		meta := resolveOutageMetadata("prow", "deck", "abc", cfg, nil, logger)
-		assert.Equal(t, "Outage - Deck (Prow) - SHIP Status Dashboard", meta.Title)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := resolveOutageMetadata(tt.compSlug, tt.subSlug, tt.outageID, cfg, tt.outageManager, logger)
+			if tt.wantTitle != "" {
+				assert.Equal(t, tt.wantTitle, meta.Title)
+			}
+			for _, s := range tt.wantDescContain {
+				assert.Contains(t, meta.Description, s)
+			}
+			if tt.maxDescLen > 0 {
+				assert.LessOrEqual(t, len(meta.Description), tt.maxDescLen)
+			}
+		})
+	}
 }
 
 func TestInjectMetadata(t *testing.T) {
@@ -223,51 +247,52 @@ func TestInjectMetadata(t *testing.T) {
   <body><div id="root"></div></body>
 </html>`)
 
-	t.Run("default metadata preserves original values plus OG tags", func(t *testing.T) {
-		result := string(injectMetadata(indexHTML, defaultMetadata()))
-		assert.Contains(t, result, "<title>SHIP Status Dashboard</title>")
-		assert.Contains(t, result, `og:title`)
-		assert.Contains(t, result, `og:description`)
-		assert.Contains(t, result, `og:type`)
-		assert.Contains(t, result, `og:site_name`)
-	})
-
-	t.Run("custom metadata injects title and description", func(t *testing.T) {
-		meta := pageMetadata{
-			Title:       "Outage #42 - Deck (Prow) - SHIP Status Dashboard",
-			Description: "Active | Severity: Down | Deck (Prow)",
-		}
-		result := string(injectMetadata(indexHTML, meta))
-		assert.Contains(t, result, "<title>Outage #42 - Deck (Prow) - SHIP Status Dashboard</title>")
-		assert.Contains(t, result, `content="Active | Severity: Down | Deck (Prow)"`)
-		assert.Contains(t, result, `og:title`)
-	})
-
-	t.Run("HTML special characters are escaped", func(t *testing.T) {
-		meta := pageMetadata{
-			Title:       `Test & "quotes" <tags>`,
-			Description: `A <b>bold</b> & "quoted" description`,
-		}
-		result := string(injectMetadata(indexHTML, meta))
-		assert.Contains(t, result, "Test &amp; &#34;quotes&#34; &lt;tags&gt;")
-		assert.NotContains(t, result, `<b>bold</b>`)
-	})
-}
-
-func TestDeslugify(t *testing.T) {
 	tests := []struct {
-		input string
-		want  string
+		name           string
+		meta           pageMetadata
+		wantContains   []string
+		wantNotContain []string
 	}{
-		{"build-farm", "Build Farm"},
-		{"prow", "Prow"},
-		{"build-clusters", "Build Clusters"},
-		{"spc-dashboard", "Spc Dashboard"},
-		{"", ""},
+		{
+			name: "default metadata preserves original values plus OG tags",
+			meta: defaultMetadata(),
+			wantContains: []string{
+				"<title>SHIP Status Dashboard</title>",
+				`og:title`, `og:description`, `og:type`, `og:site_name`,
+			},
+		},
+		{
+			name: "custom metadata injects title and description",
+			meta: pageMetadata{
+				Title:       "Outage #42 - Deck (Prow) - SHIP Status Dashboard",
+				Description: "Active | Severity: Down | Deck (Prow)",
+			},
+			wantContains: []string{
+				"<title>Outage #42 - Deck (Prow) - SHIP Status Dashboard</title>",
+				`content="Active | Severity: Down | Deck (Prow)"`,
+				`og:title`,
+			},
+		},
+		{
+			name: "HTML special characters are escaped",
+			meta: pageMetadata{
+				Title:       `Test & "quotes" <tags>`,
+				Description: `A <b>bold</b> & "quoted" description`,
+			},
+			wantContains:   []string{"Test &amp; &#34;quotes&#34; &lt;tags&gt;"},
+			wantNotContain: []string{`<b>bold</b>`},
+		},
 	}
+
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.want, deslugify(tt.input))
+		t.Run(tt.name, func(t *testing.T) {
+			result := string(injectMetadata(indexHTML, tt.meta))
+			for _, s := range tt.wantContains {
+				assert.Contains(t, result, s)
+			}
+			for _, s := range tt.wantNotContain {
+				assert.NotContains(t, result, s)
+			}
 		})
 	}
 }

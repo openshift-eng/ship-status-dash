@@ -13,6 +13,7 @@ import (
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 )
 
 var metaRoutes = newMetaRouter()
@@ -54,22 +55,22 @@ func resolveMetadata(r *http.Request, configManager *config.Manager[types.Dashbo
 	case "pages":
 		if len(segments) >= 2 {
 			return pageMetadata{
-				Title:       fmt.Sprintf("%s - SHIP Status Dashboard", deslugify(segments[1])),
-				Description: fmt.Sprintf("View the %s page on SHIP Status Dashboard.", deslugify(segments[1])),
+				Title:       fmt.Sprintf("%s - SHIP Status Dashboard", utils.Deslugify(segments[1])),
+				Description: fmt.Sprintf("View the %s page on SHIP Status Dashboard.", utils.Deslugify(segments[1])),
 			}
 		}
 	case "tags":
 		if len(segments) >= 2 {
 			return pageMetadata{
-				Title:       fmt.Sprintf("Tag: %s - SHIP Status Dashboard", deslugify(segments[1])),
-				Description: fmt.Sprintf("Components tagged with %s on SHIP Status Dashboard.", deslugify(segments[1])),
+				Title:       fmt.Sprintf("Tag: %s - SHIP Status Dashboard", utils.Deslugify(segments[1])),
+				Description: fmt.Sprintf("Components tagged with %s on SHIP Status Dashboard.", utils.Deslugify(segments[1])),
 			}
 		}
 	case "team":
 		if len(segments) >= 2 {
 			return pageMetadata{
-				Title:       fmt.Sprintf("Team: %s - SHIP Status Dashboard", deslugify(segments[1])),
-				Description: fmt.Sprintf("Components managed by %s on SHIP Status Dashboard.", deslugify(segments[1])),
+				Title:       fmt.Sprintf("Team: %s - SHIP Status Dashboard", utils.Deslugify(segments[1])),
+				Description: fmt.Sprintf("Components managed by %s on SHIP Status Dashboard.", utils.Deslugify(segments[1])),
 			}
 		}
 	}
@@ -137,8 +138,8 @@ func resolveSubComponentMetadata(compSlug, subSlug string, cfg *types.DashboardC
 }
 
 func resolveOutageMetadata(compSlug, subSlug, outageIDStr string, cfg *types.DashboardConfig, outageManager outage.OutageManager, logger *logrus.Logger) pageMetadata {
-	compName := deslugify(compSlug)
-	subName := deslugify(subSlug)
+	compName := utils.Deslugify(compSlug)
+	subName := utils.Deslugify(subSlug)
 	if comp := cfg.GetComponentBySlug(compSlug); comp != nil {
 		compName = comp.Name
 		if sub := comp.GetSubComponentBySlug(subSlug); sub != nil {
@@ -191,16 +192,6 @@ func resolveOutageMetadata(compSlug, subSlug, outageIDStr string, cfg *types.Das
 		Title:       fmt.Sprintf("Outage #%d - %s (%s) - SHIP Status Dashboard", outageID, subName, compName),
 		Description: desc,
 	}
-}
-
-func deslugify(slug string) string {
-	words := strings.Split(slug, "-")
-	for i, w := range words {
-		if len(w) > 0 {
-			words[i] = strings.ToUpper(w[:1]) + w[1:]
-		}
-	}
-	return strings.Join(words, " ")
 }
 
 func injectMetadata(indexHTML []byte, meta pageMetadata) []byte {

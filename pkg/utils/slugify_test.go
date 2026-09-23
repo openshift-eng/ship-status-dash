@@ -28,3 +28,22 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+func TestDeslugify(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"build-farm", "Build Farm"},
+		{"prow", "Prow"},
+		{"build-clusters", "Build Clusters"},
+		{"spc-dashboard", "Spc Dashboard"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := Deslugify(tt.in)
+		if got != tt.want {
+			t.Errorf("Deslugify(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

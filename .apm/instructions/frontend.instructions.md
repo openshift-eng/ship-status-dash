@@ -19,4 +19,4 @@ cd frontend && npx eslint . --fix && npx prettier --write .
   - Always use theme values (`theme.palette`, `theme.spacing()`, `theme.breakpoints`) instead of hardcoded colors or sizes.
 * The frontend uses `npm`. If you must install or update any dependencies, always use the `--ignore-scripts` flag.
 * Environment variables use the `VITE_` prefix (e.g. `VITE_PUBLIC_DOMAIN`, `VITE_PROTECTED_DOMAIN`).
-* When adding or changing a React Router route, also update the `metaRoutes` patterns in `cmd/dashboard/meta.go` so the server-side Open Graph metadata injection stays in sync. This drives link previews in Slack and social media.
+* When adding or changing a React Router route, also update the `metaRoutes` patterns in `cmd/dashboard/meta.go` so the server-side Open Graph metadata injection stays in sync. This drives link previews in Slack and other clients that read OG tags.
