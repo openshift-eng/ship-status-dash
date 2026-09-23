@@ -40,6 +40,14 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ]; then LINT_ARCH="arm64"; else LINT_ARCH="amd64"; fi && \
     rpm -i "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-${LINT_ARCH}.rpm"
 
+ARG GH_VERSION=2.92.0
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then GH_ARCH="arm64"; else GH_ARCH="amd64"; fi && \
+    curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    | tar xz -C /tmp && \
+    mv "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" /usr/local/bin/gh && \
+    chmod +x /usr/local/bin/gh
+
 # Playwright system library dependencies (Chromium requires these at runtime)
 RUN dnf install -y \
     alsa-lib at-spi2-atk at-spi2-core atk cairo cups-libs dbus-libs \
