@@ -58,7 +58,7 @@ export interface OutageLink {
   CreatedAt: string
   outage_id: number
   url: string
-  link_type: 'incident_channel_thread' | 'rca' | 'other'
+  link_type: 'incident_channel_thread' | 'rca' | 'jira' | 'other'
   description?: string
 }
 
@@ -106,6 +106,7 @@ export interface Monitoring {
   frequency: string
   component_monitor: string
   auto_resolve: boolean
+  outage_per_reason?: boolean
 }
 
 export interface SlackReportingConfig {
@@ -122,6 +123,7 @@ export interface SubComponent {
   tags?: string[]
   requires_confirmation: boolean
   critical?: boolean
+  exclude_from_main_outage_well?: boolean
   monitoring?: Monitoring
   slack_reporting?: SlackReportingConfig[]
   status?: Status

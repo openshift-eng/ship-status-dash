@@ -121,7 +121,7 @@ def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         link_type: str = "other",
         description: str = "",
     ) -> dict:
-        """Attach a link to an outage. acting_for identifies the user/bot responsible (required in authenticated mode). link_type: incident_channel_thread, rca, or other."""
+        """Attach a link to an outage. acting_for identifies the user/bot responsible (required in authenticated mode). link_type: incident_channel_thread, rca, jira, or other."""
         return api.add_outage_link(
             component_slug, sub_component_slug, outage_id, url,
             link_type=link_type, description=description, acting_for=acting_for,

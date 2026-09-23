@@ -125,3 +125,4 @@ Write endpoints support delegated authorization via the `X-Acting-For` HTTP head
 
 - **POST** `/api/component-monitor/report` - Submit component monitor status report
   - **Public:** No (requires service account authentication)
+  - Each `reasons[]` entry may include `links`, an array of `{url, link_type}`. Valid `link_type` values are `incident_channel_thread`, `rca`, `jira`, and `other` (default if omitted). On outage create, these become outage links. They are not stored on the reason row.

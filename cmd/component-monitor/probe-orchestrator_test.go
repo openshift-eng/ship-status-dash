@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,25 +55,8 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 			log := logrus.New()
 			log.SetLevel(logrus.ErrorLevel)
 
-			probers := make([]Prober, len(tt.probeResults))
-			for i := 0; i < len(tt.probeResults); i++ {
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusOK)
-				}))
-				defer server.Close()
-
-				probers[i] = NewHTTPProber(
-					"comp",
-					"sub",
-					server.URL,
-					http.StatusOK,
-					10*time.Millisecond,
-					types.SeverityDown,
-				)
-			}
-
 			orchestrator := NewProbeOrchestrator(
-				probers,
+				nil,
 				100*time.Millisecond,
 				"http://test",
 				"test-monitor",
@@ -91,87 +74,26 @@ func TestProbeOrchestrator_collectProbeResults(t *testing.T) {
 				}()
 			}
 
+			expected := len(tt.probeResults)
 			if tt.timeout {
 				orchestrator.frequency = 10 * time.Millisecond
+				expected = 1
+			}
+			if tt.cancelContext {
+				expected = 1
 			}
 
+			outcomes := make(chan probeOutcome, len(tt.probeResults))
 			go func() {
 				time.Sleep(20 * time.Millisecond)
 				for _, result := range tt.probeResults {
-					orchestrator.results <- result
+					outcomes <- probeOutcome{result: result}
 				}
 			}()
 
-			results := orchestrator.collectProbeResults(ctx)
+			results := orchestrator.collectProbeResults(ctx, outcomes, expected)
 			if diff := cmp.Diff(tt.probeResults, results, testhelper.EquateErrorMessage); diff != "" {
 				t.Errorf("collectProbeResults() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-func TestProbeOrchestrator_drainChannels(t *testing.T) {
-	tests := []struct {
-		name         string
-		probeResults []ProbeResult
-		expectDrain  bool
-	}{
-		{
-			name: "drain old results",
-			probeResults: []ProbeResult{
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp2", SubComponentSlug: "sub2", Status: types.StatusDown}},
-			},
-			expectDrain: true,
-		},
-		{
-			name: "drain old errors",
-			probeResults: []ProbeResult{
-				{Error: assert.AnError},
-			},
-			expectDrain: true,
-		},
-		{
-			name: "drain mixed results and errors",
-			probeResults: []ProbeResult{
-				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{ComponentSlug: "comp1", SubComponentSlug: "sub1", Status: types.StatusHealthy}},
-				{Error: assert.AnError},
-			},
-			expectDrain: true,
-		},
-		{
-			name:        "no items to drain",
-			expectDrain: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			log := logrus.New()
-			log.SetLevel(logrus.ErrorLevel)
-
-			orchestrator := NewProbeOrchestrator(
-				[]Prober{},
-				100*time.Millisecond,
-				"http://test",
-				"test-monitor",
-				"",
-				log,
-			)
-
-			go func() {
-				for _, result := range tt.probeResults {
-					orchestrator.results <- result
-				}
-			}()
-
-			time.Sleep(10 * time.Millisecond)
-			orchestrator.drainChannels()
-
-			select {
-			case <-orchestrator.results:
-				t.Error("results channel should be empty after draining")
-			default:
 			}
 		})
 	}
@@ -212,7 +134,7 @@ func TestProbeOrchestrator_waitForNextCycle(t *testing.T) {
 			log.SetLevel(logrus.ErrorLevel)
 
 			orchestrator := NewProbeOrchestrator(
-				[]Prober{},
+				scheduleAtFrequency([]Prober{}, tt.frequency),
 				tt.frequency,
 				"http://test",
 				"test-monitor",
@@ -519,5 +441,261 @@ func TestMergeStatusesByComponent(t *testing.T) {
 				t.Errorf("mergeStatusesByComponent() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+type countingProber struct {
+	calls  *atomic.Int32
+	result ProbeResult
+	delay  time.Duration
+}
+
+func (p *countingProber) Probe(ctx context.Context, results chan<- ProbeResult) {
+	if p.delay > 0 {
+		time.Sleep(p.delay)
+	}
+	p.calls.Add(1)
+	results <- p.result
+}
+
+type fakeReporter struct {
+	mu      sync.Mutex
+	reports [][]types.ComponentMonitorReportComponentStatus
+	prints  int
+}
+
+func (f *fakeReporter) SendReport(results []types.ComponentMonitorReportComponentStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	copied := append([]types.ComponentMonitorReportComponentStatus(nil), results...)
+	f.reports = append(f.reports, copied)
+	return nil
+}
+
+func (f *fakeReporter) PrintReport(results []types.ComponentMonitorReportComponentStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prints++
+	return nil
+}
+
+func (f *fakeReporter) reportCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.reports)
+}
+
+func TestScheduledProberDue(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name      string
+		frequency time.Duration
+		lastOKAgo time.Duration // 0 means never succeeded
+		setLastOK bool
+		want      bool
+	}{
+		{
+			name:      "never succeeded is due",
+			frequency: time.Minute,
+			want:      true,
+		},
+		{
+			name:      "success within frequency is not due",
+			frequency: time.Minute,
+			setLastOK: true,
+			lastOKAgo: 10 * time.Second,
+			want:      false,
+		},
+		{
+			name:      "success older than frequency is due",
+			frequency: time.Minute,
+			setLastOK: true,
+			lastOKAgo: 2 * time.Minute,
+			want:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &scheduledProber{frequency: tt.frequency}
+			if tt.setLastOK {
+				s.lastOK = now.Add(-tt.lastOKAgo)
+			}
+			if got := s.due(now); got != tt.want {
+				t.Errorf("due() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+type runOnceProbeSpec struct {
+	frequency   time.Duration
+	recentlyRan bool
+	delay       time.Duration
+	err         bool
+}
+
+func TestProbeOrchestrator_runOnce(t *testing.T) {
+	healthy := ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    "comp",
+			SubComponentSlug: "sub",
+			Status:           types.StatusHealthy,
+		},
+		ProbeType: ProbeTypeHTTP,
+	}
+	errored := ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    "comp",
+			SubComponentSlug: "slow",
+		},
+		ProbeType: ProbeTypeJira,
+		Error:     errors.New("search failed"),
+	}
+
+	tests := []struct {
+		name            string
+		tick            time.Duration
+		probes          []runOnceProbeSpec
+		runs            int
+		waitForNextTick bool
+		wantCalls       []int32
+		wantReports     int
+	}{
+		{
+			name: "override frequency probe is not invoked until due",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 10 * time.Millisecond},
+				{frequency: time.Hour, recentlyRan: true},
+			},
+			runs:        1,
+			wantCalls:   []int32{1, 0},
+			wantReports: 1,
+		},
+		{
+			name: "success defers until frequency elapses",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour},
+			},
+			runs:        2,
+			wantCalls:   []int32{1},
+			wantReports: 1,
+		},
+		{
+			name: "error does not advance lastOK",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour, err: true},
+			},
+			runs:        2,
+			wantCalls:   []int32{2},
+			wantReports: 0,
+		},
+		{
+			name: "success is due on the next tick even if the probe ran long",
+			tick: 40 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 40 * time.Millisecond, delay: 15 * time.Millisecond},
+			},
+			runs:            2,
+			waitForNextTick: true,
+			wantCalls:       []int32{2},
+			wantReports:     2,
+		},
+		{
+			name: "empty due set does not send report",
+			tick: 10 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Hour, recentlyRan: true},
+			},
+			runs:        1,
+			wantCalls:   []int32{0},
+			wantReports: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			counters := make([]atomic.Int32, len(tt.probes))
+			schedule := make([]scheduledProber, len(tt.probes))
+			for i, spec := range tt.probes {
+				result := healthy
+				if spec.err {
+					result = errored
+				}
+				schedule[i].prober = &countingProber{calls: &counters[i], result: result, delay: spec.delay}
+				schedule[i].frequency = spec.frequency
+				if spec.recentlyRan {
+					schedule[i].lastOK = time.Now()
+				}
+			}
+
+			reporter := &fakeReporter{}
+			log := logrus.New()
+			log.SetLevel(logrus.ErrorLevel)
+			o := NewProbeOrchestrator(schedule, tt.tick, "http://test", "test-monitor", "", log)
+			o.reportClient = reporter
+
+			ctx := context.Background()
+			cycleStart := time.Now()
+			for run := 0; run < tt.runs; run++ {
+				if run > 0 && tt.waitForNextTick {
+					if remaining := time.Until(cycleStart.Add(tt.tick + time.Millisecond)); remaining > 0 {
+						time.Sleep(remaining)
+					}
+				}
+				o.runOnce(ctx)
+			}
+
+			for i, want := range tt.wantCalls {
+				if got := counters[i].Load(); got != want {
+					t.Errorf("probe %d calls = %d, want %d", i, got, want)
+				}
+			}
+			if got := reporter.reportCount(); got != tt.wantReports {
+				t.Errorf("reports = %d, want %d", got, tt.wantReports)
+			}
+		})
+	}
+}
+
+func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
+	var calls atomic.Int32
+	reporter := &fakeReporter{}
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	o := NewProbeOrchestrator(
+		[]scheduledProber{
+			{
+				prober: &countingProber{
+					calls: &calls,
+					result: ProbeResult{
+						ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+							ComponentSlug:    "comp",
+							SubComponentSlug: "sub",
+							Status:           types.StatusHealthy,
+						},
+					},
+				},
+				frequency: time.Hour,
+				lastOK:    time.Now(),
+			},
+		},
+		10*time.Millisecond,
+		"http://test",
+		"test-monitor",
+		"",
+		log,
+	)
+	o.reportClient = reporter
+
+	o.DryRun(context.Background())
+
+	if calls.Load() != 1 {
+		t.Errorf("dry-run probe calls = %d, want 1", calls.Load())
+	}
+	if reporter.prints != 1 {
+		t.Errorf("print reports = %d, want 1", reporter.prints)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	"ship-status-dash/pkg/types"
@@ -15,11 +16,17 @@ type Prober interface {
 	Probe(ctx context.Context, results chan<- ProbeResult)
 }
 
+type reportSender interface {
+	SendReport(results []types.ComponentMonitorReportComponentStatus) error
+	PrintReport(results []types.ComponentMonitorReportComponentStatus) error
+}
+
 const (
 	ProbeTypeHTTP       = "http"
 	ProbeTypeJUnit      = "junit"
 	ProbeTypePrometheus = "prometheus"
 	ProbeTypeSystemd    = "systemd"
+	ProbeTypeJira       = "jira"
 )
 
 type ProbeResult struct {
@@ -28,24 +35,57 @@ type ProbeResult struct {
 	Error     error
 }
 
+type scheduledProber struct {
+	prober    Prober
+	frequency time.Duration
+
+	mu     sync.Mutex
+	lastOK time.Time
+}
+
+func (s *scheduledProber) due(now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastOK.IsZero() || now.Sub(s.lastOK) >= s.frequency
+}
+
+func (s *scheduledProber) recordSuccess(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastOK = at
+}
+
 // ProbeOrchestrator manages the execution of component probes.
 type ProbeOrchestrator struct {
-	probers      []Prober
-	results      chan ProbeResult
+	schedule     []scheduledProber
 	frequency    time.Duration
-	reportClient *ReportClient
+	reportClient reportSender
 	log          *logrus.Logger
 }
 
+// probeOutcome carries a probe result with the schedule entry that produced it.
+type probeOutcome struct {
+	result     ProbeResult
+	scheduled  *scheduledProber
+	cycleStart time.Time
+}
+
 // NewProbeOrchestrator creates a new ProbeOrchestrator.
-func NewProbeOrchestrator(probers []Prober, frequency time.Duration, dashboardURL string, componentMonitorName string, authToken string, log *logrus.Logger) *ProbeOrchestrator {
+func NewProbeOrchestrator(schedule []scheduledProber, frequency time.Duration, dashboardURL string, componentMonitorName string, authToken string, log *logrus.Logger) *ProbeOrchestrator {
 	return &ProbeOrchestrator{
-		probers:      probers,
-		results:      make(chan ProbeResult),
+		schedule:     schedule,
 		frequency:    frequency,
 		reportClient: NewReportClient(dashboardURL, componentMonitorName, authToken),
 		log:          log,
 	}
+}
+
+func scheduleAtFrequency(probers []Prober, frequency time.Duration) []scheduledProber {
+	schedule := make([]scheduledProber, len(probers))
+	for i, p := range probers {
+		schedule[i] = scheduledProber{prober: p, frequency: frequency}
+	}
+	return schedule
 }
 
 // Run starts the probe orchestration loop.
@@ -56,17 +96,8 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 			return
 		}
 
-		o.drainChannels()
-
 		startTime := time.Now()
-		o.startProbes(ctx)
-		results := o.collectProbeResults(ctx)
-		mergedResults := mergeStatuses(results)
-		if err := o.reportClient.SendReport(mergedResults); err != nil {
-			o.log.Errorf("Error sending report: %v", err)
-		} else {
-			o.log.Infof("Report sent successfully")
-		}
+		o.runOnce(ctx)
 		elapsed := time.Since(startTime)
 		o.log.Infof("Probing completed in %s", elapsed)
 		if !o.waitForNextCycle(ctx, elapsed) {
@@ -75,31 +106,88 @@ func (o *ProbeOrchestrator) Run(ctx context.Context) {
 	}
 }
 
+func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
+	cycleStart := time.Now()
+	due := o.dueProbers(cycleStart)
+	if len(due) == 0 {
+		o.log.Info("No probes due this cycle")
+		return
+	}
+
+	outcomes := o.startProbes(ctx, due, cycleStart)
+	results := o.collectProbeResults(ctx, outcomes, len(due))
+	mergedResults := mergeStatuses(results)
+	if len(mergedResults) == 0 {
+		o.log.Info("No statuses to report this cycle")
+		return
+	}
+	if err := o.reportClient.SendReport(mergedResults); err != nil {
+		o.log.Errorf("Error sending report: %v", err)
+	} else {
+		o.log.Infof("Report sent successfully")
+	}
+}
+
 // DryRun runs probes once and outputs the report as JSON to stdout.
 func (o *ProbeOrchestrator) DryRun(ctx context.Context) {
-	o.startProbes(ctx)
-	results := o.collectProbeResults(ctx)
+	due := make([]*scheduledProber, len(o.schedule))
+	for i := range o.schedule {
+		due[i] = &o.schedule[i]
+	}
+	outcomes := o.startProbes(ctx, due, time.Now())
+	results := o.collectProbeResults(ctx, outcomes, len(due))
 	mergedResults := mergeStatuses(results)
 	if err := o.reportClient.PrintReport(mergedResults); err != nil {
 		o.log.Errorf("Error outputting report: %v", err)
 	}
 }
 
-func (o *ProbeOrchestrator) startProbes(ctx context.Context) {
-	o.log.Infof("Probing %d components...", len(o.probers))
-	for _, prober := range o.probers {
-		go prober.Probe(ctx, o.results)
+func (o *ProbeOrchestrator) dueProbers(now time.Time) []*scheduledProber {
+	var due []*scheduledProber
+	for i := range o.schedule {
+		s := &o.schedule[i]
+		if s.due(now) {
+			due = append(due, s)
+		}
 	}
+	return due
 }
 
-func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []ProbeResult {
+func (o *ProbeOrchestrator) startProbes(ctx context.Context, due []*scheduledProber, cycleStart time.Time) <-chan probeOutcome {
+	outcomes := make(chan probeOutcome, len(due))
+	o.log.Infof("Probing %d of %d components...", len(due), len(o.schedule))
+	for _, s := range due {
+		s := s
+		go func() {
+			ch := make(chan ProbeResult, 1)
+			s.prober.Probe(ctx, ch)
+			var r ProbeResult
+			select {
+			case r = <-ch:
+			case <-ctx.Done():
+				return
+			}
+			select {
+			case outcomes <- probeOutcome{result: r, scheduled: s, cycleStart: cycleStart}:
+			case <-ctx.Done():
+			}
+		}()
+	}
+	return outcomes
+}
+
+func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context, outcomes <-chan probeOutcome, expected int) []ProbeResult {
 	probesCompleted := 0
 	results := []ProbeResult{}
+	if expected == 0 {
+		return results
+	}
 	timeout := time.After(o.frequency)
 
-	for probesCompleted < len(o.probers) {
+	for probesCompleted < expected {
 		select {
-		case probeResult := <-o.results:
+		case outcome := <-outcomes:
+			probeResult := outcome.result
 			resultLog := o.log.WithFields(logrus.Fields{
 				"component":     probeResult.ComponentSlug,
 				"sub_component": probeResult.SubComponentSlug,
@@ -110,6 +198,9 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []ProbeResu
 				resultLog.Errorf("Error: %v", probeResult.Error)
 			} else {
 				resultLog.Info("Component monitor probe result received")
+				if outcome.scheduled != nil {
+					outcome.scheduled.recordSuccess(outcome.cycleStart)
+				}
 			}
 			results = append(results, probeResult)
 			probesCompleted++
@@ -123,23 +214,6 @@ func (o *ProbeOrchestrator) collectProbeResults(ctx context.Context) []ProbeResu
 	}
 
 	return results
-}
-
-func (o *ProbeOrchestrator) drainChannels() {
-	o.log.Infof("Draining channels before next cycle...")
-	for {
-		select {
-		case probeResult := <-o.results:
-			if probeResult.Error != nil {
-				o.log.Warnf("Discarding old error for component %s sub-component %s: %v", probeResult.ComponentSlug, probeResult.SubComponentSlug, probeResult.Error)
-			} else {
-				o.log.Warnf("Discarding old result for component %s sub-component %s", probeResult.ComponentSlug, probeResult.SubComponentSlug)
-			}
-		default:
-			o.log.Infof("Channels drained")
-			return
-		}
-	}
 }
 
 func (o *ProbeOrchestrator) waitForNextCycle(ctx context.Context, elapsed time.Duration) bool {

@@ -149,21 +149,24 @@ const UnhealthyWell: React.FC<UnhealthyWellProps> = ({ onHasOutagesChange }) => 
 
   useEffect(() => {
     if (loading) return
-    onHasOutagesChange?.(!error && items.length > 0)
-  }, [loading, error, items.length, onHasOutagesChange])
+    const visibleCount = items.filter((item) => !item.exclude_from_main_outage_well).length
+    onHasOutagesChange?.(!error && visibleCount > 0)
+  }, [loading, error, items, onHasOutagesChange])
 
   useEffect(() => {
     return () => onHasOutagesChange?.(false)
   }, [onHasOutagesChange])
 
   const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => {
-      const rankDiff = (STATUS_RANK[b.status ?? ''] ?? 0) - (STATUS_RANK[a.status ?? ''] ?? 0)
-      if (rankDiff !== 0) return rankDiff
-      const componentDiff = a.component_name.localeCompare(b.component_name)
-      if (componentDiff !== 0) return componentDiff
-      return a.name.localeCompare(b.name)
-    })
+    return items
+      .filter((item) => !item.exclude_from_main_outage_well)
+      .sort((a, b) => {
+        const rankDiff = (STATUS_RANK[b.status ?? ''] ?? 0) - (STATUS_RANK[a.status ?? ''] ?? 0)
+        if (rankDiff !== 0) return rankDiff
+        const componentDiff = a.component_name.localeCompare(b.component_name)
+        if (componentDiff !== 0) return componentDiff
+        return a.name.localeCompare(b.name)
+      })
   }, [items])
 
   if (error) {

@@ -18,6 +18,7 @@ import (
 
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 )
 
 // Options contains command-line configuration options for the component monitor.
@@ -100,9 +101,24 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse frequency: %w", err)
 	}
+	if frequency <= 0 {
+		return nil, fmt.Errorf("frequency must be a positive duration, got %q", cfg.Frequency)
+	}
 	log.Infof("Probing Frequency configured to: %s", frequency)
 
+	resolvedBySub := make(map[types.SubComponentRef]time.Duration)
+
 	for _, component := range cfg.Components {
+		resolved, err := resolvedComponentFrequency(component, frequency)
+		if err != nil {
+			return nil, err
+		}
+		key := types.SubComponentRef{ComponentSlug: component.ComponentSlug, SubSlug: component.SubComponentSlug}
+		if prev, ok := resolvedBySub[key]; ok && prev != resolved {
+			return nil, fmt.Errorf("frequency mismatch for component %s/%s: %s vs %s", component.ComponentSlug, component.SubComponentSlug, prev, resolved)
+		}
+		resolvedBySub[key] = resolved
+
 		if component.SystemdMonitor != nil && strings.TrimSpace(component.SystemdMonitor.Unit) == "" {
 			return nil, fmt.Errorf("systemd unit is required for component %s/%s", component.ComponentSlug, component.SubComponentSlug)
 		}
@@ -112,8 +128,8 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
 			}
-			if retryAfter > frequency {
-				return nil, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, frequency)
+			if retryAfter > resolved {
+				return nil, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, resolved)
 			}
 		}
 
@@ -150,6 +166,18 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 				}
 			}
 		}
+
+		if component.JiraMonitor != nil {
+			if strings.TrimSpace(component.JiraMonitor.URL) == "" {
+				return nil, fmt.Errorf("url is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+			}
+			if _, ok := utils.ParseHTTPURL(component.JiraMonitor.URL); !ok {
+				return nil, fmt.Errorf("url must be a valid URL for jira_monitor on component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, component.JiraMonitor.URL)
+			}
+			if strings.TrimSpace(component.JiraMonitor.JQL) == "" {
+				return nil, fmt.Errorf("jql is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+			}
+		}
 	}
 
 	setDefaultStepValues(&cfg)
@@ -163,13 +191,37 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	return &cfg, nil
 }
 
-func createProbers(components []types.MonitoringComponent, prometheusClients map[string]promclientv1.API, log *logrus.Logger) []Prober {
-	var probers []Prober
+func resolvedComponentFrequency(component types.MonitoringComponent, instanceFrequency time.Duration) (time.Duration, error) {
+	if strings.TrimSpace(component.Frequency) == "" {
+		return instanceFrequency, nil
+	}
+	freq, err := time.ParseDuration(component.Frequency)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse frequency for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
+	}
+	if freq <= 0 {
+		return 0, fmt.Errorf("frequency for component %s/%s must be a positive duration, got %q", component.ComponentSlug, component.SubComponentSlug, component.Frequency)
+	}
+	if freq < instanceFrequency {
+		return 0, fmt.Errorf("frequency for component %s/%s (%s) is less than instance frequency (%s)", component.ComponentSlug, component.SubComponentSlug, freq, instanceFrequency)
+	}
+	return freq, nil
+}
+
+func createProbers(components []types.MonitoringComponent, instanceFrequency time.Duration, prometheusClients map[string]promclientv1.API, log *logrus.Logger) []scheduledProber {
+	var schedule []scheduledProber
 	for _, component := range components {
 		componentLogger := log.WithFields(logrus.Fields{
 			"component":     component.ComponentSlug,
 			"sub_component": component.SubComponentSlug,
 		})
+		freq, err := resolvedComponentFrequency(component, instanceFrequency)
+		if err != nil {
+			componentLogger.WithField("error", err).Fatal("Failed to resolve probe frequency")
+		}
+		add := func(p Prober) {
+			schedule = append(schedule, scheduledProber{prober: p, frequency: freq})
+		}
 		componentLogger.Info("Configuring component monitor probe")
 		if component.HTTPMonitor != nil {
 			retryAfter, err := time.ParseDuration(component.HTTPMonitor.RetryAfter)
@@ -178,18 +230,18 @@ func createProbers(components []types.MonitoringComponent, prometheusClients map
 			}
 			prober := NewHTTPProber(component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.URL, component.HTTPMonitor.Code, retryAfter, component.HTTPMonitor.Severity)
 			componentLogger.Info("Added HTTP prober for component")
-			probers = append(probers, prober)
+			add(prober)
 		}
 		if component.PrometheusMonitor != nil {
 			locationKey := getPrometheusLocationKey(component.PrometheusMonitor.PrometheusLocation)
 			prometheusProber := NewPrometheusProber(component.ComponentSlug, component.SubComponentSlug, prometheusClients[locationKey], component.PrometheusMonitor.Queries)
 			componentLogger.Info("Added Prometheus prober for component")
-			probers = append(probers, prometheusProber)
+			add(prometheusProber)
 		}
 		if component.SystemdMonitor != nil {
 			systemdProber := NewSystemdProber(component.ComponentSlug, component.SubComponentSlug, component.SystemdMonitor.Unit, component.SystemdMonitor.Severity)
 			componentLogger.Info("Added systemd prober for component")
-			probers = append(probers, systemdProber)
+			add(systemdProber)
 		}
 		if component.JUnitMonitor != nil {
 			maxAge, err := time.ParseDuration(component.JUnitMonitor.MaxAge)
@@ -217,10 +269,22 @@ func createProbers(components []types.MonitoringComponent, prometheusClients map
 			junitJobName := strings.TrimSpace(component.JUnitMonitor.JobName)
 			junitProber := NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, junitJobName, maxAge, component.JUnitMonitor.Severity, junitSt, &http.Client{Timeout: 30 * time.Second})
 			componentLogger.Info("Added JUnit prober for component")
-			probers = append(probers, junitProber)
+			add(junitProber)
+		}
+		if component.JiraMonitor != nil {
+			jiraProber := NewJiraProber(
+				component.ComponentSlug,
+				component.SubComponentSlug,
+				component.JiraMonitor.URL,
+				component.JiraMonitor.JQL,
+				component.JiraMonitor.Severity,
+				&http.Client{Timeout: 30 * time.Second},
+			)
+			componentLogger.Info("Added Jira prober for component")
+			add(jiraProber)
 		}
 	}
-	return probers
+	return schedule
 }
 
 func startOrchestratorWithConfig(config *types.ComponentMonitorConfig, kubeconfigDir, dashboardURL, componentMonitorName, reportAuthToken string, log *logrus.Logger, parentCtx context.Context) (context.CancelFunc, error) {
@@ -234,13 +298,13 @@ func startOrchestratorWithConfig(config *types.ComponentMonitorConfig, kubeconfi
 		return nil, fmt.Errorf("failed to create prometheus clients: %w", err)
 	}
 
-	probers := createProbers(config.Components, prometheusClients, log)
-	if len(probers) == 0 {
+	schedule := createProbers(config.Components, frequency, prometheusClients, log)
+	if len(schedule) == 0 {
 		return nil, fmt.Errorf("no probers configured")
 	}
 
 	orchestratorCtx, orchestratorCancel := context.WithCancel(parentCtx)
-	orchestrator := NewProbeOrchestrator(probers, frequency, dashboardURL, componentMonitorName, reportAuthToken, log)
+	orchestrator := NewProbeOrchestrator(schedule, frequency, dashboardURL, componentMonitorName, reportAuthToken, log)
 	go orchestrator.Run(orchestratorCtx)
 
 	return orchestratorCancel, nil
@@ -294,12 +358,12 @@ func main() {
 		if err != nil {
 			log.WithField("error", err).Fatal("Failed to create prometheus clients")
 		}
-		probers := createProbers(monitoringConfig.Components, prometheusClients, log)
-		if len(probers) == 0 {
+		schedule := createProbers(monitoringConfig.Components, frequency, prometheusClients, log)
+		if len(schedule) == 0 {
 			log.Warn("No probers configured, exiting")
 			return
 		}
-		orchestrator := NewProbeOrchestrator(probers, frequency, opts.DashboardURL, opts.Name, "", log)
+		orchestrator := NewProbeOrchestrator(schedule, frequency, opts.DashboardURL, opts.Name, "", log)
 		orchestrator.DryRun(ctx)
 		return
 	}

@@ -18,6 +18,7 @@ export const PROTECTED = 'http://localhost:8443'
 
 interface MockApiOptions {
   authenticated?: boolean
+  unhealthySubComponents?: typeof mockUnhealthySubComponents
 }
 
 function toSlug(name: string): string {
@@ -29,7 +30,7 @@ export function json(route: Route, body: unknown, status = 200) {
 }
 
 export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
-  const { authenticated = false } = options
+  const { authenticated = false, unhealthySubComponents = mockUnhealthySubComponents } = options
 
   // Dismiss the app tour overlay so it doesn't intercept clicks
   await page.addInitScript(() => {
@@ -142,7 +143,7 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
     const tag = url.searchParams.get('tag')
     const team = url.searchParams.get('team')
 
-    let items = mockUnhealthySubComponents
+    let items = unhealthySubComponents
     if (statusFilters.length === 0 && !tag && !team) {
       items = mockComponents.flatMap((c) =>
         c.sub_components.map((sc) => ({

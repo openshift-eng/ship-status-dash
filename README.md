@@ -13,7 +13,7 @@ This project consists of multiple components:
   - Frontend: React application (`frontend/`)
 - **Component Monitor**: Monitoring service that periodically probes components and reports their status to the dashboard
   - Go service (`cmd/component-monitor`)
-  - Supports HTTP, Prometheus, and JUnit (Prow GCS canary) monitoring; see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md)
+  - Supports HTTP, Prometheus, JUnit (Prow GCS canary), systemd, and Jira monitoring; see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md)
 
 For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -36,4 +36,4 @@ For detailed documentation, see [`cmd/component-monitor/README.md`](cmd/componen
 
 ## Configuration
 
-The dashboard reads component definitions and settings from a YAML config file (synced from openshift/release via git-sync in production). This includes component owners, monitoring config, and `trusted_delegators` for delegated write authorization. See [API_ENDPOINTS.md](API_ENDPOINTS.md) for endpoint details.
+The dashboard reads component definitions and settings from a YAML config file (synced from openshift/release via git-sync in production). This includes component owners, monitoring config, and `trusted_delegators` for delegated write authorization. Set `exclude_from_main_outage_well: true` on a sub-component to keep it out of the home-page In Outage well and the ship-logo fire indicator. See [API_ENDPOINTS.md](API_ENDPOINTS.md) for endpoint details.

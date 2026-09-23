@@ -14,7 +14,9 @@ const BackButton = styled(Button)(({ theme }) => ({
   marginBottom: theme.spacing(3),
 }))
 
-const TagHeader = styled(Paper)<{ tagColor?: string }>(({ theme, tagColor }) => {
+const TagHeader = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'tagColor',
+})<{ tagColor?: string }>(({ theme, tagColor }) => {
   const isDark = theme.palette.mode === 'dark'
   return {
     padding: theme.spacing(4),

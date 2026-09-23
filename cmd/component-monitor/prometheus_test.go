@@ -13,57 +13,6 @@ import (
 	"ship-status-dash/pkg/types"
 )
 
-func TestIsURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{
-			name:     "valid http URL",
-			input:    "http://localhost:9090",
-			expected: true,
-		},
-		{
-			name:     "valid https URL",
-			input:    "https://prometheus.example.com",
-			expected: true,
-		},
-		{
-			name:     "valid https URL with path",
-			input:    "https://prometheus.example.com/api/v1",
-			expected: true,
-		},
-		{
-			name:     "invalid - no scheme",
-			input:    "localhost:9090",
-			expected: false,
-		},
-		{
-			name:     "invalid - not http/https",
-			input:    "ftp://example.com",
-			expected: false,
-		},
-		{
-			name:     "invalid - empty string",
-			input:    "",
-			expected: false,
-		},
-		{
-			name:     "invalid - cluster name",
-			input:    "app.ci",
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isURL(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestValidatePrometheusLocations(t *testing.T) {
 	tmpDir := t.TempDir()
 

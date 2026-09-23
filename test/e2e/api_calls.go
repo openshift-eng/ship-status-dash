@@ -139,6 +139,21 @@ func getOutages(t *testing.T, client *TestHTTPClient, componentName, subComponen
 	return outages
 }
 
+// getOutage is a helper function to get a specific outage by ID
+func getOutage(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, outageID uint) types.Outage {
+	t.Helper()
+	path := fmt.Sprintf("/api/components/%s/%s/outages/%d",
+		utils.Slugify(componentName), utils.Slugify(subComponentName), outageID)
+	resp, err := client.Get(path, false)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var outage types.Outage
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&outage))
+	return outage
+}
+
 // getOutagesDuring calls GET /api/outages/during with optional RFC3339 start/end and filters (slugs for componentName / subComponentName).
 func getOutagesDuring(t *testing.T, client *TestHTTPClient, start, end, componentName, subComponentName, tag, team string) []types.Outage {
 	params := url.Values{}
@@ -220,4 +235,16 @@ func expect403(t *testing.T, client *TestHTTPClient, method, url string, body []
 	err = json.NewDecoder(resp.Body).Decode(&errorResponse)
 	require.NoError(t, err)
 	assert.Contains(t, errorResponse["error"], "not authorized")
+}
+
+// postComponentMonitorReport POSTs a component-monitor report with the given bearer token and expects 200.
+func postComponentMonitorReport(t *testing.T, client *TestHTTPClient, token string, payload types.ComponentMonitorReportRequest) {
+	t.Helper()
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, token)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }

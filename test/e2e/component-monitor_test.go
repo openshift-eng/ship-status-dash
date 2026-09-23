@@ -336,6 +336,24 @@ func cleanupActiveOutages(t *testing.T, client *TestHTTPClient, componentName, s
 	}
 }
 
+// cleanupOutages deletes all outages for a component/sub-component, including resolved ones.
+func cleanupOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
+	t.Helper()
+	outages := getOutages(t, client, componentName, subComponentName)
+	deleted := 0
+	for _, outage := range outages {
+		resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+			utils.Slugify(componentName), utils.Slugify(subComponentName), outage.ID))
+		require.NoError(t, err, "delete outage %d", outage.ID)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode, "delete outage %d", outage.ID)
+		resp.Body.Close()
+		deleted++
+	}
+	if deleted > 0 {
+		time.Sleep(2 * time.Second)
+	}
+}
+
 // waitForOutageCreated polls the outage API until an outage is created by component-monitor or times out.
 func waitForOutageCreated(t *testing.T, client *TestHTTPClient, componentName, subComponentName string, timeout time.Duration) *types.Outage {
 	var foundOutage *types.Outage
@@ -467,14 +485,14 @@ func testComponentMonitorConfigHotReload(client *TestHTTPClient, mockMonitoredCo
 			resp.Body.Close()
 
 			// Wait for component-monitor to detect the failure
-			foundOutage := waitForOutageCreated(t, client, "Sippy", "sippy-chat", 15*time.Second)
+			foundOutage := waitForOutageCreated(t, client, "Sippy", "sippy-chat", 30*time.Second)
 			require.NotNil(t, foundOutage, "New component should be monitored after config reload")
 
 			// Cleanup
 			resp, err = http.Get(mockMonitoredComponentURL + "/up")
 			require.NoError(t, err)
 			resp.Body.Close()
-			waitForOutageResolved(t, client, "Sippy", "sippy-chat", foundOutage.ID, 15*time.Second)
+			waitForOutageResolved(t, client, "Sippy", "sippy-chat", foundOutage.ID, 30*time.Second)
 			cleanupActiveOutages(t, client, "Sippy", "sippy-chat")
 
 			// Remove the component from config to restore original state
@@ -494,14 +512,14 @@ func testComponentMonitorConfigHotReload(client *TestHTTPClient, mockMonitoredCo
 			resp.Body.Close()
 
 			// Wait for component-monitor to detect the failure
-			outageBefore := waitForOutageCreated(t, client, "Sippy", "sippy", 15*time.Second)
+			outageBefore := waitForOutageCreated(t, client, "Sippy", "sippy", 30*time.Second)
 			require.NotNil(t, outageBefore, "Component should be monitored before removal")
 
 			// Cleanup the outage
 			resp, err = http.Get(mockMonitoredComponentURL + "/up")
 			require.NoError(t, err)
 			resp.Body.Close()
-			waitForOutageResolved(t, client, "Sippy", "sippy", outageBefore.ID, 15*time.Second)
+			waitForOutageResolved(t, client, "Sippy", "sippy", outageBefore.ID, 30*time.Second)
 			cleanupActiveOutages(t, client, "Sippy", "sippy")
 
 			// Remove the component from config

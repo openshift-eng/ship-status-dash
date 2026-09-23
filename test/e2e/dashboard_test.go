@@ -59,7 +59,6 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("ListSubComponents", testListSubComponents(client))
 	t.Run("Tags", testTags(client))
 	t.Run("User", testUser(client))
-	t.Run("ComponentMonitorReport", testComponentMonitorReport(client))
 	t.Run("TriageNotes", testTriageNotes(client))
 	t.Run("OutageLinks", testOutageLinks(client))
 	t.Run("ServiceAccountOutages", testServiceAccountOutages(client))
@@ -93,7 +92,7 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		components := getComponents(t, client)
 
-		assert.Len(t, components, 6)
+		assert.Len(t, components, 7)
 		assert.Equal(t, "Prow", components[0].Name)
 		assert.Equal(t, "Backbone of the CI system", components[0].Description)
 		assert.Equal(t, "TestPlatform", components[0].ShipTeam)
@@ -150,6 +149,12 @@ func testComponents(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "ERT", components[5].ShipTeam)
 		assert.Len(t, components[5].Subcomponents, 1)
 		assert.Equal(t, "systemd-test", components[5].Subcomponents[0].Name)
+
+		assert.Equal(t, "TRT Incidents", components[6].Name)
+		assert.Equal(t, "TRT Jira incidents labeled trt-incident", components[6].Description)
+		assert.Equal(t, "TRT", components[6].ShipTeam)
+		assert.Len(t, components[6].Subcomponents, 1)
+		assert.Equal(t, "Incidents", components[6].Subcomponents[0].Name)
 	}
 }
 
@@ -1173,8 +1178,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 		t.Run("GET status for all components returns all components with their status", func(t *testing.T) {
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Prow, Downstream CI, Build Farm, Boskos, Sippy, and Errata Reliability
-			assert.Len(t, allStatuses, 6)
+			// Prow, Downstream CI, Build Farm, Boskos, Sippy, Errata Reliability, and TRT Incidents
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			var buildFarmStatus *types.ComponentStatus
@@ -1219,8 +1224,8 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			// Prow, Downstream CI, Build Farm, Boskos, Sippy, and Errata Reliability
-			assert.Len(t, allStatuses, 6)
+			// Prow, Downstream CI, Build Farm, Boskos, Sippy, Errata Reliability, and TRT Incidents
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1242,7 +1247,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1268,7 +1273,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
 				if allStatuses[i].ComponentName == prowComponentName {
@@ -1289,7 +1294,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1320,7 +1325,7 @@ func testAllComponentsStatus(client *TestHTTPClient) func(*testing.T) {
 
 			allStatuses := getAllComponentsStatus(t, client)
 
-			assert.Len(t, allStatuses, 6)
+			assert.Len(t, allStatuses, 7)
 			// Find Prow component
 			var prowStatus *types.ComponentStatus
 			for i := range allStatuses {
@@ -1367,8 +1372,8 @@ func testListSubComponents(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Run("no filters returns all sub-components", func(t *testing.T) {
 			subs := getSubComponents(t, client, "", "", "")
-			// Prow 4 + Downstream CI 1 + Build Farm 2 + Boskos 2 + Sippy 5 + Errata Reliability 1
-			assert.Len(t, subs, 15)
+			// Prow 4 + Downstream CI 1 + Build Farm 2 + Boskos 2 + Sippy 5 + Errata Reliability 1 + TRT Incidents 1
+			assert.Len(t, subs, 16)
 			for _, sub := range subs {
 				assert.NotEmpty(t, sub.Status)
 			}
@@ -1534,631 +1539,6 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 			assert.Contains(t, userResponse.Components, utils.Slugify("Prow"), "developer should have access to Prow")
 			assert.Contains(t, userResponse.Components, utils.Slugify("Boskos"), "developer should have access to Boskos")
 			assert.NotContains(t, userResponse.Components, utils.Slugify("Build Farm"), "developer should not have access to Build Farm")
-		})
-	}
-}
-
-func testComponentMonitorReport(client *TestHTTPClient) func(*testing.T) {
-	return func(t *testing.T) {
-		t.Run("POST report with Down status creates outage", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			reportSentTime := time.Now()
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			var response map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&response)
-			require.NoError(t, err)
-			assert.Equal(t, "processed", response["status"])
-
-			// Verify outage was created
-			outages := getOutages(t, client, "Prow", "Hook")
-			var foundOutage *types.Outage
-			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypePrometheus {
-					foundOutage = &outages[i]
-					break
-				}
-			}
-			require.NotNil(t, foundOutage, "Outage should be created")
-			assert.Equal(t, string(types.SeverityDown), string(foundOutage.Severity))
-			assert.Equal(t, "component-monitor", foundOutage.DiscoveredFrom)
-			assert.Equal(t, "app-ci-component-monitor", foundOutage.CreatedBy)
-			require.Len(t, foundOutage.Reasons, 1)
-			assert.Equal(t, types.CheckTypePrometheus, foundOutage.Reasons[0].Type)
-			assert.Equal(t, "up{job=\"hook\"} == 0", foundOutage.Reasons[0].Check)
-			assert.Equal(t, "No healthy instances found", foundOutage.Reasons[0].Results)
-
-			// Verify that ping time was set
-			status := getStatus(t, client, "Prow", "Hook")
-			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
-			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
-
-			// Cleanup
-			deleteOutage(t, client, "Prow", "Hook", foundOutage.ID)
-		})
-
-		t.Run("POST report with Degraded status creates outage", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDegraded,
-						Reasons: []types.Reason{
-							{
-								Type:    "http",
-								Check:   "https://hook.example.com/health",
-								Results: "Response time > 5s",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			// Verify outage was created
-			outages := getOutages(t, client, "Prow", "Hook")
-			var foundOutage *types.Outage
-			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == types.CheckTypeHTTP {
-					foundOutage = &outages[i]
-					break
-				}
-			}
-			require.NotNil(t, foundOutage, "Outage should be created")
-			assert.Equal(t, string(types.SeverityDegraded), string(foundOutage.Severity))
-
-			// Cleanup
-			deleteOutage(t, client, "Prow", "Hook", foundOutage.ID)
-		})
-
-		t.Run("POST report does not create duplicate outage for same Reason.Type", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			// First report
-			resp1, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp1.Body.Close()
-			assert.Equal(t, http.StatusOK, resp1.StatusCode)
-
-			// Get the created outage
-			outages1 := getOutages(t, client, "Prow", "Hook")
-			var firstOutage *types.Outage
-			for i := range outages1 {
-				if outages1[i].DiscoveredFrom == "component-monitor" && len(outages1[i].Reasons) > 0 && outages1[i].Reasons[0].Type == "prometheus" {
-					firstOutage = &outages1[i]
-					break
-				}
-			}
-			require.NotNil(t, firstOutage, "First outage should be created")
-
-			// Second report with same Reason.Type
-			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp2.Body.Close()
-			assert.Equal(t, http.StatusOK, resp2.StatusCode)
-
-			// Verify no duplicate was created
-			outages2 := getOutages(t, client, "Prow", "Hook")
-			count := 0
-			for i := range outages2 {
-				if outages2[i].DiscoveredFrom == "component-monitor" && len(outages2[i].Reasons) > 0 && outages2[i].Reasons[0].Type == "prometheus" && outages2[i].EndTime.Valid == false {
-					count++
-				}
-			}
-			assert.Equal(t, 1, count, "Should only have one active outage created by the same component-monitor")
-
-			// Cleanup
-			deleteOutage(t, client, "Prow", "Hook", firstOutage.ID)
-		})
-
-		t.Run("POST report with Healthy status auto-resolves outage when auto_resolve is true", func(t *testing.T) {
-			// Create an outage first
-			downReport := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"), // Hook has auto_resolve: true
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			downBytes, err := json.Marshal(downReport)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", downBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp.Body.Close()
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			// Get the created outage
-			outages := getOutages(t, client, "Prow", "Hook")
-			var outage *types.Outage
-			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
-					outage = &outages[i]
-					break
-				}
-			}
-			require.NotNil(t, outage, "Outage should be created")
-			assert.False(t, outage.EndTime.Valid, "Outage should be active")
-
-			// Now report healthy status
-			healthyReport := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusHealthy,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "All instances healthy",
-							},
-						},
-					},
-				},
-			}
-
-			healthyBytes, err := json.Marshal(healthyReport)
-			require.NoError(t, err)
-
-			reportSentTime := time.Now()
-			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp2.Body.Close()
-			assert.Equal(t, http.StatusOK, resp2.StatusCode)
-
-			// Verify outage was resolved
-			outages2 := getOutages(t, client, "Prow", "Hook")
-			var resolvedOutage *types.Outage
-			for i := range outages2 {
-				if outages2[i].ID == outage.ID {
-					resolvedOutage = &outages2[i]
-					break
-				}
-			}
-			require.NotNil(t, resolvedOutage, "Outage should still exist")
-			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
-
-			// Verify that ping time was updated
-			status := getStatus(t, client, "Prow", "Hook")
-			assert.NotNil(t, status.LastPingTime, "last_ping_time should be set after component monitor report")
-			assert.WithinDuration(t, reportSentTime, *status.LastPingTime, 5*time.Second, "last_ping_time should be within 5 seconds of when report was sent")
-		})
-
-		t.Run("POST report with Healthy status does not resolve when auto_resolve is false", func(t *testing.T) {
-			// Create an outage first for Plank (which has auto_resolve: false)
-			downReport := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Plank"), // Plank has auto_resolve: false
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"plank\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			downBytes, err := json.Marshal(downReport)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", downBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp.Body.Close()
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			// Get the created outage
-			outages := getOutages(t, client, "Prow", "Plank")
-			var outage *types.Outage
-			for i := range outages {
-				if outages[i].DiscoveredFrom == "component-monitor" && len(outages[i].Reasons) > 0 && outages[i].Reasons[0].Type == "prometheus" && !outages[i].EndTime.Valid {
-					outage = &outages[i]
-					break
-				}
-			}
-			require.NotNil(t, outage, "Outage should be created")
-
-			// Now report healthy status
-			healthyReport := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Plank"),
-						Status:           types.StatusHealthy,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"plank\"} == 0",
-								Results: "All instances healthy",
-							},
-						},
-					},
-				},
-			}
-
-			healthyBytes, err := json.Marshal(healthyReport)
-			require.NoError(t, err)
-
-			resp2, err := client.PostWithBearerToken("/api/component-monitor/report", healthyBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			resp2.Body.Close()
-			assert.Equal(t, http.StatusOK, resp2.StatusCode)
-
-			// Verify outage was NOT resolved
-			outages2 := getOutages(t, client, "Prow", "Plank")
-			var stillActiveOutage *types.Outage
-			for i := range outages2 {
-				if outages2[i].ID == outage.ID {
-					stillActiveOutage = &outages2[i]
-					break
-				}
-			}
-			require.NotNil(t, stillActiveOutage, "Outage should still exist")
-			assert.False(t, stillActiveOutage.EndTime.Valid, "Outage should still be active")
-
-			// Cleanup
-			deleteOutage(t, client, "Prow", "Plank", outage.ID)
-		})
-
-		t.Run("POST report with invalid component returns 400", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("NonExistentComponent"),
-						SubComponentSlug: utils.Slugify("Deck"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Contains(t, errorResponse["error"], "Component not found")
-		})
-
-		t.Run("POST report with invalid sub-component returns 400", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("NonExistentSub"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"deck\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Contains(t, errorResponse["error"], "Sub-component not found")
-		})
-
-		t.Run("POST report with multiple statuses processes all", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Plank"),
-						Status:           types.StatusDegraded,
-						Reasons: []types.Reason{
-							{
-								Type:    "http",
-								Check:   "https://plank.example.com/health",
-								Results: "Response time > 5s",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-			// Verify both outages were created
-			hookOutages := getOutages(t, client, "Prow", "Hook")
-			var hookOutage *types.Outage
-			for i := range hookOutages {
-				if hookOutages[i].DiscoveredFrom == "component-monitor" && len(hookOutages[i].Reasons) > 0 && hookOutages[i].Reasons[0].Type == "prometheus" {
-					hookOutage = &hookOutages[i]
-					break
-				}
-			}
-			require.NotNil(t, hookOutage, "Hook outage should be created")
-
-			plankOutages := getOutages(t, client, "Prow", "Plank")
-			var plankOutage *types.Outage
-			for i := range plankOutages {
-				if plankOutages[i].DiscoveredFrom == "component-monitor" && len(plankOutages[i].Reasons) > 0 && plankOutages[i].Reasons[0].Type == "http" {
-					plankOutage = &plankOutages[i]
-					break
-				}
-			}
-			require.NotNil(t, plankOutage, "Plank outage should be created")
-
-			// Cleanup
-			deleteOutage(t, client, "Prow", "Hook", hookOutage.ID)
-			deleteOutage(t, client, "Prow", "Plank", plankOutage.ID)
-		})
-
-		t.Run("POST report with empty component_monitor returns 400", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Contains(t, errorResponse["error"], "component_monitor is required")
-		})
-
-		t.Run("POST report with empty statuses returns 400", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses:         []types.ComponentMonitorReportComponentStatus{},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Contains(t, errorResponse["error"], "statuses cannot be empty")
-		})
-
-		t.Run("POST report with invalid token returns 401", func(t *testing.T) {
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			invalidToken := "invalid-token"
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, invalidToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-		})
-
-		t.Run("POST report with service account not an owner returns 400", func(t *testing.T) {
-			// Build Farm component does not have the service account as an owner
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "app-ci-component-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Build Farm"),
-						SubComponentSlug: utils.Slugify("Build01"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"build01\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Equal(t, "Invalid request", errorResponse["error"])
-		})
-
-		t.Run("POST report with wrong component monitor instance returns 400", func(t *testing.T) {
-			// Prow/Hook is configured for "app-ci-component-monitor", not "wrong-monitor"
-			reportPayload := types.ComponentMonitorReportRequest{
-				ComponentMonitor: "wrong-monitor",
-				Statuses: []types.ComponentMonitorReportComponentStatus{
-					{
-						ComponentSlug:    utils.Slugify("Prow"),
-						SubComponentSlug: utils.Slugify("Hook"),
-						Status:           types.StatusDown,
-						Reasons: []types.Reason{
-							{
-								Type:    "prometheus",
-								Check:   "up{job=\"hook\"} == 0",
-								Results: "No healthy instances found",
-							},
-						},
-					},
-				},
-			}
-
-			payloadBytes, err := json.Marshal(reportPayload)
-			require.NoError(t, err)
-
-			resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-
-			var errorResponse map[string]string
-			err = json.NewDecoder(resp.Body).Decode(&errorResponse)
-			require.NoError(t, err)
-			assert.Equal(t, "Invalid request", errorResponse["error"])
 		})
 	}
 }
@@ -2421,16 +1801,19 @@ func cleanupAbsentReportOutages(t *testing.T, client *TestHTTPClient) {
 	// Seed pings for monitored sub-components to prevent absent report checker from creating outages
 	sendAllClearPing(t, client, "Prow", "Hook")
 	sendAllClearPing(t, client, "Prow", "Plank")
+	sendAllClearPing(t, client, "TRT Incidents", "Incidents")
 
 	// Clean up any outages created by absent report checker before the pings were seeded
 	deleteOutagesFromAbsentReport(t, client, "Prow", "Hook")
 	deleteOutagesFromAbsentReport(t, client, "Prow", "Plank")
+	deleteOutagesFromAbsentReport(t, client, "TRT Incidents", "Incidents")
 }
 
 // sendAllClearPing sends a healthy component monitor report to seed a ping in the database,
 // preventing the absent report checker from creating an immediate outage.
 func sendAllClearPing(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
-	reportPayload := types.ComponentMonitorReportRequest{
+	t.Helper()
+	postComponentMonitorReport(t, client, componentMonitorSAToken, types.ComponentMonitorReportRequest{
 		ComponentMonitor: "app-ci-component-monitor",
 		Statuses: []types.ComponentMonitorReportComponentStatus{
 			{
@@ -2440,15 +1823,7 @@ func sendAllClearPing(t *testing.T, client *TestHTTPClient, componentName, subCo
 				Reasons:          []types.Reason{{Type: types.CheckTypePrometheus}},
 			},
 		},
-	}
-
-	payloadBytes, err := json.Marshal(reportPayload)
-	require.NoError(t, err)
-
-	resp, err := client.PostWithBearerToken("/api/component-monitor/report", payloadBytes, componentMonitorSAToken)
-	require.NoError(t, err)
-	resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Failed to send all-clear ping for %s/%s", componentName, subComponentName)
+	})
 }
 
 // cleanupAbsentReportOutages deletes any outages created by the absent report checker for a given component.

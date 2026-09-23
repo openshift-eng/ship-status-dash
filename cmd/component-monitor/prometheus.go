@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"ship-status-dash/pkg/types"
+	"ship-status-dash/pkg/utils"
 )
 
 // inClusterConfigName is the special cluster name that indicates the component monitor
@@ -115,7 +115,7 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 
 		// Validate URL format if provided
 		if hasURL {
-			if !isURL(location.URL) {
+			if _, ok := utils.ParseHTTPURL(location.URL); !ok {
 				errors = append(errors, fmt.Errorf("prometheusLocation url must be a valid URL for component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, location.URL))
 			}
 		}
@@ -150,12 +150,6 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 	}
 
 	return apimachineryerrors.NewAggregate(errors)
-}
-
-// isURL checks if a string is a valid URL
-func isURL(s string) bool {
-	u, err := url.Parse(s)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 // getPrometheusLocationKey returns a unique key for a PrometheusLocation.

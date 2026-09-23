@@ -97,6 +97,23 @@ components:
     owners:
       - user: "developer"
       - service_account: "system:serviceaccount:ship-status:component-monitor"
+  - name: "TRT Incidents"
+    description: "TRT Jira incidents labeled trt-incident"
+    ship_team: "TRT"
+    sub_components:
+      - name: "Incidents"
+        description: "Currently open TRT incidents"
+        critical: true
+        requires_confirmation: false
+        exclude_from_main_outage_well: true
+        monitoring:
+          frequency: 5m
+          component_monitor: "local-component-monitor"
+          auto_resolve: true
+          outage_per_reason: true
+    owners:
+      - user: "developer"
+      - service_account: "system:serviceaccount:ship-status:component-monitor"
 tags:
   - name: "PR Merging"
     description: "Components related to PR merging"
