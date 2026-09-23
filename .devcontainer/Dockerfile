@@ -1,27 +1,40 @@
-FROM registry.access.redhat.com/ubi9/ubi:latest
+FROM registry.fedoraproject.org/fedora:44
 
 ARG GOLANGCI_LINT_VERSION=2.10.1
 
-RUN dnf module install nodejs:22/common -y && \
-    dnf install -y --allowerasing \
+# Fedora 44 uses versioned Node.js and wget packages instead of module streams,
+# and its podman package does not pull in buildah or skopeo.
+RUN dnf install -y \
     curl \
     git \
     make \
     jq \
     tar \
     gzip \
-    wget \
+    wget1-wget \
+    unzip \
     vim-minimal \
     findutils \
     procps-ng \
     sudo \
-    go \
-    python3.12 \
+    golang \
+    nodejs22 \
+    nodejs22-npm \
+    python3 \
+    python3-pip \
     libstdc++ \
     postgresql \
     gettext \
     lsof \
-    && dnf clean all
+    which \
+    podman \
+    buildah \
+    skopeo \
+    fuse-overlayfs \
+    shadow-utils \
+    openssl \
+    libcap \
+    && dnf clean all && rm -rf /var/cache/dnf
 
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ]; then LINT_ARCH="arm64"; else LINT_ARCH="amd64"; fi && \
@@ -36,7 +49,10 @@ RUN dnf install -y \
 
 RUN groupadd -g 1000 vscode && \
     useradd -u 1000 -g 0 -G 1000 -m -s /bin/bash vscode && \
-    echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode
+    echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode && \
+    git config --system --add safe.directory /workspace
+
+RUN chgrp -R 0 /home/vscode && chmod -R g=u /home/vscode
 
 ENV GOPATH=/home/vscode/go
 ENV PATH="/home/vscode/.local/bin:${GOPATH}/bin:/usr/local/go/bin:${PATH}"

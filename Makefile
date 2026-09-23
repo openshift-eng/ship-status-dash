@@ -13,7 +13,7 @@ mcp-venv:
 	@for d in mcp ship-status-dev; do \
 		if [ ! -x $$d/.venv/bin/pytest ]; then \
 			echo "Creating $$d/.venv..."; \
-			python3.12 -m venv $$d/.venv && $$d/.venv/bin/pip install -q -r $$d/requirements-dev.txt; \
+			python3 -m venv $$d/.venv && $$d/.venv/bin/pip install -q -r $$d/requirements-dev.txt; \
 		fi; \
 	done
 
