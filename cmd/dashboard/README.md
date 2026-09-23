@@ -77,6 +77,10 @@ OpenShift Deployment/Route changes are maintained in [openshift/release](https:/
 
 Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not these servers.
 
+## Open Graph Metadata
+
+The SPA handler injects Open Graph and standard HTML metadata into the `index.html` response for each route, enabling rich link previews in Slack and other clients that read OG tags. When adding a new frontend route, add a corresponding pattern to `metaRoutes` in `meta.go` so link previews render correctly.
+
 ## Slack Integration
 
 The dashboard supports Slack integration for outage reporting. When enabled, the dashboard will:
