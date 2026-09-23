@@ -239,7 +239,7 @@ func (s *Server) setupRoutes() http.Handler {
 	}
 
 	// Serve static files (React frontend) - must be after API routes
-	spa := spaHandler{staticPath: "./static", indexPath: "index.html"}
+	spa := newSPAHandler("./static", "index.html", s.configManager, s.handlers.outageManager, s.logger)
 	router.PathPrefix("/").Handler(spa)
 
 	corsHandler := handlers.CORS(
@@ -256,18 +256,38 @@ func (s *Server) setupRoutes() http.Handler {
 
 // spaHandler implements the http.Handler interface for serving a Single Page Application.
 // It serves static files if they exist, otherwise serves index.html to allow
-// client-side routing to work.
+// client-side routing to work. For SPA fallback routes, it injects Open Graph
+// metadata into the HTML so link previews render correctly in Slack and similar clients.
 type spaHandler struct {
-	staticPath string
-	indexPath  string
+	staticPath    string
+	indexPath     string
+	indexHTML     []byte
+	configManager *config.Manager[types.DashboardConfig]
+	outageManager outage.OutageManager
+	logger        *logrus.Logger
+}
+
+func newSPAHandler(staticPath, indexPath string, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, logger *logrus.Logger) spaHandler {
+	data, err := os.ReadFile(filepath.Join(staticPath, indexPath))
+	if err != nil {
+		logger.WithError(err).Warn("Failed to pre-read index.html for metadata injection, falling back to http.ServeFile")
+	}
+	return spaHandler{
+		staticPath:    staticPath,
+		indexPath:     indexPath,
+		indexHTML:     data,
+		configManager: configManager,
+		outageManager: outageManager,
+		logger:        logger,
+	}
 }
 
 func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(h.staticPath, r.URL.Path)
 
 	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
+	if os.IsNotExist(err) || (err == nil && info.IsDir()) {
+		h.serveIndex(w, r)
 		return
 	}
 
@@ -276,12 +296,20 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info.IsDir() {
+	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
+}
+
+func (h spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	if h.indexHTML == nil {
 		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
 		return
 	}
 
-	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
+	meta := resolveMetadata(r, h.configManager, h.outageManager, h.logger)
+	content := injectMetadata(h.indexHTML, meta)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(content)
 }
 
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
