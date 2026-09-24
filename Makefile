@@ -13,7 +13,7 @@ mcp-venv:
 	@for d in mcp ship-status-dev; do \
 		if [ ! -x $$d/.venv/bin/pytest ]; then \
 			echo "Creating $$d/.venv..."; \
-			UV_CACHE_DIR=/tmp/uv-cache uv venv --python 3.12 $$d/.venv && UV_CACHE_DIR=/tmp/uv-cache uv pip install --python $$d/.venv/bin/python -q -r $$d/requirements-dev.txt; \
+			UV_CACHE_DIR=/tmp/uv-cache uv venv --python '>=3.10' $$d/.venv && UV_CACHE_DIR=/tmp/uv-cache uv pip install --python $$d/.venv/bin/python -q -r $$d/requirements-dev.txt; \
 		fi; \
 	done
 
