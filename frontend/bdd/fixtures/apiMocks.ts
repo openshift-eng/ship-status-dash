@@ -7,6 +7,7 @@ import {
   mockHistoryBuckets,
   mockOutageAuditLogs,
   mockOutageLink,
+  mockOutageRelationship,
   mockOutages,
   mockTags,
   mockTriageNote,
@@ -273,6 +274,21 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
       return json(route, { ...mockOutageLink, description: 'Updated link' })
     }
     if (method === 'DELETE') {
+      return route.fulfill({ status: 204 })
+    }
+    return route.fallback()
+  })
+
+  // --- Outage relationships ---
+  await page.route(`${PROTECTED}/api/components/*/*/outages/*/relationships`, (route) => {
+    if (route.request().method() === 'POST') {
+      return json(route, mockOutageRelationship, 201)
+    }
+    return route.fallback()
+  })
+
+  await page.route(`${PROTECTED}/api/components/*/*/outages/*/relationships/*`, (route) => {
+    if (route.request().method() === 'DELETE') {
       return route.fulfill({ status: 204 })
     }
     return route.fallback()

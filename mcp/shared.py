@@ -626,3 +626,27 @@ class ShipStatusAPI:
     ) -> dict[str, Any]:
         path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/links/{link_id}"
         return self._delete_request(path, f"Link {link_id} deleted.", acting_for=acting_for)
+
+    def add_outage_relationship(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        related_outage_id: int,
+        relationship_type: str = "related_to",
+        acting_for: str = "",
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"related_outage_id": related_outage_id, "relationship_type": relationship_type}
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/relationships"
+        return self._dict_request("POST", path, body, f"Failed to add relationship to outage {outage_id}.", acting_for=acting_for)
+
+    def delete_outage_relationship(
+        self,
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        relationship_id: int,
+        acting_for: str = "",
+    ) -> dict[str, Any]:
+        path = f"/components/{component_slug}/{sub_component_slug}/outages/{outage_id}/relationships/{relationship_id}"
+        return self._delete_request(path, f"Relationship {relationship_id} deleted.", acting_for=acting_for)

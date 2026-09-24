@@ -955,6 +955,222 @@ func (h *Handlers) DeleteOutageLinkJSON(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetOutageRelationshipsJSON returns all relationships for a given outage.
+func (h *Handlers) GetOutageRelationshipsJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageIDStr,
+	})
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	outage, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, outage.Relationships)
+}
+
+// AddOutageRelationshipJSON creates a relationship between two outages.
+func (h *Handlers) AddOutageRelationshipJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+	outageIDStr := vars["outageId"]
+
+	activeUser, ok := GetUserFromContext(r.Context())
+	if !ok {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	outageID, err := strconv.ParseUint(outageIDStr, 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":     componentName,
+		"sub_component": subComponentName,
+		"outage_id":     outageID,
+		"active_user":   activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	if component.GetSubComponentBySlug(subComponentName) == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to add outage relationship")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
+	var req types.OutageRelationshipRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.RelatedOutageID == 0 {
+		respondWithError(w, http.StatusBadRequest, "related_outage_id is required")
+		return
+	}
+
+	if req.RelatedOutageID == uint(outageID) {
+		respondWithError(w, http.StatusBadRequest, "Cannot create a relationship to itself")
+		return
+	}
+
+	if !types.IsValidRelationshipType(req.RelationshipType) {
+		respondWithError(w, http.StatusBadRequest, "Invalid relationship type. Must be one of: causes, caused_by, related_to")
+		return
+	}
+
+	outage, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	exists, err := h.outageManager.OutageExists(req.RelatedOutageID)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to check related outage existence")
+		respondWithError(w, http.StatusInternalServerError, "Failed to validate related outage")
+		return
+	}
+	if !exists {
+		respondWithError(w, http.StatusBadRequest, "Related outage not found")
+		return
+	}
+
+	for _, e := range outage.Relationships {
+		if e.RelatedOutageID == req.RelatedOutageID {
+			respondWithError(w, http.StatusConflict, "A relationship between these outages already exists")
+			return
+		}
+	}
+
+	rel := &types.OutageRelationship{
+		OutageID:         uint(outageID),
+		RelatedOutageID:  req.RelatedOutageID,
+		RelationshipType: types.RelationshipType(req.RelationshipType),
+	}
+
+	result, err := h.outageManager.AddOutageRelationship(rel, activeUser)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to add outage relationship")
+		respondWithError(w, http.StatusInternalServerError, "Failed to add outage relationship")
+		return
+	}
+
+	logger.Info("Successfully added outage relationship")
+	respondWithJSON(w, http.StatusCreated, result)
+}
+
+// DeleteOutageRelationshipJSON removes a relationship between two outages.
+func (h *Handlers) DeleteOutageRelationshipJSON(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	componentName := vars["componentName"]
+	subComponentName := vars["subComponentName"]
+
+	activeUser, authOk := GetUserFromContext(r.Context())
+	if !authOk {
+		respondWithError(w, http.StatusUnauthorized, "no active user found")
+		return
+	}
+
+	parsedOutageID, err := strconv.ParseUint(vars["outageId"], 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid outage ID")
+		return
+	}
+
+	parsedRelID, err := strconv.ParseUint(vars["relationshipId"], 10, 32)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid relationship ID")
+		return
+	}
+
+	logger := h.logger.WithFields(logrus.Fields{
+		"component":       componentName,
+		"sub_component":   subComponentName,
+		"outage_id":       parsedOutageID,
+		"relationship_id": parsedRelID,
+		"active_user":     activeUser,
+	})
+
+	component := h.config().GetComponentBySlug(componentName)
+	if component == nil {
+		respondWithError(w, http.StatusNotFound, "Component not found")
+		return
+	}
+
+	if component.GetSubComponentBySlug(subComponentName) == nil {
+		respondWithError(w, http.StatusNotFound, "Sub-Component not found")
+		return
+	}
+
+	if !h.IsUserAuthorizedForComponent(activeUser, component) {
+		logger.Warn("User not authorized to delete outage relationship")
+		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
+		return
+	}
+
+	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(parsedOutageID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
+	if err := h.outageManager.DeleteOutageRelationship(uint(parsedOutageID), uint(parsedRelID), activeUser); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Relationship not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to delete outage relationship")
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete outage relationship")
+		return
+	}
+
+	logger.Info("Successfully deleted outage relationship")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handlers) GetOutageAuditLogsJSON(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	componentName := vars["componentName"]

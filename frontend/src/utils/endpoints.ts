@@ -129,6 +129,21 @@ export const getOutageLinkEndpoint = (
 ) =>
   `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/links/${linkId}`
 
+export const getOutageRelationshipsEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/relationships`
+
+export const getOutageRelationshipEndpoint = (
+  componentName: string,
+  subComponentName: string,
+  outageId: number,
+  relationshipId: number,
+) =>
+  `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/relationships/${relationshipId}`
+
 export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
 
 export const getExternalPageEndpoint = (slug: string) =>

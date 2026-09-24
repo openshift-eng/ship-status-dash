@@ -96,11 +96,12 @@ type Outage struct {
 	// this is utilized only by the component-monitor
 	Reasons []Reason `json:"reasons,omitempty" gorm:"foreignKey:OutageID"`
 	// SlackThreads are the Slack threads associated with the outage
-	SlackThreads []SlackThread    `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
-	AuditLogs    []OutageAuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:OutageID"`
-	Reports      []OutageReport   `json:"reports,omitempty" gorm:"foreignKey:OutageID"`
-	TriageNotes  []TriageNote     `json:"triage_notes,omitempty" gorm:"foreignKey:OutageID"`
-	Links        []OutageLink     `json:"links,omitempty" gorm:"foreignKey:OutageID"`
+	SlackThreads  []SlackThread        `json:"slack_threads,omitempty" gorm:"foreignKey:OutageID"`
+	AuditLogs     []OutageAuditLog     `json:"audit_logs,omitempty" gorm:"foreignKey:OutageID"`
+	Reports       []OutageReport       `json:"reports,omitempty" gorm:"foreignKey:OutageID"`
+	TriageNotes   []TriageNote         `json:"triage_notes,omitempty" gorm:"foreignKey:OutageID"`
+	Links         []OutageLink         `json:"links,omitempty" gorm:"foreignKey:OutageID"`
+	Relationships []OutageRelationship `json:"relationships,omitempty" gorm:"foreignKey:OutageID"`
 }
 
 // Validate validates the outage and returns an error message and whether it's valid.
@@ -174,7 +175,7 @@ func (o *Outage) before(db *gorm.DB) error {
 	}
 
 	var old Outage
-	if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&old, o.ID).Error; err != nil {
+	if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships").First(&old, o.ID).Error; err != nil {
 		return err
 	}
 
@@ -213,7 +214,7 @@ func (o *Outage) after(db *gorm.DB, operation OperationType) error {
 	var newTriageJSON []byte
 	if operation != Delete {
 		var fresh Outage
-		if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&fresh, o.ID).Error; err != nil {
+		if err := db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships").First(&fresh, o.ID).Error; err != nil {
 			return fmt.Errorf("failed to reload outage for audit: %w", err)
 		}
 		normalizeOutageTimesUTC(&fresh)
@@ -361,4 +362,44 @@ type OutageLink struct {
 	URL         string   `json:"url" gorm:"column:url;not null"`
 	LinkType    LinkType `json:"link_type" gorm:"column:link_type;not null;default:'other'"`
 	Description string   `json:"description" gorm:"column:description;type:text"`
+}
+
+// RelationshipType represents the type of relationship between two outages.
+type RelationshipType string
+
+const (
+	RelationshipCauses    RelationshipType = "causes"
+	RelationshipCausedBy  RelationshipType = "caused_by"
+	RelationshipRelatedTo RelationshipType = "related_to"
+)
+
+func IsValidRelationshipType(rt string) bool {
+	switch RelationshipType(rt) {
+	case RelationshipCauses, RelationshipCausedBy, RelationshipRelatedTo:
+		return true
+	default:
+		return false
+	}
+}
+
+// InverseRelationshipType returns the inverse of a directional relationship type.
+func InverseRelationshipType(rt RelationshipType) RelationshipType {
+	switch rt {
+	case RelationshipCauses:
+		return RelationshipCausedBy
+	case RelationshipCausedBy:
+		return RelationshipCauses
+	default:
+		return RelationshipRelatedTo
+	}
+}
+
+// OutageRelationship represents a first-class relationship between two outages.
+// Reciprocal rows are always stored: if A causes B, a row for B caused_by A also exists.
+type OutageRelationship struct {
+	gorm.Model
+	OutageID         uint             `json:"outage_id" gorm:"column:outage_id;not null;uniqueIndex:idx_outage_relationship"`
+	RelatedOutageID  uint             `json:"related_outage_id" gorm:"column:related_outage_id;not null;uniqueIndex:idx_outage_relationship"`
+	RelationshipType RelationshipType `json:"relationship_type" gorm:"column:relationship_type;not null"`
+	RelatedOutage    *Outage          `json:"related_outage,omitempty" gorm:"foreignKey:RelatedOutageID"`
 }

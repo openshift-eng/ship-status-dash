@@ -111,6 +111,19 @@ Write endpoints support delegated authorization via the `X-Acting-For` HTTP head
   - **Public:** No (requires authentication and component authorization)
   - Supports `X-Acting-For` header for delegated authorization
 
+### Outage Relationships
+
+- **GET** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/relationships` - List relationships for an outage
+  - **Public:** Yes
+
+- **POST** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/relationships` - Create a relationship between two outages
+  - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
+- **DELETE** `/api/components/{componentName}/{subComponentName}/outages/{outageId}/relationships/{relationshipId}` - Delete an outage relationship
+  - **Public:** No (requires authentication and component authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
 ### External Pages
 
 - **GET** `/api/external-pages/{pageSlug}` - Get an external page by slug

@@ -61,6 +61,7 @@ func TestE2E_Dashboard(t *testing.T) {
 	t.Run("User", testUser(client))
 	t.Run("TriageNotes", testTriageNotes(client))
 	t.Run("OutageLinks", testOutageLinks(client))
+	t.Run("OutageRelationships", testOutageRelationships(client))
 	t.Run("ServiceAccountOutages", testServiceAccountOutages(client))
 	t.Run("DelegatedAuthorization", testDelegatedAuthorization(client))
 	t.Run("AbsentReport", testAbsentReport(client))
@@ -2418,6 +2419,238 @@ func testOutageLinks(client *TestHTTPClient) func(*testing.T) {
 				}
 			}
 			assert.True(t, found, "expected link to appear in outage GET response")
+		})
+	}
+}
+
+func testOutageRelationships(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		outageA := createOutage(t, client, "Prow", "Deck")
+		defer deleteOutage(t, client, "Prow", "Deck", outageA.ID)
+
+		outageB := createOutage(t, client, "Prow", "Tide")
+		defer deleteOutage(t, client, "Prow", "Tide", outageB.ID)
+
+		basePath := fmt.Sprintf("/api/components/%s/%s/outages/%d/relationships",
+			utils.Slugify("Prow"), utils.Slugify("Deck"), outageA.ID)
+
+		t.Run("POST creates an outage relationship", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "causes",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var rel types.OutageRelationship
+			err = json.NewDecoder(resp.Body).Decode(&rel)
+			require.NoError(t, err)
+			assert.Equal(t, outageA.ID, rel.OutageID)
+			assert.Equal(t, outageB.ID, rel.RelatedOutageID)
+			assert.Equal(t, types.RelationshipCauses, rel.RelationshipType)
+
+			// Verify reciprocal exists on outage B
+			reciprocalPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/relationships",
+				utils.Slugify("Prow"), utils.Slugify("Tide"), outageB.ID)
+			getResp, err := client.Get(reciprocalPath, false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var reciprocals []types.OutageRelationship
+			err = json.NewDecoder(getResp.Body).Decode(&reciprocals)
+			require.NoError(t, err)
+			require.Len(t, reciprocals, 1)
+			assert.Equal(t, types.RelationshipCausedBy, reciprocals[0].RelationshipType)
+			assert.Equal(t, outageA.ID, reciprocals[0].RelatedOutageID)
+
+			// Clean up: delete from side A
+			delPath := fmt.Sprintf("%s/%d", basePath, rel.ID)
+			delResp, err := client.Delete(delPath)
+			require.NoError(t, err)
+			defer delResp.Body.Close()
+			assert.Equal(t, http.StatusNoContent, delResp.StatusCode)
+		})
+
+		t.Run("POST rejects self-link", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageA.ID,
+				RelationshipType: "related_to",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("POST rejects invalid relationship type", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "invalid_type",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("POST rejects nonexistent target outage", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  999999,
+				RelationshipType: "related_to",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		})
+
+		t.Run("POST rejects duplicate relationship", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "related_to",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageRelationship
+			json.NewDecoder(resp.Body).Decode(&created)
+			defer func() {
+				delPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+				delResp, _ := client.Delete(delPath)
+				defer delResp.Body.Close()
+			}()
+
+			resp2, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp2.Body.Close()
+			assert.Equal(t, http.StatusConflict, resp2.StatusCode)
+		})
+
+		t.Run("GET lists outage relationships", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "related_to",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageRelationship
+			json.NewDecoder(resp.Body).Decode(&created)
+
+			getResp, err := client.Get(basePath, false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var rels []types.OutageRelationship
+			err = json.NewDecoder(getResp.Body).Decode(&rels)
+			require.NoError(t, err)
+			require.NotEmpty(t, rels)
+
+			// Clean up
+			delPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+			delResp, _ := client.Delete(delPath)
+			defer delResp.Body.Close()
+		})
+
+		t.Run("DELETE removes relationship and reciprocal", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "causes",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var rel types.OutageRelationship
+			json.NewDecoder(resp.Body).Decode(&rel)
+
+			delPath := fmt.Sprintf("%s/%d", basePath, rel.ID)
+			delResp, err := client.Delete(delPath)
+			require.NoError(t, err)
+			defer delResp.Body.Close()
+			assert.Equal(t, http.StatusNoContent, delResp.StatusCode)
+
+			// Verify no relationships on either side
+			getResp, err := client.Get(basePath, false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			var remaining []types.OutageRelationship
+			json.NewDecoder(getResp.Body).Decode(&remaining)
+			assert.Empty(t, remaining)
+
+			reciprocalPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/relationships",
+				utils.Slugify("Prow"), utils.Slugify("Tide"), outageB.ID)
+			getResp2, err := client.Get(reciprocalPath, false)
+			require.NoError(t, err)
+			defer getResp2.Body.Close()
+			var reciprocals []types.OutageRelationship
+			json.NewDecoder(getResp2.Body).Decode(&reciprocals)
+			assert.Empty(t, reciprocals)
+		})
+
+		t.Run("outage GET includes relationships", func(t *testing.T) {
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageB.ID,
+				RelationshipType: "related_to",
+			})
+			resp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+			var created types.OutageRelationship
+			json.NewDecoder(resp.Body).Decode(&created)
+			defer func() {
+				delPath := fmt.Sprintf("%s/%d", basePath, created.ID)
+				delResp, _ := client.Delete(delPath)
+				defer delResp.Body.Close()
+			}()
+
+			getResp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+				utils.Slugify("Prow"), utils.Slugify("Deck"), outageA.ID), false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var fetched types.Outage
+			err = json.NewDecoder(getResp.Body).Decode(&fetched)
+			require.NoError(t, err)
+			require.NotEmpty(t, fetched.Relationships)
+			assert.Equal(t, outageB.ID, fetched.Relationships[0].RelatedOutageID)
+		})
+
+		t.Run("unauthorized user rejected", func(t *testing.T) {
+			serverURL := os.Getenv("TEST_SERVER_URL")
+			mockOauthProxyURL := os.Getenv("TEST_MOCK_OAUTH_PROXY_URL")
+			require.NotEmpty(t, serverURL)
+			require.NotEmpty(t, mockOauthProxyURL)
+
+			boskosOutage := createOutage(t, client, "Boskos", "Quota")
+			defer deleteOutage(t, client, "Boskos", "Quota", boskosOutage.ID)
+
+			boskosPath := fmt.Sprintf("/api/components/%s/%s/outages/%d/relationships",
+				utils.Slugify("Boskos"), utils.Slugify("Quota"), boskosOutage.ID)
+
+			editorClient, err := NewTestHTTPClientWithUsername(serverURL, mockOauthProxyURL, "editor")
+			require.NoError(t, err)
+
+			body, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageA.ID,
+				RelationshipType: "related_to",
+			})
+			resp, err := editorClient.Post(boskosPath, body)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 		})
 	}
 }

@@ -62,6 +62,15 @@ export interface OutageLink {
   description?: string
 }
 
+export interface OutageRelationship {
+  ID: number
+  CreatedAt: string
+  outage_id: number
+  related_outage_id: number
+  relationship_type: 'causes' | 'caused_by' | 'related_to'
+  related_outage?: Outage
+}
+
 export interface OutageAuditLog {
   ID: number
   CreatedAt: string
@@ -98,6 +107,7 @@ export interface Outage {
   }
   triage_notes?: TriageNote[]
   links?: OutageLink[]
+  relationships?: OutageRelationship[]
   reasons?: Reason[]
   slack_threads?: SlackThread[]
 }

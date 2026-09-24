@@ -199,6 +199,24 @@ func (s *Server) setupRoutes() http.Handler {
 			protected: true,
 		},
 		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageRelationshipsJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships",
+			method:    http.MethodPost,
+			handler:   s.handlers.AddOutageRelationshipJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships/{relationshipId:[0-9]+}",
+			method:    http.MethodDelete,
+			handler:   s.handlers.DeleteOutageRelationshipJSON,
+			protected: true,
+		},
+		{
 			path:      "/api/user",
 			method:    http.MethodGet,
 			handler:   s.handlers.GetAuthenticatedUserJSON,

@@ -31,7 +31,7 @@ import { useNavigate, useParams } from 'react-router'
 
 import { useAuth } from '../../contexts/AuthContext'
 import useIntervalRefresh from '../../hooks/useIntervalRefresh'
-import type { Outage, OutageLink, TriageNote } from '../../types'
+import type { Outage, OutageLink, OutageRelationship, TriageNote } from '../../types'
 import { deferMountFetch } from '../../utils/deferMountFetch'
 import { getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
@@ -44,6 +44,7 @@ import AuditLogModal from './AuditLogModal'
 import Field, { FieldBox, FieldLabel } from './OutageDetailsField'
 import Section from './OutageDetailsSection'
 import OutageLinksSection from './OutageLinksSection'
+import OutageRelationshipsSection from './OutageRelationshipsSection'
 import TriageNotesSection from './TriageNotesSection'
 
 const StyledContainer = styled(Container)(({ theme }) => ({
@@ -427,6 +428,25 @@ const OutageDetailsPage = () => {
     void refreshAuditWatermark()
   }
 
+  const handleRelationshipAdded = (rel: OutageRelationship) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return { ...prev, relationships: [...(prev.relationships ?? []), rel] }
+    })
+    void refreshAuditWatermark()
+  }
+
+  const handleRelationshipDeleted = (relId: number) => {
+    setOutage((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        relationships: (prev.relationships ?? []).filter((r) => r.ID !== relId),
+      }
+    })
+    void refreshAuditWatermark()
+  }
+
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
     return `${date.toLocaleString()} (${relativeTime(date, new Date())})`
@@ -624,6 +644,19 @@ const OutageDetailsPage = () => {
             onLinkAdded={handleLinkAdded}
             onLinkUpdated={handleLinkUpdated}
             onLinkDeleted={handleLinkDeleted}
+            onDeleteSuccess={setSnackbarMessage}
+          />
+        </FullWidthGridItem>
+
+        <FullWidthGridItem>
+          <OutageRelationshipsSection
+            relationships={outage.relationships ?? []}
+            isAdmin={isAdmin}
+            componentName={componentName}
+            subComponentName={subComponentName}
+            outageId={outage.ID}
+            onRelationshipAdded={handleRelationshipAdded}
+            onRelationshipDeleted={handleRelationshipDeleted}
             onDeleteSuccess={setSnackbarMessage}
           />
         </FullWidthGridItem>

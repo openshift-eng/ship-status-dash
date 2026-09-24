@@ -235,3 +235,19 @@ func (m *MockOutageManager) UpdateOutageLink(outageID, linkID uint, url string, 
 func (m *MockOutageManager) DeleteOutageLink(outageID, linkID uint, user string) error {
 	return nil
 }
+
+func (m *MockOutageManager) OutageExists(outageID uint) (bool, error) {
+	return true, nil
+}
+
+func (m *MockOutageManager) AddOutageRelationship(rel *types.OutageRelationship, user string) (*types.OutageRelationship, error) {
+	if rel != nil {
+		relCopy := *rel
+		return &relCopy, nil
+	}
+	return nil, nil
+}
+
+func (m *MockOutageManager) DeleteOutageRelationship(outageID, relationshipID uint, user string) error {
+	return nil
+}

@@ -27,6 +27,8 @@ _WRITE_TOOLS = {
     "add_outage_link",
     "update_outage_link",
     "delete_outage_link",
+    "add_outage_relationship",
+    "delete_outage_relationship",
 }
 
 
