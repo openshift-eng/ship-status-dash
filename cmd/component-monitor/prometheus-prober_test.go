@@ -46,7 +46,7 @@ func (m *mockPrometheusAPI) Series(ctx context.Context, matches []string, startT
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheusAPI) LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) ([]string, promclientv1.Warnings, error) {
+func (m *mockPrometheusAPI) LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) (model.LabelNames, promclientv1.Warnings, error) {
 	return nil, nil, errors.New("not implemented")
 }
 
@@ -82,7 +82,7 @@ func (m *mockPrometheusAPI) Runtimeinfo(ctx context.Context) (promclientv1.Runti
 	return promclientv1.RuntimeinfoResult{}, errors.New("not implemented")
 }
 
-func (m *mockPrometheusAPI) Rules(ctx context.Context) (promclientv1.RulesResult, error) {
+func (m *mockPrometheusAPI) Rules(ctx context.Context, matches []string) (promclientv1.RulesResult, error) {
 	return promclientv1.RulesResult{}, errors.New("not implemented")
 }
 
@@ -116,6 +116,14 @@ func (m *mockPrometheusAPI) Snapshot(ctx context.Context, skipHead bool) (promcl
 
 func (m *mockPrometheusAPI) WalReplay(ctx context.Context) (promclientv1.WalReplayStatus, error) {
 	return promclientv1.WalReplayStatus{}, errors.New("not implemented")
+}
+
+func (m *mockPrometheusAPI) TSDBBlocks(ctx context.Context) (promclientv1.TSDBBlocksResult, error) {
+	return promclientv1.TSDBBlocksResult{}, errors.New("not implemented")
+}
+
+func (m *mockPrometheusAPI) FormatQuery(ctx context.Context, query string) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 func TestPrometheusProber_Probe(t *testing.T) {
