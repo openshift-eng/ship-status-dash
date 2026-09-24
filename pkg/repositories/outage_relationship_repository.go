@@ -70,11 +70,11 @@ func (r *gormOutageRelationshipRepository) DeleteOutageRelationship(outageID, re
 		}
 
 		inverseType := types.InverseRelationshipType(rel.RelationshipType)
-		if err := tx.Where("outage_id = ? AND related_outage_id = ? AND relationship_type = ?",
+		if err := tx.Unscoped().Where("outage_id = ? AND related_outage_id = ? AND relationship_type = ?",
 			rel.RelatedOutageID, rel.OutageID, inverseType).Delete(&types.OutageRelationship{}).Error; err != nil {
 			return err
 		}
 
-		return tx.Delete(&rel).Error
+		return tx.Unscoped().Delete(&rel).Error
 	})
 }
