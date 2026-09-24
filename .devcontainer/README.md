@@ -58,13 +58,13 @@ The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `
 
 ## GitHub CLI Authentication
 
-The GitHub CLI (`gh`) is included in the image. Its configuration is mounted read-only from the host's `~/.config/gh`. By default, `gh auth login` may store tokens in the host's secure credential store, such as macOS Keychain, Windows Credential Manager, or a Linux keyring. The devcontainer cannot access credentials stored there. To make the token available through the mounted configuration, authenticate on the host using file-based storage:
+The GitHub CLI (`gh`) is included in the image. Its configuration is mounted read-only from the host's `~/.config/gh`. By default, `gh auth login` may store tokens in the host's secure credential store, such as macOS Keychain or a Linux keyring. The devcontainer cannot access credentials stored there. To make the token available through the mounted configuration, authenticate on the host using file-based storage:
 
 ```bash
 gh auth login --insecure-storage
 ```
 
-This stores the token in plain text in `~/.config/gh/hosts.yml`. Protect that file and do not commit it.
+This stores the token in plain text in `~/.config/gh/hosts.yml`. The read-only mount prevents changes from the devcontainer, but processes in the devcontainer can still read and exfiltrate the token. Mount credentials only in trusted workspaces, use a least-privilege GitHub identity, protect the file, and do not commit it.
 
 ## GCP Authentication
 
