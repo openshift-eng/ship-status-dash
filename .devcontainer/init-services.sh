@@ -6,6 +6,8 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
 fi
 
+mkdir -p "${HOME}/.config/gh"
+
 podman network create ship-status-net 2>/dev/null || true
 
 if ! podman start ship-status-postgres 2>/dev/null; then
