@@ -121,6 +121,10 @@ func main() {
 		log.WithField("error", err).Fatal("Failed to migrate OutageReport table")
 	}
 
+	if err = db.AutoMigrate(&types.OutageRelationship{}); err != nil {
+		log.WithField("error", err).Fatal("Failed to migrate OutageRelationship table")
+	}
+
 	db.Exec("DROP INDEX IF EXISTS idx_one_active_suspected_per_subcomponent")
 	if err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_suspected_per_subcomponent
 		ON outages (component_name, sub_component_name)

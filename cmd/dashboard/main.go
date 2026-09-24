@@ -286,7 +286,8 @@ func main() {
 	pingRepo := repositories.NewGORMComponentPingRepository(db)
 	triageNoteRepo := repositories.NewGORMTriageNoteRepository(db)
 	outageLinkRepo := repositories.NewGORMOutageLinkRepository(db)
-	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageManager, pingRepo, triageNoteRepo, outageLinkRepo)
+	outageRelRepo := repositories.NewGORMOutageRelationshipRepository(db)
+	server := NewServer(configManager, log, opts.CORSOrigin, hmacSecret, groupCache, outageManager, pingRepo, triageNoteRepo, outageLinkRepo, outageRelRepo)
 
 	absentReportChecker := NewAbsentMonitoredComponentReportChecker(configManager, outageManager, pingRepo, opts.AbsentReportCheckInterval, log)
 	go absentReportChecker.Start(ctx)

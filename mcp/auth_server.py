@@ -158,6 +158,35 @@ def _register_write_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         )
 
 
+    @server.tool()
+    def add_outage_relationship(
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        related_outage_id: int,
+        acting_for: str = "",
+        relationship_type: str = "related_to",
+    ) -> dict:
+        """Link two outages with a relationship. acting_for identifies the user/bot responsible (required in authenticated mode). relationship_type: causes, caused_by, or related_to."""
+        return api.add_outage_relationship(
+            component_slug, sub_component_slug, outage_id, related_outage_id,
+            relationship_type=relationship_type, acting_for=acting_for,
+        )
+
+    @server.tool()
+    def delete_outage_relationship(
+        component_slug: str,
+        sub_component_slug: str,
+        outage_id: int,
+        relationship_id: int,
+        acting_for: str = "",
+    ) -> dict:
+        """Delete a relationship between two outages. acting_for identifies the user/bot responsible (required in authenticated mode)."""
+        return api.delete_outage_relationship(
+            component_slug, sub_component_slug, outage_id, relationship_id, acting_for=acting_for,
+        )
+
+
 def build_server() -> FastMCP:
     """Build the authenticated (write) MCP server."""
     server = FastMCP("ship-status-auth")

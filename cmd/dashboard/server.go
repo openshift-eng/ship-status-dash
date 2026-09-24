@@ -29,11 +29,11 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance
-func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache auth.GroupMembershipProvider, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository) *Server {
+func NewServer(configManager *config.Manager[types.DashboardConfig], logger *logrus.Logger, corsOrigin string, hmacSecret []byte, groupCache auth.GroupMembershipProvider, outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, outageRelRepo repositories.OutageRelationshipRepository) *Server {
 	return &Server{
 		logger:        logger,
 		configManager: configManager,
-		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, triageNoteRepo, outageLinkRepo, groupCache),
+		handlers:      NewHandlers(logger, configManager, outageManager, pingRepo, triageNoteRepo, outageLinkRepo, outageRelRepo, groupCache),
 		corsOrigin:    corsOrigin,
 		hmacSecret:    hmacSecret,
 	}
@@ -196,6 +196,24 @@ func (s *Server) setupRoutes() http.Handler {
 			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/links/{linkId:[0-9]+}",
 			method:    http.MethodDelete,
 			handler:   s.handlers.DeleteOutageLinkJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships",
+			method:    http.MethodGet,
+			handler:   s.handlers.GetOutageRelationshipsJSON,
+			protected: false,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships",
+			method:    http.MethodPost,
+			handler:   s.handlers.AddOutageRelationshipJSON,
+			protected: true,
+		},
+		{
+			path:      "/api/components/{componentName}/{subComponentName}/outages/{outageId:[0-9]+}/relationships/{relationshipId:[0-9]+}",
+			method:    http.MethodDelete,
+			handler:   s.handlers.DeleteOutageRelationshipJSON,
 			protected: true,
 		},
 		{

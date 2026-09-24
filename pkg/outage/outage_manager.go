@@ -52,6 +52,10 @@ type OutageManager interface {
 	AddOutageLink(link *types.OutageLink, user string) error
 	UpdateOutageLink(outageID, linkID uint, url string, linkType types.LinkType, description, user string) (*types.OutageLink, error)
 	DeleteOutageLink(outageID, linkID uint, user string) error
+
+	OutageExists(outageID uint) (bool, error)
+	AddOutageRelationship(rel *types.OutageRelationship, user string) (*types.OutageRelationship, error)
+	DeleteOutageRelationship(outageID, relationshipID uint, user string) error
 }
 
 // DBOutageManager implements OutageManager with PostgreSQL persistence and optional Slack reporting.
@@ -362,7 +366,7 @@ func isUniqueViolation(err error) bool {
 // snapshotOutage captures the full outage state as JSON for before/after audit log comparison.
 func (m *DBOutageManager) snapshotOutage(outageID uint) []byte {
 	var outage types.Outage
-	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&outage, outageID).Error; err != nil {
+	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships").First(&outage, outageID).Error; err != nil {
 		return nil
 	}
 	data, err := json.Marshal(outage)
@@ -476,10 +480,52 @@ func (m *DBOutageManager) DeleteOutageLink(outageID, linkID uint, user string) e
 // loadOutage captures the pre-mutation state so reportChildUpdate can diff against post-mutation.
 func (m *DBOutageManager) loadOutage(outageID uint) *types.Outage {
 	var outage types.Outage
-	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").First(&outage, outageID).Error; err != nil {
+	if err := m.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships").First(&outage, outageID).Error; err != nil {
 		return nil
 	}
 	return &outage
+}
+
+func (m *DBOutageManager) OutageExists(outageID uint) (bool, error) {
+	var count int64
+	if err := m.db.Model(&types.Outage{}).Where("id = ?", outageID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (m *DBOutageManager) AddOutageRelationship(rel *types.OutageRelationship, user string) (*types.OutageRelationship, error) {
+	old := m.snapshotOutage(rel.OutageID)
+	oldRelated := m.snapshotOutage(rel.RelatedOutageID)
+
+	relRepo := repositories.NewGORMOutageRelationshipRepository(m.db)
+	result, err := relRepo.AddOutageRelationship(rel)
+	if err != nil {
+		return nil, err
+	}
+
+	m.auditMutation(rel.OutageID, user, old)
+	m.auditMutation(rel.RelatedOutageID, user, oldRelated)
+	return result, nil
+}
+
+func (m *DBOutageManager) DeleteOutageRelationship(outageID, relationshipID uint, user string) error {
+	relRepo := repositories.NewGORMOutageRelationshipRepository(m.db)
+	rel, err := relRepo.GetOutageRelationship(outageID, relationshipID)
+	if err != nil {
+		return err
+	}
+
+	old := m.snapshotOutage(outageID)
+	oldRelated := m.snapshotOutage(rel.RelatedOutageID)
+
+	if err := relRepo.DeleteOutageRelationship(outageID, relationshipID); err != nil {
+		return err
+	}
+
+	m.auditMutation(outageID, user, old)
+	m.auditMutation(rel.RelatedOutageID, user, oldRelated)
+	return nil
 }
 
 // reportChildUpdate triggers Slack thread replies by diffing the pre/post outage state.

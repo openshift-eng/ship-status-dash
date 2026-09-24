@@ -10,6 +10,7 @@ import type {
   Tag,
   TriageNote,
   OutageLink,
+  OutageRelationship,
 } from '../../src/types'
 
 interface MockAuthUser {
@@ -215,6 +216,28 @@ export const mockOutageLink: OutageLink = {
   url: 'https://example.com/rca',
   link_type: 'rca',
   description: 'Root cause analysis',
+}
+
+export const mockOutageRelationship: OutageRelationship = {
+  ID: 20,
+  CreatedAt: now,
+  outage_id: 1,
+  related_outage_id: 2,
+  relationship_type: 'causes',
+  related_outage: {
+    ID: 2,
+    CreatedAt: now,
+    UpdatedAt: now,
+    last_auditable_update: now,
+    component_name: 'prow',
+    sub_component_name: 'tide',
+    severity: 'Down',
+    start_time: oneDayAgo,
+    end_time: { Time: now, Valid: true },
+    auto_resolve: false,
+    confirmed_at: { Time: now, Valid: true },
+    description: 'Related outage',
+  },
 }
 
 export const mockHistoryBuckets: OutageDayBucket[] = Array.from({ length: 14 }, (_, i) => {

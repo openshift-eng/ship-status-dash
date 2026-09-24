@@ -28,6 +28,12 @@ type OutageLinkRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
+// OutageRelationshipRequest represents the body of a request to create an outage relationship.
+type OutageRelationshipRequest struct {
+	RelatedOutageID  uint   `json:"related_outage_id"`
+	RelationshipType string `json:"relationship_type"`
+}
+
 // ComponentMonitorReportRequest represents a report from a component monitor.
 type ComponentMonitorReportRequest struct {
 	ComponentMonitor string                                  `json:"component_monitor"`

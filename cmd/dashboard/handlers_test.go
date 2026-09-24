@@ -36,8 +36,9 @@ func newTestHandlersWithGroups(t *testing.T, cfg *types.DashboardConfig, om outa
 	pingRepo := &repositories.MockComponentPingRepository{}
 	triageNoteRepo := &repositories.MockTriageNoteRepository{}
 	outageLinkRepo := &repositories.MockOutageLinkRepository{}
+	outageRelRepo := &repositories.MockOutageRelationshipRepository{}
 	cache := &auth.MockGroupMembershipProvider{Groups: groups}
-	return NewHandlers(logrus.New(), cfgManager, om, pingRepo, triageNoteRepo, outageLinkRepo, cache)
+	return NewHandlers(logrus.New(), cfgManager, om, pingRepo, triageNoteRepo, outageLinkRepo, outageRelRepo, cache)
 }
 
 // minimalDashboardConfig is a tiny valid config (one component, one sub-component) for handler tests.

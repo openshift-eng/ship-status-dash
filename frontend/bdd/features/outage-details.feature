@@ -24,6 +24,11 @@ Feature: Outage Details
     When I add an outage link "https://example.com/rca"
     Then I should see the outage link "RCA"
 
+  Scenario: Admin can view related outages section
+    Given I am logged in as an admin for "Sippy"
+    And I navigate to outage 2 for "sippy/sippy-ui" as an admin
+    Then I should see the "Related Outages" section
+
   Scenario: Audit log modal opens and shows change history
     Given I am logged in as an admin for "Prow"
     And I navigate to outage 1 for "prow/deck" as an admin

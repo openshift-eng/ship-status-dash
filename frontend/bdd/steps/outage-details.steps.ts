@@ -64,6 +64,10 @@ When('I add an outage link {string}', async ({ page }, url: string) => {
   await outagePage.addLinkButton.click()
 })
 
+Then('I should see the {string} section', async ({ page }, sectionTitle: string) => {
+  await expect(page.getByText(sectionTitle, { exact: true }).first()).toBeVisible()
+})
+
 Then('I should see the audit log modal', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible()
 })

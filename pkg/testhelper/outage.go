@@ -26,6 +26,7 @@ var outageFieldsAlwaysIgnored = []string{
 	"Reports",
 	"TriageNotes",
 	"Links",
+	"Relationships",
 	"CreatedAt",
 	"UpdatedAt",
 	"DeletedAt",

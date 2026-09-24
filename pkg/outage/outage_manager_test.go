@@ -27,7 +27,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
-	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{}, &types.OutageReport{}, &types.TriageNote{}, &types.OutageLink{})
+	err = db.AutoMigrate(&types.Outage{}, &types.Reason{}, &types.SlackThread{}, &types.OutageAuditLog{}, &types.OutageReport{}, &types.TriageNote{}, &types.OutageLink{}, &types.OutageRelationship{})
 	if err != nil {
 		t.Fatalf("Failed to migrate test database: %v", err)
 	}
@@ -985,6 +985,180 @@ func TestOutageManager_DeleteOutageLink(t *testing.T) {
 	require.Len(t, logs, 3)
 	assert.Equal(t, "UPDATE", logs[0].Operation)
 	assert.Equal(t, "on-call-user", logs[0].User)
+}
+
+func TestOutageManager_AddOutageRelationship(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "test-component",
+				Name: "Test Component",
+				Subcomponents: []types.SubComponent{
+					{Slug: "test-sub", Name: "Test Sub"},
+				},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outageA := &types.Outage{
+		ComponentName: "test-component", SubComponentName: "test-sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "Outage A", CreatedBy: "system", DiscoveredFrom: "component-monitor",
+	}
+	require.NoError(t, tm.manager.CreateOutage(outageA, nil, "system", ""))
+
+	outageB := &types.Outage{
+		ComponentName: "test-component", SubComponentName: "test-sub",
+		Severity: types.SeverityDegraded, StartTime: time.Now(),
+		Description: "Outage B", CreatedBy: "system", DiscoveredFrom: "component-monitor",
+	}
+	require.NoError(t, tm.manager.CreateOutage(outageB, nil, "system", ""))
+
+	rel := &types.OutageRelationship{
+		OutageID:         outageA.ID,
+		RelatedOutageID:  outageB.ID,
+		RelationshipType: types.RelationshipCauses,
+	}
+	result, err := tm.manager.AddOutageRelationship(rel, "admin-user")
+	require.NoError(t, err)
+	assert.Equal(t, outageA.ID, result.OutageID)
+	assert.Equal(t, outageB.ID, result.RelatedOutageID)
+	assert.Equal(t, types.RelationshipCauses, result.RelationshipType)
+
+	var forwardRels []types.OutageRelationship
+	require.NoError(t, tm.db.Where("outage_id = ?", outageA.ID).Find(&forwardRels).Error)
+	require.Len(t, forwardRels, 1)
+	assert.Equal(t, types.RelationshipCauses, forwardRels[0].RelationshipType)
+
+	var inverseRels []types.OutageRelationship
+	require.NoError(t, tm.db.Where("outage_id = ?", outageB.ID).Find(&inverseRels).Error)
+	require.Len(t, inverseRels, 1)
+	assert.Equal(t, types.RelationshipCausedBy, inverseRels[0].RelationshipType)
+	assert.Equal(t, outageA.ID, inverseRels[0].RelatedOutageID)
+
+	var logs []types.OutageAuditLog
+	require.NoError(t, tm.db.Where("outage_id IN ?", []uint{outageA.ID, outageB.ID}).Order("created_at DESC").Find(&logs).Error)
+	auditedOutageIDs := make(map[uint]bool)
+	for _, l := range logs {
+		if l.Operation == "UPDATE" {
+			auditedOutageIDs[l.OutageID] = true
+		}
+	}
+	assert.True(t, auditedOutageIDs[outageA.ID], "Should have audit log for outage A")
+	assert.True(t, auditedOutageIDs[outageB.ID], "Should have audit log for outage B")
+}
+
+func TestOutageManager_AddOutageRelationship_Symmetric(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "comp", Name: "Comp",
+				Subcomponents: []types.SubComponent{{Slug: "sub", Name: "Sub"}},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outageA := &types.Outage{
+		ComponentName: "comp", SubComponentName: "sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "A", CreatedBy: "sys", DiscoveredFrom: "cm",
+	}
+	outageB := &types.Outage{
+		ComponentName: "comp", SubComponentName: "sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "B", CreatedBy: "sys", DiscoveredFrom: "cm",
+	}
+	require.NoError(t, tm.manager.CreateOutage(outageA, nil, "sys", ""))
+	require.NoError(t, tm.manager.CreateOutage(outageB, nil, "sys", ""))
+
+	rel := &types.OutageRelationship{
+		OutageID: outageA.ID, RelatedOutageID: outageB.ID,
+		RelationshipType: types.RelationshipRelatedTo,
+	}
+	_, err := tm.manager.AddOutageRelationship(rel, "admin")
+	require.NoError(t, err)
+
+	var forwardRels []types.OutageRelationship
+	require.NoError(t, tm.db.Where("outage_id = ?", outageA.ID).Find(&forwardRels).Error)
+	require.Len(t, forwardRels, 1)
+	assert.Equal(t, types.RelationshipRelatedTo, forwardRels[0].RelationshipType)
+
+	var inverseRels []types.OutageRelationship
+	require.NoError(t, tm.db.Where("outage_id = ?", outageB.ID).Find(&inverseRels).Error)
+	require.Len(t, inverseRels, 1)
+	assert.Equal(t, types.RelationshipRelatedTo, inverseRels[0].RelationshipType)
+}
+
+func TestOutageManager_DeleteOutageRelationship(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "comp", Name: "Comp",
+				Subcomponents: []types.SubComponent{{Slug: "sub", Name: "Sub"}},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	outageA := &types.Outage{
+		ComponentName: "comp", SubComponentName: "sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "A", CreatedBy: "sys", DiscoveredFrom: "cm",
+	}
+	outageB := &types.Outage{
+		ComponentName: "comp", SubComponentName: "sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "B", CreatedBy: "sys", DiscoveredFrom: "cm",
+	}
+	require.NoError(t, tm.manager.CreateOutage(outageA, nil, "sys", ""))
+	require.NoError(t, tm.manager.CreateOutage(outageB, nil, "sys", ""))
+
+	rel := &types.OutageRelationship{
+		OutageID: outageA.ID, RelatedOutageID: outageB.ID,
+		RelationshipType: types.RelationshipCauses,
+	}
+	result, err := tm.manager.AddOutageRelationship(rel, "admin")
+	require.NoError(t, err)
+
+	err = tm.manager.DeleteOutageRelationship(outageA.ID, result.ID, "admin")
+	require.NoError(t, err)
+
+	var remaining []types.OutageRelationship
+	require.NoError(t, tm.db.Where("outage_id IN ?", []uint{outageA.ID, outageB.ID}).Find(&remaining).Error)
+	assert.Empty(t, remaining, "Both forward and inverse relationships should be deleted")
+}
+
+func TestOutageManager_OutageExists(t *testing.T) {
+	config := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Slug: "comp", Name: "Comp",
+				Subcomponents: []types.SubComponent{{Slug: "sub", Name: "Sub"}},
+			},
+		},
+	}
+	tm := setupTestManager(t, config)
+	defer tm.close()
+
+	o := &types.Outage{
+		ComponentName: "comp", SubComponentName: "sub",
+		Severity: types.SeverityDown, StartTime: time.Now(),
+		Description: "exists test", CreatedBy: "sys", DiscoveredFrom: "cm",
+	}
+	require.NoError(t, tm.manager.CreateOutage(o, nil, "sys", ""))
+
+	exists, err := tm.manager.OutageExists(o.ID)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	exists, err = tm.manager.OutageExists(99999)
+	require.NoError(t, err)
+	assert.False(t, exists)
 }
 
 func TestCreateOutage_SuspectedCleanup(t *testing.T) {

@@ -399,6 +399,50 @@ func (m *MockSlackThreadRepository) UpdateThread(thread *types.SlackThread) erro
 	return m.UpdateThreadError
 }
 
+// MockOutageRelationshipRepository is a mock implementation of OutageRelationshipRepository.
+type MockOutageRelationshipRepository struct {
+	AddError    error
+	DeleteError error
+
+	AddFn    func(*types.OutageRelationship) (*types.OutageRelationship, error)
+	DeleteFn func(uint, uint) error
+
+	Added []*types.OutageRelationship
+	Items []types.OutageRelationship
+}
+
+func (m *MockOutageRelationshipRepository) AddOutageRelationship(rel *types.OutageRelationship) (*types.OutageRelationship, error) {
+	if m.AddFn != nil {
+		return m.AddFn(rel)
+	}
+	if m.AddError != nil {
+		return nil, m.AddError
+	}
+	relCopy := *rel
+	m.Added = append(m.Added, &relCopy)
+	return &relCopy, nil
+}
+
+func (m *MockOutageRelationshipRepository) ListOutageRelationships(_ uint) ([]types.OutageRelationship, error) {
+	return m.Items, nil
+}
+
+func (m *MockOutageRelationshipRepository) GetOutageRelationship(outageID, relationshipID uint) (*types.OutageRelationship, error) {
+	for _, item := range m.Items {
+		if item.ID == relationshipID && item.OutageID == outageID {
+			return &item, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (m *MockOutageRelationshipRepository) DeleteOutageRelationship(outageID, relationshipID uint) error {
+	if m.DeleteFn != nil {
+		return m.DeleteFn(outageID, relationshipID)
+	}
+	return m.DeleteError
+}
+
 // TestConfig creates a test DashboardConfig for testing.
 func TestConfig(autoResolve, requiresConfirmation bool) *types.DashboardConfig {
 	subComponent := types.SubComponent{
