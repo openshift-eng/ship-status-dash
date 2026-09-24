@@ -33,14 +33,13 @@ type Handlers struct {
 	pingRepo               repositories.ComponentPingRepository
 	triageNoteRepo         repositories.TriageNoteRepository
 	outageLinkRepo         repositories.OutageLinkRepository
-	outageRelRepo          repositories.OutageRelationshipRepository
 	groupCache             auth.GroupMembershipProvider
 	monitorReportProcessor *ComponentMonitorReportProcessor
 	externalPageCaches     map[string]*ExternalPageCache
 }
 
 // NewHandlers creates a new Handlers instance with the provided dependencies.
-func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, outageRelRepo repositories.OutageRelationshipRepository, groupCache auth.GroupMembershipProvider) *Handlers {
+func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.DashboardConfig], outageManager outage.OutageManager, pingRepo repositories.ComponentPingRepository, triageNoteRepo repositories.TriageNoteRepository, outageLinkRepo repositories.OutageLinkRepository, groupCache auth.GroupMembershipProvider) *Handlers {
 	return &Handlers{
 		logger:                 logger,
 		configManager:          configManager,
@@ -48,7 +47,6 @@ func NewHandlers(logger *logrus.Logger, configManager *config.Manager[types.Dash
 		pingRepo:               pingRepo,
 		triageNoteRepo:         triageNoteRepo,
 		outageLinkRepo:         outageLinkRepo,
-		outageRelRepo:          outageRelRepo,
 		groupCache:             groupCache,
 		monitorReportProcessor: NewComponentMonitorReportProcessor(outageManager, pingRepo, configManager, logger),
 		externalPageCaches: map[string]*ExternalPageCache{
@@ -976,7 +974,8 @@ func (h *Handlers) GetOutageRelationshipsJSON(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
+	outage, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Outage not found")
 			return
@@ -986,14 +985,7 @@ func (h *Handlers) GetOutageRelationshipsJSON(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	rels, err := h.outageRelRepo.ListOutageRelationships(uint(outageID))
-	if err != nil {
-		logger.WithField("error", err).Error("Failed to list outage relationships")
-		respondWithError(w, http.StatusInternalServerError, "Failed to get outage relationships")
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, rels)
+	respondWithJSON(w, http.StatusOK, outage.Relationships)
 }
 
 // AddOutageRelationshipJSON creates a relationship between two outages.
@@ -1033,25 +1025,15 @@ func (h *Handlers) AddOutageRelationshipJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req types.OutageRelationshipRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
 	if !h.IsUserAuthorizedForComponent(activeUser, component) {
 		logger.Warn("User not authorized to add outage relationship")
 		respondWithError(w, http.StatusForbidden, "You are not authorized to perform this action on this component")
 		return
 	}
 
-	if _, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID)); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			respondWithError(w, http.StatusNotFound, "Outage not found")
-			return
-		}
-		logger.WithField("error", err).Error("Failed to query outage from database")
-		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+	var req types.OutageRelationshipRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -1070,6 +1052,17 @@ func (h *Handlers) AddOutageRelationshipJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	outage, err := h.outageManager.GetOutageByID(componentName, subComponentName, uint(outageID))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondWithError(w, http.StatusNotFound, "Outage not found")
+			return
+		}
+		logger.WithField("error", err).Error("Failed to query outage from database")
+		respondWithError(w, http.StatusInternalServerError, "Failed to get outage")
+		return
+	}
+
 	exists, err := h.outageManager.OutageExists(req.RelatedOutageID)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to check related outage existence")
@@ -1081,8 +1074,7 @@ func (h *Handlers) AddOutageRelationshipJSON(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	existing, _ := h.outageRelRepo.ListOutageRelationships(uint(outageID))
-	for _, e := range existing {
+	for _, e := range outage.Relationships {
 		if e.RelatedOutageID == req.RelatedOutageID {
 			respondWithError(w, http.StatusConflict, "A relationship between these outages already exists")
 			return

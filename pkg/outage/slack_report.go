@@ -254,6 +254,11 @@ func (r *SlackReporter) formatUpdateMessage(outage *types.Outage, oldOutage *typ
 		}
 	}
 
+	if len(outage.Relationships) > len(oldOutage.Relationships) {
+		newRel := outage.Relationships[len(outage.Relationships)-1]
+		changes = append(changes, fmt.Sprintf("Related outage added: #%d (%s)", newRel.RelatedOutageID, newRel.RelationshipType))
+	}
+
 	if len(changes) == 0 {
 		changes = append(changes, "Outage updated")
 	}

@@ -495,6 +495,7 @@ func (m *DBOutageManager) OutageExists(outageID uint) (bool, error) {
 }
 
 func (m *DBOutageManager) AddOutageRelationship(rel *types.OutageRelationship, user string) (*types.OutageRelationship, error) {
+	oldOutage := m.loadOutage(rel.OutageID)
 	old := m.snapshotOutage(rel.OutageID)
 	oldRelated := m.snapshotOutage(rel.RelatedOutageID)
 
@@ -506,6 +507,7 @@ func (m *DBOutageManager) AddOutageRelationship(rel *types.OutageRelationship, u
 
 	m.auditMutation(rel.OutageID, user, old)
 	m.auditMutation(rel.RelatedOutageID, user, oldRelated)
+	m.reportChildUpdate(rel.OutageID, oldOutage)
 	return result, nil
 }
 
