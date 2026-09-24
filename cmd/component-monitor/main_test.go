@@ -177,3 +177,76 @@ func TestLoadAndValidateConfigFrequency(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAndValidateConfigJiraMonitorSeverity(t *testing.T) {
+	tests := []struct {
+		name     string
+		severity types.Severity
+		wantErr  string
+	}{
+		{
+			name: "omitted or empty severity",
+		},
+		{
+			name:     "down severity",
+			severity: types.SeverityDown,
+		},
+		{
+			name:     "degraded severity",
+			severity: types.SeverityDegraded,
+		},
+		{
+			name:     "suspected severity",
+			severity: types.SeveritySuspected,
+		},
+		{
+			name:     "capacity exhausted severity",
+			severity: types.SeverityCapacityExhausted,
+		},
+		{
+			name:     "invalid severity",
+			severity: types.Severity("Critical"),
+			wantErr:  `invalid severity "Critical" for jira_monitor on component trt-incidents/incidents`,
+		},
+	}
+
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := types.ComponentMonitorConfig{
+				Frequency: "5m",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "trt-incidents",
+						SubComponentSlug: "incidents",
+						JiraMonitor: &types.JiraMonitor{
+							URL:      "https://redhat.atlassian.net",
+							JQL:      "labels = trt-incident",
+							Severity: tt.severity,
+						},
+					},
+				},
+			}
+
+			got, err := loadAndValidateConfig(log, writeMonitorConfig(t, cfg), "")
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotSeverity := got.Components[0].JiraMonitor.Severity; gotSeverity != tt.severity {
+				t.Errorf("severity = %q, want %q", gotSeverity, tt.severity)
+			}
+		})
+	}
+}

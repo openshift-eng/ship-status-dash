@@ -177,6 +177,9 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 			if strings.TrimSpace(component.JiraMonitor.JQL) == "" {
 				return nil, fmt.Errorf("jql is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
 			}
+			if severity := string(component.JiraMonitor.Severity); severity != "" && !types.IsValidSeverity(severity) {
+				return nil, fmt.Errorf("invalid severity %q for jira_monitor on component %s/%s", severity, component.ComponentSlug, component.SubComponentSlug)
+			}
 		}
 	}
 
