@@ -8,7 +8,8 @@
   },
   "runArgs": ["--name", "ship-status-dev", "--network", "ship-status-net", "--env-file", ".devcontainer/.env"],
   "mounts": [
-    "source=${localEnv:HOME}/.config/gcloud,target=/home/vscode/.config/gcloud,type=bind,readonly"
+    "source=${localEnv:HOME}/.config/gcloud,target=/home/vscode/.config/gcloud,type=bind,readonly",
+    "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,readonly"
   ],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
