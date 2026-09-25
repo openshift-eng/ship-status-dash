@@ -28,6 +28,10 @@ Feature: Outage Details
     Given I navigate to outage 2 for "sippy/sippy-ui" as a guest
     Then I should see the "Related Outages" section
 
+  Scenario: Relationship link navigates to the related outage
+    Given I navigate to outage 2 for "sippy/sippy-ui" as a guest
+    Then I should see a relationship link "Caused by" pointing to "/prow/deck/outages/1"
+
   Scenario: Audit log modal opens and shows change history
     Given I am logged in as an admin for "Prow"
     And I navigate to outage 1 for "prow/deck" as an admin

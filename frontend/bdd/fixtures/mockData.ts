@@ -175,6 +175,28 @@ export const mockResolvedOutage: Outage = {
       description: 'Slack thread',
     },
   ],
+  relationships: [
+    {
+      ID: 30,
+      CreatedAt: twoDaysAgo,
+      outage_id: 2,
+      related_outage_id: 1,
+      relationship_type: 'caused_by',
+      related_outage: {
+        ID: 1,
+        CreatedAt: oneHourAgo,
+        UpdatedAt: oneHourAgo,
+        last_auditable_update: oneHourAgo,
+        component_name: 'prow',
+        sub_component_name: 'deck',
+        severity: 'Degraded',
+        start_time: oneHourAgo,
+        end_time: { Time: '', Valid: false },
+        auto_resolve: false,
+        description: 'Deck UI is slow to respond',
+      },
+    },
+  ],
 }
 
 export const mockOutages: Outage[] = [mockActiveOutage, mockResolvedOutage]

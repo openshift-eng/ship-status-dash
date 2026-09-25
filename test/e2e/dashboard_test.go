@@ -2626,6 +2626,54 @@ func testOutageRelationships(client *TestHTTPClient) func(*testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, fetched.Relationships)
 			assert.Equal(t, outageB.ID, fetched.Relationships[0].RelatedOutageID)
+			require.NotNil(t, fetched.Relationships[0].RelatedOutage, "RelatedOutage must be preloaded on GET")
+			assert.Equal(t, outageB.ID, fetched.Relationships[0].RelatedOutage.ID)
+			assert.Equal(t, utils.Slugify("Prow"), fetched.Relationships[0].RelatedOutage.ComponentName)
+			assert.Equal(t, utils.Slugify("Tide"), fetched.Relationships[0].RelatedOutage.SubComponentName)
+		})
+
+		t.Run("outage GET preloads related outage across components", func(t *testing.T) {
+			outageC := createOutage(t, client, "Boskos", "Quota")
+			defer deleteOutage(t, client, "Boskos", "Quota", outageC.ID)
+
+			crossBody, _ := json.Marshal(types.OutageRelationshipRequest{
+				RelatedOutageID:  outageC.ID,
+				RelationshipType: "caused_by",
+			})
+			crossResp, err := client.Post(basePath, crossBody)
+			require.NoError(t, err)
+			defer crossResp.Body.Close()
+			require.Equal(t, http.StatusCreated, crossResp.StatusCode)
+
+			var crossRel types.OutageRelationship
+			json.NewDecoder(crossResp.Body).Decode(&crossRel)
+			defer func() {
+				delPath := fmt.Sprintf("%s/%d", basePath, crossRel.ID)
+				delResp, _ := client.Delete(delPath)
+				defer delResp.Body.Close()
+			}()
+
+			getResp, err := client.Get(fmt.Sprintf("/api/components/%s/%s/outages/%d",
+				utils.Slugify("Prow"), utils.Slugify("Deck"), outageA.ID), false)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			require.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var fetched types.Outage
+			err = json.NewDecoder(getResp.Body).Decode(&fetched)
+			require.NoError(t, err)
+
+			var found bool
+			for _, rel := range fetched.Relationships {
+				if rel.RelatedOutageID == outageC.ID {
+					found = true
+					require.NotNil(t, rel.RelatedOutage, "cross-component RelatedOutage must be preloaded")
+					assert.Equal(t, utils.Slugify("Boskos"), rel.RelatedOutage.ComponentName)
+					assert.Equal(t, utils.Slugify("Quota"), rel.RelatedOutage.SubComponentName)
+					break
+				}
+			}
+			assert.True(t, found, "cross-component relationship not found in outage GET")
 		})
 
 		t.Run("unauthorized user rejected", func(t *testing.T) {
