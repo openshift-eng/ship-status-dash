@@ -119,7 +119,7 @@ Keep the existing sub-component grid below. Add sections above it:
 **Watcher canvas** (TRT `payload_streams` workspace, amd64 only):
 
 - One row per configured amd64 stream (YAML list, e.g. `5.1.0-0.nightly`, `5.1.0-0.ci`, `5.0.0-0.nightly`, `5.0.0-0.ci`). No arm64/multi/ppc/s390x.
-- Last N payloads **on screen** (`recent_payloads`). The store keeps every tag still inside the SLO `window` so evaluation is not limited to those N rows.
+- Last N payloads **on the team page** (`recent_payloads`). The store keeps every tag still inside the SLO `window` so evaluation is not limited to those N rows. Home does not list payloads.
 - Recurring-job grouping: same blocking job failing on 2+ consecutive payloads in that stream. Computed by ship-status from stored rows so Chai does not have to send a grouping structure.
 - Links: Prow, Jira, ship-status outage details (and any URLs the bot/human attached, including release-controller pages if they send them).
 - Correlated ship-status objects beside a payload or a failure group:
@@ -249,7 +249,7 @@ team_slos:
         target: { min_accepted: 1 }
         workspace:
           kind: payload_streams
-          recent_payloads: 5   # UI list size only; evaluation uses the full window
+          recent_payloads: 5   # team-page list size only; evaluation uses the full window
           streams:
             - controller: amd64
               name: "5.1.0-0.nightly"
@@ -274,7 +274,7 @@ Tables (names indicative):
 - `slo_payloads`: team, stream, tag, phase, payload URL, timestamps, failed jobs JSON, notes, `updated_by`, `updated_at`. Unique `(team, stream, tag)`.
 - `slo_payload_links`: payload id, url, link_type (`jira` / `outage` / `other`), optional outage_id.
 
-Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that still falls inside the SLO `window` (24h for TRT). `recent_payloads` is a UI cap only: the team page and home widget list the last N rows per stream. Do not prune stored rows down to N. An Accepted tag still inside the window must remain available to `payload_acceptance` even if later Rejected tags have pushed it off the visible list. Prune only rows that are outside both the evaluation window and the last-N display set.
+Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that still falls inside the SLO `window` (24h for TRT). `recent_payloads` is a team-page UI cap only: `/team/{team}` lists the last N rows per stream. The home widget does not list payloads (roll-up, worst-miss, and incident count only). Do not prune stored rows down to N. An Accepted tag still inside the window must remain available to `payload_acceptance` even if later Rejected tags have pushed it off the visible list. Prune only rows that are outside both the evaluation window and the last-N display set.
 
 **Public read APIs:**
 
@@ -323,24 +323,24 @@ On each tick, after the existing Sippy / release-controller / YAML load:
 2. Keep calling `record_payload_infra_outage` for Rejected tags with mapped infra jobs. Unchanged.
 3. When that wrapper creates or links an outage, also `add_slo_payload_link(..., link_type=outage, outage_id=...)`.
 4. When the Slack revert flow files a TRT incident Jira, `add_slo_payload_link(..., link_type=jira)` for the affected payload(s). Do not wait for jira_monitor; the incidents panel will catch up.
-5. SLO writes on this tick stay best-effort relative to the Firestore watermark: do not hold the watermark forever if ship-status is down (same as today's infra writes). When an upsert fails, post a Slack message a human can act on. Include stream, tag, error, and whether the watermark advanced past that tag. There is no automatic failed-tag queue in v1.
+5. SLO writes on this tick stay best-effort relative to the Firestore watermark: do not hold the watermark forever if ship-status is down (same as today's infra writes). When an upsert fails, post a Slack message a human can act on. Include stream, tag, error, and whether the watermark advanced past that tag. There is no automatic failed-tag queue and no automatic post-watermark Ready-to-Accepted reconciliation in v1.
 
-Human replay after a failed upsert (watermark may already have moved):
+Human recovery after a failed or skipped write (watermark may already have moved):
 
-- Team page add/edit (same protected `PUT` as MCP), or
-- Ask Chai in Slack to upsert that tag (`upsert_slo_payload` with OrgData `acting_for`).
+- Ask Chai in Slack to refresh that stream and tag. This is a required **interactive skill** in ship-help-bot: look up the current phase (and jobs) from the same Sippy / release-controller sources `PayloadCheckHandler` already uses, then `upsert_slo_payload`. Independent of the Firestore watermark. The LLM only chooses to invoke it on explicit user intent. It does not invent phase or jobs. Covers a Slack write-failure alert, a payload missing from the SLO page, and a stale `Ready` row that later Accepted or Rejected.
+- Or team page add/edit (same protected `PUT` as MCP).
 
-The Slack failure message should say which of those to use and link `/team/TRT#slo`. A logged failure with no Slack and no replay path is not acceptable, because later polls will skip the tag and evaluation can false-miss.
+The Slack failure message should point at the interactive skill and link `/team/TRT#slo`. Do not add a second scheduled poller or a failed-tag queue to recover these. If nobody asks Chai, someone will eventually notice the gap on the team page and ask then.
 
 Implement a coordinator-side wrapper (same shape as `record_payload_infra_outage` in `payload_infra.py`): `acting_for=chai-bot`, groups/idempotent, sandbox fake for tests. The LLM must not be the thing that decides payload rows.
 
-Persona-callable MCP tools remain for humans ("add a note on 5.1 nightly 2026-09-23-…", "link TRT-1234 to this payload", "upsert this tag, the SLO write failed"). Those use OrgData `acting_for`. Instructions: only on explicit user intent, same as raw `create_outage`.
+Persona-callable tools remain for humans ("add a note on 5.1 nightly 2026-09-23-…", "link TRT-1234 to this payload", "refresh 5.1.0-0.nightly-2026-09-25-060000 on the SLO"). Those use OrgData `acting_for`. Instructions: only on explicit user intent, same as raw `create_outage`.
 
 ### Slack canvas
 
 The oversight canvas is on-demand only. No scheduled writer, so no cutover: do not dual-write, do not replace the canvas body with a ship-status URL, do not scrape it. After `/team/TRT#slo` is the live view, stop asking Chai to `update_canvas` for payload/SLO status.
 
-**Alerts stay in Slack.** Revert / force-accept / new infra outage posts from payload_check do not move into the dashboard. Failed SLO upserts also post to Slack (stream, tag, error, watermark status) so a human can replay the tag.
+**Alerts stay in Slack.** Revert / force-accept / new infra outage posts from payload_check do not move into the dashboard. Failed SLO upserts also post to Slack (stream, tag, error, watermark status) so a human can ask Chai to refresh that tag.
 
 ### Instructions and safety
 
@@ -348,7 +348,8 @@ Update in ship-help-bot (not this repo):
 
 - `ship_help_bot/tools/ship_status/instructions/02_write_tools.md`: new upsert/link tools, `acting_for` rules, **never create an outage because an SLO was missed**.
 - `ship_help_bot/tools/_auto/payload_check/README.md` and handler module doc: SLO upsert steps beside infra backfill.
-- `trt_payload_check_handler.md`: mention the ship-status team-page URL when posting; do not treat SLO miss as an incident. Slack failed SLO upserts with stream, tag, error, watermark status, and replay instructions.
+- `trt_payload_check_handler.md`: mention the ship-status team-page URL when posting; do not treat SLO miss as an incident. Slack failed SLO upserts with stream, tag, error, watermark status, and how to ask Chai to refresh that tag.
+- Interactive skill: on explicit user intent, fetch current phase for a named stream and tag and upsert it, independent of the Firestore watermark. Same skill for missing payloads and stale `Ready` rows.
 - RWS: expose the upsert wrapper only to `ocp_payload_ops`, same as `record_payload_infra_outage`. Keep raw SLO writes off workspace workers.
 
 ### What Chai does not do in v1
@@ -358,6 +359,7 @@ Update in ship-help-bot (not this repo):
 - Poll on behalf of ART/CRT/DPTP SLOs.
 - Replace the payload agent.
 - Open a ship-status outage per rejected payload or per missed SLO.
+- Automatically reconcile `Ready` rows after the Firestore watermark has passed. Humans ask Chai to refresh a specific tag.
 
 ## Frontend design
 
@@ -410,7 +412,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - One ship-status outage per rejected payload.
 - Copying incident outages into `slo_payloads`. Incidents stay outages. The SLO page is the view.
 - Polling release-controller, Sippy, or Slack from the dashboard to populate SLO data.
-- A second Chai poller, or using `patch_manager.payload_check_ga` for this SLO.
+- A second Chai poller, automatic post-watermark Ready-to-Accepted reconciliation, or using `patch_manager.payload_check_ga` for this SLO.
 - Letting an LLM turn be the source of SLO payload rows.
 - Non-amd64 streams (arm64, multi, ppc64le, s390x).
 - Scraping, mirroring, dual-writing, or rewriting the Slack canvas as a pointer. It is on-demand only; stop asking for updates.
@@ -426,8 +428,9 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Bot `acting_for` / owner user string: `chai-bot`.
 - Missed SLO: status indicator only, never an outage. Infra and incident outage paths stay as they are.
 - Incidents: keep `trt-incidents` outages. Fold display into the team SLO via `incidents:`. Hide the sub from home/team grids. Other teams point at their own incident sub.
-- Failed SLO upsert: do not block the Firestore watermark. Slack the failure (stream, tag, error, whether the watermark advanced). A human replays via the team page or Chai in Slack. No automatic failed-tag queue in v1.
-- Persist SLO payload rows for the full evaluation `window`. `recent_payloads` is display-only. An in-window Accepted tag is never pruned just because later tags filled the last-N list.
+- Failed SLO upsert: do not block the Firestore watermark. Slack the failure (stream, tag, error, whether the watermark advanced). A human asks Chai to refresh that tag, or edits on the team page. No automatic failed-tag queue and no automatic post-watermark phase reconciliation in v1.
+- Interactive Chai skill: fetch current phase for a requested stream and tag, then upsert. Independent of the watermark. Used after a write-failure Slack, a missing payload, or a stale `Ready` row.
+- Persist SLO payload rows for the full evaluation `window`. `recent_payloads` is team-page display-only. The home widget does not list payloads. An in-window Accepted tag is never pruned just because later tags filled the last-N list.
 - Slack canvas: on-demand only. Stop asking Chai to update it. No cutover. ship-status never scrapes it.
 - Recurring-job grouping: ship-status, from stored payloads.
 
@@ -436,7 +439,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 **SHIP Status Dash (this repo)**
 
 - Define `team_slos` YAML (including `chai-bot` owners), public read APIs, persisted workspace store, TeamPage SLO strip, and home-page widget linking to `#slo`.
-- Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`.
+- Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up only.
 - Protected write API plus authenticated MCP tools so Chai can upsert TRT payload/SLO workspace data (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
 - Generic team SLO incidents panel backed by a configured incident sub-component (TRT-2955 first). Hide that sub from home/team grids. Reuse for other teams.
 - Add `prometheus` / `time_since_event` sources so ART, CRT, and DPTP can use the same team-page SLO strip. Incidents panel is already generic via YAML.
@@ -444,7 +447,8 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 **Chai Bot (ship-help-bot)**
 
 - Wrapper + `PayloadCheckHandler` upserts for every configured amd64 stream (ci and nightly; Accepted/Rejected/Ready), `acting_for=chai-bot`. Do not hold the Firestore watermark on ship-status errors.
-- Slack a human when an SLO upsert fails: stream, tag, error, watermark status, and how to replay (team page or Chai Slack upsert).
+- Slack a human when an SLO upsert fails: stream, tag, error, watermark status, and how to ask Chai to refresh that tag.
+- Interactive skill: on user request, look up a named stream and tag and upsert it (watermark-independent). Covers write failures, missing payloads, and stale `Ready` rows.
 - After `record_payload_infra_outage` create/link, attach `slo_payload_links` (`outage`). After incident Jira create, attach `jira` links.
 - Persona tools for human Slack edits (OrgData `acting_for`). Instructions: explicit intent only, never outage-on-SLO-miss, RWS exposure matches infra wrapper.
 - Stop asking Chai to update the Slack payload canvas once the team page is live. Do not scrape it or rewrite it as a pointer.
