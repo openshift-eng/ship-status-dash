@@ -28,7 +28,7 @@ Incident outages on `trt-2955` ([TRT-2955](https://redhat.atlassian.net/browse/T
 | TRT incident Jira cards | Chai (`trt_incident_jira` + payload_check revert flow) | File `project=TRT`, labels `trt-incident,ai-generated-jira` | ship-status has no Jira token |
 | Incident outages | ship-status `jira_monitor` on `trt-incidents/incidents` | One outage per Jira issue (`outage_per_reason`) | Chai does not copy incidents into `slo_workspace_items` |
 | SLO workspace facts | Chai inserts once via authenticated MCP; humans via team page or Slack | Generic rows plus versioned jsonb `details`. TRT maps payloads into `payload_streams` v1. | Scheduled handler does not rewrite an existing tag. LLM does not author the store. |
-| SLO met/missed | ship-status, from stored workspace items | For TRT: count `Accepted` in `window` per YAML stream (`group_key`) | Never open/update/resolve an outage for a miss |
+| SLO met/missed | ship-status, from stored workspace items | For TRT: count `Accepted` in 24h per YAML stream (`group_key`) | Never open/update/resolve an outage for a miss |
 | Watcher UI | ship-status `/team/TRT#slo` | Versioned per-team component; recurring-job grouping, correlation, add/edit | Home page is a summary chip only |
 | Slack | Chai | Payload-check alerts stay. Stop asking for canvas updates. | Do not scrape canvas HTML. No cutover or pointer rewrite. |
 
@@ -251,12 +251,10 @@ team_slos:
       - name: accepted-payload-per-day
         display_name: "1 accepted payload per day"
         source: payload_acceptance
-        window: 24h
-        target: { min_accepted: 1 }
         workspace:
           kind: payload_streams
           schema_version: 1    # required when workspace is set; Chai and the UI must match
-          recent_payloads: 5   # team-page list size only; evaluation uses the full window
+          recent_payloads: 5   # team-page list size only; evaluation uses the hardcoded 24h window
           streams:
             - controller: amd64
               name: "5.1.0-0.nightly"
@@ -282,19 +280,19 @@ Do not infer the watched set from leftover `group_key`s in the database. YAML is
 
 ### How met/missed is computed
 
-This is not a generic query over jsonb. Ship-status registers evaluators in Go, keyed by `source`. YAML only names the evaluator and passes `window` / `target`. The first evaluator is `payload_acceptance`. Later teams add `prometheus` or `time_since_event` the same way: new Go code plus a new `source` string, not a new table.
+This is not a generic query over jsonb. Ship-status registers evaluators in Go, keyed by `source`. YAML only names the evaluator (`source: payload_acceptance`). Window and target live in that Go code, not YAML: 24h and `min_accepted: 1`. Later teams add `prometheus` or `time_since_event` the same way: new Go code plus a new `source` string, not a new table.
 
 `payload_acceptance` (TRT, this repo):
 
 1. Take `workspace.streams` from YAML (not every `group_key` in the table).
-2. For each of those streams, select stored items with `kind=payload_streams`, `group_key` equal to that stream name, and `occurred_at` inside `window`.
+2. For each of those streams, select stored items with `kind=payload_streams`, `group_key` equal to that stream name, and `occurred_at` inside the last 24h.
 3. Count items whose `outcome` is `Accepted`.
-4. That stream is met if the count is at least `target.min_accepted` (1 for TRT).
+4. That stream is met if the count is at least 1.
 5. The named SLO is met when every YAML stream is met. Names not in YAML are ignored even if rows remain.
 
 Those steps use version-stable columns only (`group_key`, `occurred_at`, `outcome`). Job notes, payload URLs, and recurring-job grouping are display. They do not change met/missed.
 
-Results are a boolean plus per-stream counts on `GET /api/teams/{team}/slo` and the home summary. Never open, update, or resolve a ship-status outage because an SLO was missed.
+Results are computed on read (no evaluation table). They go to the UI on the public GET APIs below. Never open, update, or resolve a ship-status outage because an SLO was missed.
 
 Generic across teams: YAML shape, evaluator registry, result shape, `TeamSLOStatus` strip. Not generic: pretending every team's SLO is `payload_acceptance`.
 
@@ -361,9 +359,36 @@ Idempotent **insert** by `(team, kind, item_key)` on the scheduled path: if the 
 
 **Public read APIs:**
 
-- `GET /api/teams/{team}/slo`: evaluations from stored items in `window` (not limited to last N), `incidents`, last-N workspace items for streams in YAML `workspace.streams`, and YAML `workspace.schema_version`. Names removed from YAML are omitted even if rows remain.
-- `GET /api/teams/slo-summary`: one block per team in the union of `team_slos` and `slo_component` `ship_team`s. Roll-up when `team_slos` exists; compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No workspace item lists. Home does not load versioned workspace components.
+- `GET /api/teams/{team}/slo`: team page. Evaluations from stored items in the evaluator's window (not limited to last N), `incidents`, last-N workspace items for YAML streams, and `workspace.schema_version`. Names removed from YAML are omitted even if rows remain.
+- `GET /api/teams/slo-summary`: home widget. One block per team in the union of `team_slos` and `slo_component` `ship_team`s. Roll-up when `team_slos` exists; compact incident rows grouped by `slo_component`. No workspace item lists. Home does not load versioned workspace components.
 - `GET /api/components` and `GET /api/sub-components` omit `slo_component: true` components (and their subs).
+
+The evaluator returns display fields (`window`, `target`) so the UI does not hardcode 24h / min 1. Indicative team-page body:
+
+```json
+{
+  "team": "TRT",
+  "workspace": { "kind": "payload_streams", "schema_version": 1, "recent_payloads": 5 },
+  "evaluations": [
+    {
+      "name": "accepted-payload-per-day",
+      "display_name": "1 accepted payload per day",
+      "source": "payload_acceptance",
+      "window": "24h",
+      "target": { "min_accepted": 1 },
+      "met": false,
+      "groups": [
+        { "key": "5.1.0-0.nightly", "accepted": 1, "met": true, "last_accepted_at": "2026-09-25T06:00:00Z" },
+        { "key": "5.0.0-0.nightly", "accepted": 0, "met": false, "last_accepted_at": "2026-09-23T22:00:00Z" }
+      ]
+    }
+  ],
+  "incidents": [],
+  "items": []
+}
+```
+
+`TeamSLOStatus` reads `evaluations`. `PayloadStreamsWorkspace` reads `items` plus `workspace`. Home `GET /api/teams/slo-summary` is the same evaluations rolled up (met count, worst-miss `key` + `last_accepted_at`) plus compact incidents. No payload `items`.
 
 **Protected write APIs** (oauth-proxy + HMAC + `IsUserAuthorizedForTeamSLO`). Used by MCP and the frontend:
 
@@ -457,7 +482,7 @@ Update in ship-help-bot (not this repo):
 **Team page** ([`frontend/src/components/team/TeamPage.tsx`](frontend/src/components/team/TeamPage.tsx)):
 
 1. Fetch `/api/teams/{team}/slo`. If empty, keep today's page.
-2. `TeamSLOStatus` strip with `id="slo"` (generic, all teams). Scroll into view when the hash is `#slo`.
+2. `TeamSLOStatus` strip with `id="slo"` (generic, all teams) from `evaluations` on that response. Scroll into view when the hash is `#slo`.
 3. If the team has a `slo_component`, render `TeamSLOIncidents` (`id="incidents"`) with active outage rows linking to existing details pages.
 4. If the team has a workspace, render from a **versioned per-team registry**. Do not parse `details` in a shared generic table.
 5. Existing `SubComponentList` unchanged except list APIs no longer return `slo_component` subs.
@@ -549,7 +574,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Store schema is generic (`slo_workspace_items` + jsonb `details`). Do not add `stream` / `tag` / `phase` columns. TRT maps those onto `group_key` / `item_key` / `outcome` in the producer and the `payload_streams` v1 UI.
 - TRT v1 `details` always includes `payload_url` (release-controller). `analysis_url` when payload-agent HTML exists. Failed jobs may have `notes`. Chai writes notes on the first insert. Humans can add or edit after. Scheduled ticks do not clobber. A human-requested refresh replaces the row (Chai authoritative on that write).
 - `owners` is required on `team_slos`. No fallback to component owners.
-- `payload_acceptance` is a named Go evaluator selected by YAML `source`. It counts `Accepted` outcomes per stream in `window`. It is not a generic jsonb check. Other teams register a different `source`.
+- `payload_acceptance` is a named Go evaluator selected by YAML `source`. It hardcodes 24h and min 1 `Accepted` per YAML stream. Window and target are returned on the GET APIs for display. It is not a generic jsonb check. Other teams register a different `source`.
 - `(kind, schema_version)` is the Chai/ship-status contract. Required on YAML workspace and every stored row. Ship-status owns the JSON schema and a versioned per-team frontend component. Reject unknown versions. Mixed versions in a window render with the matching component, not a migration of old jsonb. Home does not load those components.
 - Slack canvas: on-demand only. Stop asking Chai to update it. No cutover. ship-status never scrapes it.
 - Recurring-job grouping: ship-status, from stored `details` using the item's `schema_version` (TRT `payload_streams` v1 first).
