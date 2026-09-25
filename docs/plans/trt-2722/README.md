@@ -16,7 +16,7 @@ TRT's operational SLO is at least one accepted payload per day on watched amd64 
 
 ship-status does not poll release-controller or Sippy to populate the SLO. Chai already does that in `PayloadCheckHandler` (`ship_help_bot/tools/_auto/payload_check/`). The bot is responsible for keeping SLO data current. Authorized humans can also add and edit the same records from the team-page UI or by asking Chai in Slack. A missed SLO is an indicator only. Never create an outage because an SLO was missed.
 
-Incident outages on `trt-2955` ([TRT-2955](https://redhat.atlassian.net/browse/TRT-2955)) stay as ship-status outages (`trt-incidents/incidents`, `outage_per_reason`, `exclude_from_main_outage_well`). They should not remain a separate team-page card or home component well. Fold them into the team SLO surface as a generic incidents panel, then point other teams' SLOs at their own incident sub-components the same way. Payload rows still link to those outages. They do not replace them.
+Incident outages on `trt-2955` ([TRT-2955](https://redhat.atlassian.net/browse/TRT-2955)) stay as ship-status outages (`trt-incidents/incidents`, `outage_per_reason`, `exclude_from_main_outage_well`). They should not remain a separate team-page card or home component well. Set `slo_component: true` on that component so list APIs omit it, then show its active outages in the team SLO incidents panel and the home SLO well. Other teams set the same flag on their incident component. Payload rows still link to those outages. They do not replace them.
 
 ## Split of responsibilities
 
@@ -58,8 +58,8 @@ Empty or stale SLO rows are a Chai lag problem (handler missed a tag, MCP write 
 
 Treat this as three layers:
 
-1. **Home-page SLO summary** (small, all teams): met/missed chips, one line of context, link to `/team/{team}#slo`. Not the watcher canvas. Does not light the ship-on-fire logo.
-2. **Generic SLO status** on the team page: named objectives, window, met/missed, last evaluation (`id="slo"`), plus an incidents panel when the team has one configured.
+1. **Home-page SLO summary** (small, all teams): met/missed chips, one line of context, compact `slo_component` incident rows, link to `/team/{team}#slo`. Not the watcher canvas. Does not light the ship-on-fire logo.
+2. **Generic SLO status** on the team page: named objectives, window, met/missed, last evaluation (`id="slo"`), plus an incidents panel when the team owns a `slo_component`.
 3. **SLO workspace** (pluggable per team, writable): TRT's first extra workspace is the amd64 payload watcher. Chai upserts payload data via MCP. Authorized humans add/edit on the team page or via Chai in Slack. Other teams can omit the payload workspace and still get the SLO strip and incidents panel.
 
 ```mermaid
@@ -114,7 +114,7 @@ Keep the existing sub-component grid below. Add sections above it:
 
 **SLO strip** (all teams with config, `id="slo"`): e.g. "Accepted payload / 24h: 3 of 4 streams meeting target." This is the target of the home-page deep link. Missed SLOs are prominent here as status only. Do not light the ship-on-fire logo. Do not create an outage when an SLO is missed.
 
-**Incidents panel** (any team that sets `incidents:` in YAML): active outages from the configured incident sub-component, with Jira links and jump-to outage details. This is where `trt-incidents/incidents` is shown for TRT. Same widget for ART/CRT/DPTP when they add their own incident sub-component. Not a `SubComponentCard` in the grid.
+**Incidents panel** (any team that owns a `slo_component: true` component): active outages from that component, with Jira links and jump-to outage details. This is where `trt-incidents/incidents` is shown for TRT. Same widget for ART/CRT/DPTP when they mark their incident component. Not a `SubComponentCard` in the grid.
 
 **Watcher canvas** (TRT `payload_streams` workspace, amd64 only):
 
@@ -133,15 +133,19 @@ Authorized users on the team page can add a payload, edit phase/jobs/notes, and 
 
 Static mock of `/team/TRT` with the SLO strip, incidents panel, amd64 payload streams, and the existing Sippy cards. Sample payload/incident data. Layout is based on the live team page ([ship-status.ci.openshift.org/team/TRT](https://ship-status.ci.openshift.org/team/TRT)) as of 2026-09-25, when that page listed Sippy, Sippy-Auth, and Incidents.
 
-Yellow italic lines labeled **Mock caption** are annotations for this screenshot, not product copy.
+Yellow italic lines labeled **Mock caption** are annotations for these screenshots, not product copy.
 
 ![Mock of the TRT team page with SLO strip, incidents panel, amd64 payload streams, and Sippy cards](slo-team-page-mockup.png)
+
+Home page: a Team SLOs well under the logo lists per-team roll-up **and** the `slo_component` incident outages. TRT Incidents is not a component well. Payload tables stay on the team page.
+
+![Mock of the home page SLO well with TRT roll-up and incident rows](slo-home-page-mockup.png)
 
 What changed vs today:
 
 - Team header title is the team name (`TRT`), not `TRT Sub Components`.
 - New SLO strip (`#slo`) and incidents panel (`#incidents`) above the grid.
-- `Incidents` is not a sub-component card. Sippy and Sippy-Auth remain.
+- `Incidents` is not a sub-component card (`slo_component: true` on TRT Incidents). Sippy and Sippy-Auth remain.
 - Payload streams are tables per amd64 nightly and ci stream (5.0 and 5.1 in the mock), with recurring-job badges and links to Jira/outages.
 - Add/edit controls are shown as authorized-user actions. They are not on the public read-only view for anonymous visitors in the real app.
 
@@ -155,64 +159,60 @@ Per team that has `team_slos` config:
 - Roll-up: all met / N of M missed
 - One-line hint for the worst miss (e.g. "5.0 nightly: last accepted 32h ago")
 - Click-through goes to the team page SLO strip (`#slo` or `#incidents`), not a payload row
-- If the team has an incidents panel, include open-incident count (e.g. "2 incidents") in the same chip row
+- If the team owns a `slo_component`, list those active incident outages in the same well (title, severity, Jira, link to outage details and `/team/{team}#incidents`). Compact rows, not the team-page payload tables.
 
 Rules that keep `/` from becoming the canvas:
 
 - No payload lists, job failures, or correlation on the home widget
-- Teams with no SLO config are omitted
+- Teams with no SLO config and no `slo_component` are omitted
 - Missed SLOs do not put the team in the In Outage well, do not light the ship fire, and do not create an outage.
-- Hide the well entirely if no teams have SLOs configured (local/e2e without YAML)
-- The incident component (`TRT Incidents`) is hidden from home `ComponentWell`s once it is an SLO incident source. Those outages appear only in the SLO widget count and the team SLO incidents panel.
+- Hide the well entirely if no teams have SLOs or `slo_component`s (local/e2e without YAML)
+- A `slo_component` is omitted from home `ComponentWell`s. Its outages appear in this SLO well (and the team SLO incidents panel), not as a component card.
 
-### Folding incident sub-components into SLOs
+### Folding incident components into SLOs
 
 Keep TRT-2955's data model: one ship-status outage per Jira issue, Jira probe, `outage_per_reason`, auto-resolve, existing MCP outage tools. Do not copy incidents into `slo_payloads`.
 
-Change the surface:
+Do not derive hide-from-list from `team_slos`. That couples two configs and is easy to get wrong. Add an explicit component flag:
+
+```yaml
+  - name: "TRT Incidents"
+    description: "TRT Jira incidents labeled trt-incident"
+    ship_team: "TRT"
+    slo_component: true
+    sub_components:
+      - name: "Incidents"
+        exclude_from_main_outage_well: true
+        monitoring:
+          outage_per_reason: true
+          auto_resolve: true
+```
+
+`slo_component: true` on the **component**:
+
+- `GET /api/components` omits it, so there is no home `ComponentWell`.
+- `GET /api/sub-components` omits its subs, so `/team/TRT` has no Incidents card (Sippy stays).
+- It still does not appear in the In Outage well or light the ship (`exclude_from_main_outage_well` stays on the sub as today; `slo_component` does not replace that).
+- `GET /api/teams/{team}/slo` and `GET /api/teams/slo-summary` include its active outages for `ship_team`.
+- Home SLO well and `TeamSLOIncidents` render those outages.
+
+`team_slos` does not need an `incidents:` pointer. Discovery is: components with `slo_component: true` and matching `ship_team`. A team can have a `slo_component` with no payload SLO, or a payload SLO with no `slo_component`.
 
 | Today | After |
 |-------|--------|
-| `TRT Incidents` / `Incidents` is a home component well and a `/team/TRT` card | Hidden from those grids |
+| `TRT Incidents` is a home component well and a `/team/TRT` card | Hidden from those grids via `slo_component: true` |
 | Incidents only excluded from the In Outage well / ship fire | Also excluded from home component wells and the team sub-component list |
-| Team page is a flat card grid | SLO section owns the incident list |
+| Team page is a flat card grid | SLO section owns the incident list; home SLO well shows the same outages compactly |
 
-Generic YAML pointer, not TRT-hardcoded:
+Outage create/update/link/triage stays on the existing component APIs and MCP tools. The SLO panel is a view plus deep links. Payload correlation uses these outages first (Jira key, time overlap, and explicit `slo_payload_links`).
 
-```yaml
-team_slos:
-  - team: TRT
-    owners:
-      - rover_group: "technical-release-team"
-      - user: "chai-bot"
-    incidents:
-      component: trt-incidents
-      sub_component: incidents
-    slos:
-      - name: accepted-payload-per-day
-        ...
-  - team: DPTP
-    incidents:
-      component: dptp-incidents   # when they have one
-      sub_component: incidents
-    slos: [...]
-```
-
-Behavior when `incidents` is set:
-
-- `GET /api/teams/{team}/slo` includes `incidents: { component, sub_component, active: [...outages] }`.
-- Team page renders `TeamSLOIncidents` (`id="incidents"`) above the payload workspace (or alone if the team has no payload workspace).
-- `GET /api/sub-components?team=` and home `GET /api/components` omit that sub-component (and omit the parent component on home if it has no other subs). Implementation: either honor the SLO pointer in those list handlers, or add `exclude_from_team_list` / `exclude_from_home_wells` on the sub and set them on incident subs. Prefer deriving from the SLO pointer so teams cannot forget a flag.
-- Outage create/update/link/triage stays on the existing component APIs and MCP tools. The SLO panel is a view plus deep links. Optional: compact "add triage note" / "resolve" in the panel calling those same APIs when the user is authorized for that component.
-- Payload correlation uses these outages first (Jira key, time overlap, and explicit `slo_payload_links`).
-
-Other teams reuse the panel with zero TRT UI. They add a Jira-monitored incident sub-component (same pattern as TRT-2955) and point `incidents:` at it. Payload workspace remains optional.
+Other teams reuse this with zero TRT UI: add a Jira-monitored incident component, set `slo_component: true` and `ship_team`. Payload workspace remains optional.
 
 ### Other teams (same framework, later sources)
 
 Other teams reuse the same SLO page with no TRT-specific UI:
 
-- **Incidents panel first.** Any team can add a Jira-monitored incident sub-component (copy TRT-2955) and set `incidents:` on their `team_slos` entry. That is enough to get the panel and home-widget count.
+- **Incidents panel first.** Any team can add a Jira-monitored incident component (copy TRT-2955), set `slo_component: true` and `ship_team`. That is enough to get the panel and the home SLO well rows.
 - **ART / CRT / DPTP SLOs** later: content cadence, payload creation interval, mass failures (`prometheus` / `time_since_event` sources, or bot upserts). Payload workspace stays TRT-only unless another team wants one. Chai does not need a TRT-shaped handler for those teams in v1.
 
 ## Data sources
@@ -228,7 +228,7 @@ SHIP Status Dash does not poll release-controller, Sippy, or Slack to fill the S
 
 ## Config model
 
-Add team-scoped SLO config to dashboard YAML (production file lives in `openshift/release` `core-services/ship-status/`. Local mirror in [`hack/local/dashboard/config.yaml`](hack/local/dashboard/config.yaml)). Attach to team, not to a component.
+Add team-scoped SLO config to dashboard YAML (production file lives in `openshift/release` `core-services/ship-status/`. Local mirror in [`hack/local/dashboard/config.yaml`](hack/local/dashboard/config.yaml)). Payload SLOs attach to team. Incident components use `slo_component: true` on the component.
 
 Sketch:
 
@@ -238,9 +238,6 @@ team_slos:
     owners:   # same shape as component owners; required for workspace writes
       - rover_group: "technical-release-team"
       - user: "chai-bot"   # bot-initiated acting-for, same as TRT-2666
-    incidents:
-      component: trt-incidents
-      sub_component: incidents
     slos:
       - name: accepted-payload-per-day
         display_name: "1 accepted payload per day"
@@ -274,12 +271,13 @@ Tables (names indicative):
 - `slo_payloads`: team, stream, tag, phase, payload URL, timestamps, failed jobs JSON, notes, `updated_by`, `updated_at`. Unique `(team, stream, tag)`.
 - `slo_payload_links`: payload id, url, link_type (`jira` / `outage` / `other`), optional outage_id.
 
-Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that still falls inside the SLO `window` (24h for TRT). `recent_payloads` is a team-page UI cap only: `/team/{team}` lists the last N rows per stream. The home widget does not list payloads (roll-up, worst-miss, and incident count only). Do not prune stored rows down to N. An Accepted tag still inside the window must remain available to `payload_acceptance` even if later Rejected tags have pushed it off the visible list. Prune only rows that are outside both the evaluation window and the last-N display set.
+Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that still falls inside the SLO `window` (24h for TRT). `recent_payloads` is a team-page UI cap only: `/team/{team}` lists the last N rows per stream. The home widget does not list payloads (roll-up, worst-miss, and compact `slo_component` incident rows). Do not prune stored rows down to N. An Accepted tag still inside the window must remain available to `payload_acceptance` even if later Rejected tags have pushed it off the visible list. Prune only rows that are outside both the evaluation window and the last-N display set.
 
 **Public read APIs:**
 
-- `GET /api/teams/{team}/slo`: evaluations from stored payloads in `window` (not limited to last N), `incidents` (active outages from the configured sub-component), and the last-N payload workspace for display.
-- `GET /api/teams/slo-summary`: home widget roll-up (met/missed, worst miss, open incident count). No full job lists or incident bodies.
+- `GET /api/teams/{team}/slo`: evaluations from stored payloads in `window` (not limited to last N), `incidents` (active outages from that team's `slo_component`s), and the last-N payload workspace for display.
+- `GET /api/teams/slo-summary`: home widget roll-up (met/missed, worst miss) plus compact incident rows from `slo_component`s (title, severity, Jira, outage id). No payload/job lists.
+- `GET /api/components` and `GET /api/sub-components` omit `slo_component: true` components (and their subs).
 
 **Protected write APIs** (oauth-proxy + HMAC + `IsUserAuthorizedForTeamSLO`). Used by MCP and the frontend:
 
@@ -367,9 +365,9 @@ Update in ship-help-bot (not this repo):
 
 1. Fetch `/api/teams/{team}/slo`. If empty, keep today's page.
 2. `TeamSLOStatus` strip with `id="slo"` (generic). Scroll into view when the hash is `#slo`.
-3. If `incidents` is present, render `TeamSLOIncidents` (`id="incidents"`) with active outage rows linking to existing details pages.
+3. If the team has a `slo_component`, render `TeamSLOIncidents` (`id="incidents"`) with active outage rows linking to existing details pages.
 4. If workspace `kind === payload_streams`, render `PayloadStreamWorkspace` (TRT amd64). When the viewer is authorized (same pattern as outage actions), show add/edit: new payload on a stream, edit phase/jobs/notes, add/remove Jira and outage links. Writes go to the protected API.
-5. Existing `SubComponentList` unchanged except it no longer includes the SLO incident sub-component.
+5. Existing `SubComponentList` unchanged except list APIs no longer return `slo_component` subs.
 
 Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nightly` within the canvas, outage details and Jira browse URLs from failure groups.
 
@@ -377,7 +375,7 @@ Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nigh
 
 1. Fetch `/api/teams/slo-summary` next to the existing components/status polls.
 2. If the payload is non-empty, render `TeamSLOSummaryWell`.
-3. Each team row is a `TeamChip` plus status plus worst-miss hint. The whole row (or an explicit "View SLO") navigates to `/team/{team}#slo`.
+3. Each team block is a `TeamChip` plus SLO roll-up plus worst-miss hint, then compact incident rows from that team's `slo_component`. "View SLO" navigates to `/team/{team}#slo`. Incident rows link to outage details.
 
 Public route is read-only. All SLO mutations (bot MCP and frontend add/edit) use the protected route and `IsUserAuthorizedForTeamSLO`. `chai-bot` is an owner for bot-initiated MCP. Human UI users must be a rover-group/user owner of that team SLO.
 
@@ -397,11 +395,11 @@ Chai keeps filing incident Jira (then ship-status `jira_monitor`) and infra outa
 Work both repos in this order. ship-status contract first so Chai can integrate against it.
 
 1. **ship-status: config + store + read APIs + SLO strip + home summary.** Persist empty workspace. Team page `id="slo"`. Home widget links to `/team/{team}#slo`. Include `chai-bot` on `team_slos.owners` in local YAML.
-2. **ship-status: incidents panel.** `incidents:` pointer, hide that sub from home/team grids, `TeamSLOIncidents` plus incident count on the home widget. TRT-2955 stays the outage backend.
+2. **ship-status: `slo_component` + incidents panel.** Flag on TRT Incidents, omit from home/team list APIs, `TeamSLOIncidents` plus incident rows on the home SLO well. TRT-2955 stays the outage backend.
 3. **ship-status: protected writes + authenticated MCP** for payloads. `upsert_slo_payload` / `add_slo_payload_link`. Wire local e2e with chai-bot SA and `X-Acting-For`. This is the contract Chai consumes.
 4. **ship-status: watcher workspace UI** from persisted rows (jobs, recurring badges, notes) plus frontend add/edit. No release-controller fill-in. Join payload rows to the incidents panel.
 5. **Chai: deterministic SLO upserts** in `PayloadCheckHandler` / `payload_infra`-style wrapper. Accepted + Rejected (+ Ready) on every configured amd64 stream (ci and nightly). Link infra outages and Jira keys. Slack on upsert failure with enough detail for a human to replay. Instructions: never outage-on-SLO-miss; stop asking for Slack canvas updates. Tests around the handler, not wording in an LLM reply.
-6. **Other teams** add `incidents:` (and later their own `slos`) without a payload workspace and without a Chai payload handler.
+6. **Other teams** add `slo_component: true` (and later their own `team_slos`) without a payload workspace and without a Chai payload handler.
 
 SHIP Status Dash v1 is complete when Chai can upsert and the team page renders it. Chai v1 is complete when amd64 ci and nightly tags land in ship-status on the existing 5-minute tick without an LLM authoring the rows.
 
@@ -427,7 +425,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Frontend add/edit is in scope, same APIs as MCP, not bot-only.
 - Bot `acting_for` / owner user string: `chai-bot`.
 - Missed SLO: status indicator only, never an outage. Infra and incident outage paths stay as they are.
-- Incidents: keep `trt-incidents` outages. Fold display into the team SLO via `incidents:`. Hide the sub from home/team grids. Other teams point at their own incident sub.
+- Incidents: keep `trt-incidents` outages. Set `slo_component: true` on that component so list APIs omit it. Show the outages on the team SLO panel and the home SLO well. Other teams set the same flag.
 - Failed SLO upsert: do not block the Firestore watermark. Slack the failure (stream, tag, error, whether the watermark advanced). A human asks Chai to refresh that tag, or edits on the team page. No automatic failed-tag queue and no automatic post-watermark phase reconciliation in v1.
 - Interactive Chai skill: fetch current phase for a requested stream and tag, then upsert. Independent of the watermark. Used after a write-failure Slack, a missing payload, or a stale `Ready` row.
 - Persist SLO payload rows for the full evaluation `window`. `recent_payloads` is team-page display-only. The home widget does not list payloads. An in-window Accepted tag is never pruned just because later tags filled the last-N list.
@@ -439,9 +437,9 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 **SHIP Status Dash (this repo)**
 
 - Define `team_slos` YAML (including `chai-bot` owners), public read APIs, persisted workspace store, TeamPage SLO strip, and home-page widget linking to `#slo`.
-- Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up only.
+- Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up plus compact incident rows, no payload tables.
 - Protected write API plus authenticated MCP tools so Chai can upsert TRT payload/SLO workspace data (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
-- Generic team SLO incidents panel backed by a configured incident sub-component (TRT-2955 first). Hide that sub from home/team grids. Reuse for other teams.
+- Generic team SLO incidents panel backed by `slo_component: true` (TRT Incidents first). Omit those components from home/team list APIs. List their outages on the home SLO well. Reuse for other teams.
 - Add `prometheus` / `time_since_event` sources so ART, CRT, and DPTP can use the same team-page SLO strip. Incidents panel is already generic via YAML.
 
 **Chai Bot (ship-help-bot)**
