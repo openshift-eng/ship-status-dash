@@ -153,13 +153,12 @@ What changed vs today:
 
 Place a compact well on [`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx) immediately below `UnhealthyWell` (In Outage) and above the component wells. In Outage is always the top well when it has items. Do not put SLOs above it.
 
-Per team that has `team_slos` config:
+Per team in the union of `team_slos` entries and `ship_team` values on any `slo_component` (incident-only teams must appear):
 
 - Team name (existing `TeamChip` color) linking to `/team/{team}#slo`
-- Roll-up: all met / N of M missed
-- One-line hint for the worst miss (e.g. "5.0 nightly: last accepted 32h ago")
-- Click-through goes to the team page SLO strip (`#slo` or `#incidents`), not a payload row
-- If the team owns a `slo_component`, render a nested well inside that team's SLO block, labeled with the component name and sub-component name (e.g. `TRT Incidents` / `Incidents`). Put the compact incident rows in that well, not loose under the SLO chips. Link to outage details and `/team/{team}#incidents`.
+- If the team has `team_slos`: roll-up (all met / N of M missed), worst-miss hint (e.g. "5.0 nightly: last accepted 32h ago"), stream chips. Click-through goes to `#slo`, not a payload row.
+- If the team owns a `slo_component`: a nested well inside that team's SLO block, labeled with the component name and sub-component name (e.g. `TRT Incidents` / `Incidents`). Compact incident rows in that well, not loose under the SLO chips. Link to outage details and `/team/{team}#incidents`.
+- A team with only `slo_component` (no `team_slos`) still gets a block: chip plus nested incident well, no payload roll-up.
 
 Rules that keep `/` from becoming the canvas:
 
@@ -189,6 +188,14 @@ Do not derive hide-from-list from `team_slos`. That couples two configs and is e
 ```
 
 `slo_component: true` on the **component**:
+
+Wire it through the config contract, not only YAML examples:
+
+- [`pkg/types/config.go`](pkg/types/config.go) `Component`: add `SLOComponent bool` with `json:"slo_component,omitempty" yaml:"slo_component,omitempty"`. Same pattern as `ExcludeFromMainOutageWell` on the sub. YAML load already unmarshals `Component`; without this field the flag is dropped.
+- Frontend [`frontend/src/types.ts`](frontend/src/types.ts) `Component`: add `slo_component?: boolean` so clients can ignore flagged rows if a list handler ever leaks one.
+- Set `slo_component: true` on TRT Incidents in [`hack/local/dashboard/config.yaml`](hack/local/dashboard/config.yaml) and the production file in `openshift/release`.
+
+Behavior:
 
 - `GET /api/components` omits it, so there is no home `ComponentWell`.
 - `GET /api/sub-components` omits its subs, so `/team/TRT` has no Incidents card (Sippy stays).
@@ -276,7 +283,7 @@ Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that stil
 **Public read APIs:**
 
 - `GET /api/teams/{team}/slo`: evaluations from stored payloads in `window` (not limited to last N), `incidents` (active outages from that team's `slo_component`s), and the last-N payload workspace for display.
-- `GET /api/teams/slo-summary`: home widget roll-up (met/missed, worst miss) plus compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No payload/job lists.
+- `GET /api/teams/slo-summary`: one block per team in the union of `team_slos` and `slo_component` `ship_team`s. Roll-up when `team_slos` exists; compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No payload/job lists.
 - `GET /api/components` and `GET /api/sub-components` omit `slo_component: true` components (and their subs).
 
 **Protected write APIs** (oauth-proxy + HMAC + `IsUserAuthorizedForTeamSLO`). Used by MCP and the frontend:
@@ -374,7 +381,7 @@ Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nigh
 **Home page** ([`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx)):
 
 1. Fetch `/api/teams/slo-summary` next to the existing components/status polls.
-2. If the payload is non-empty, render `TeamSLOSummaryWell` **after** `UnhealthyWell` and before the component wells. In Outage stays the top well.
+2. If the payload is non-empty, render `TeamSLOSummaryWell` **after** `UnhealthyWell` and before the component wells. In Outage stays the top well. Include teams that have only a `slo_component`.
 3. Each team block is a `TeamChip` plus SLO roll-up plus worst-miss hint. Under that, a nested well per `slo_component` labeled with component and sub-component names, containing compact incident rows. "View SLO" navigates to `/team/{team}#slo`. Incident rows link to outage details.
 
 Public route is read-only. All SLO mutations (bot MCP and frontend add/edit) use the protected route and `IsUserAuthorizedForTeamSLO`. `chai-bot` is an owner for bot-initiated MCP. Human UI users must be a rover-group/user owner of that team SLO.
@@ -439,6 +446,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Define `team_slos` YAML (including `chai-bot` owners), public read APIs, persisted workspace store, TeamPage SLO strip, and home-page widget linking to `#slo`.
 - Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up plus compact incident rows, no payload tables.
 - Protected write API plus authenticated MCP tools so Chai can upsert TRT payload/SLO workspace data (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
+- Add `SLOComponent` on `types.Component` in `pkg/types/config.go` (and `slo_component` on the frontend `Component` type). Set it on TRT Incidents in local YAML. Filter list APIs on that field.
 - Generic team SLO incidents panel backed by `slo_component: true` (TRT Incidents first). Omit those components from home/team list APIs. List their outages on the home SLO well. Reuse for other teams.
 - Add `prometheus` / `time_since_event` sources so ART, CRT, and DPTP can use the same team-page SLO strip. Incidents panel is already generic via YAML.
 
