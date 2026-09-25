@@ -95,7 +95,7 @@ func (r *gormOutageRepository) SaveOutage(outage *types.Outage, user string) err
 // Returns gorm.ErrRecordNotFound if the outage is not found.
 func (r *gormOutageRepository) GetOutageByID(componentSlug, subComponentSlug string, outageID uint) (*types.Outage, error) {
 	var outage types.Outage
-	err := r.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships").
+	err := r.db.Preload("Reasons").Preload("SlackThreads").Preload("TriageNotes").Preload("Links").Preload("Relationships.RelatedOutage").
 		Where("id = ? AND component_name = ? AND sub_component_name = ?", outageID, componentSlug, subComponentSlug).
 		First(&outage).Error
 	return &outage, err

@@ -68,6 +68,16 @@ Then('I should see the {string} section', async ({ page }, sectionTitle: string)
   await expect(page.getByText(sectionTitle, { exact: true }).first()).toBeVisible()
 })
 
+Then(
+  'I should see a relationship link {string} pointing to {string}',
+  async ({ page }, label: string, href: string) => {
+    const labelEl = page.getByText(label, { exact: true }).first()
+    await expect(labelEl).toBeVisible()
+    const link = labelEl.locator('..').getByRole('link')
+    await expect(link).toHaveAttribute('href', href)
+  },
+)
+
 Then('I should see the audit log modal', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible()
 })
