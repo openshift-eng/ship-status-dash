@@ -137,7 +137,7 @@ Yellow italic lines labeled **Mock caption** are annotations for these screensho
 
 ![Mock of the TRT team page with SLO strip, incidents panel, amd64 payload streams, and Sippy cards](slo-team-page-mockup.png)
 
-Home page: a Team SLOs well under the logo lists per-team roll-up **and** the `slo_component` incident outages. TRT Incidents is not a component well. Payload tables stay on the team page.
+Home page: In Outage stays first. A Team SLOs well under it lists per-team roll-up and, in a nested well labeled with the component and sub-component names, the `slo_component` incident outages. TRT Incidents is not a component well. Payload tables stay on the team page.
 
 ![Mock of the home page SLO well with TRT roll-up and incident rows](slo-home-page-mockup.png)
 
@@ -151,7 +151,7 @@ What changed vs today:
 
 ### Home-page SLO widget
 
-Place a compact well on [`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx) above the component wells (beside or just under `UnhealthyWell`, not replacing it). TRT-2722's original "small but visible" bar.
+Place a compact well on [`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx) immediately below `UnhealthyWell` (In Outage) and above the component wells. In Outage is always the top well when it has items. Do not put SLOs above it.
 
 Per team that has `team_slos` config:
 
@@ -159,7 +159,7 @@ Per team that has `team_slos` config:
 - Roll-up: all met / N of M missed
 - One-line hint for the worst miss (e.g. "5.0 nightly: last accepted 32h ago")
 - Click-through goes to the team page SLO strip (`#slo` or `#incidents`), not a payload row
-- If the team owns a `slo_component`, list those active incident outages in the same well (title, severity, Jira, link to outage details and `/team/{team}#incidents`). Compact rows, not the team-page payload tables.
+- If the team owns a `slo_component`, render a nested well inside that team's SLO block, labeled with the component name and sub-component name (e.g. `TRT Incidents` / `Incidents`). Put the compact incident rows in that well, not loose under the SLO chips. Link to outage details and `/team/{team}#incidents`.
 
 Rules that keep `/` from becoming the canvas:
 
@@ -194,7 +194,7 @@ Do not derive hide-from-list from `team_slos`. That couples two configs and is e
 - `GET /api/sub-components` omits its subs, so `/team/TRT` has no Incidents card (Sippy stays).
 - It still does not appear in the In Outage well or light the ship (`exclude_from_main_outage_well` stays on the sub as today; `slo_component` does not replace that).
 - `GET /api/teams/{team}/slo` and `GET /api/teams/slo-summary` include its active outages for `ship_team`.
-- Home SLO well and `TeamSLOIncidents` render those outages.
+- Home SLO well and `TeamSLOIncidents` render those outages. On home, they live in a nested well labeled with the component and sub-component names.
 
 `team_slos` does not need an `incidents:` pointer. Discovery is: components with `slo_component: true` and matching `ship_team`. A team can have a `slo_component` with no payload SLO, or a payload SLO with no `slo_component`.
 
@@ -276,7 +276,7 @@ Idempotent upsert by `(team, stream, tag)`. Persist every upserted tag that stil
 **Public read APIs:**
 
 - `GET /api/teams/{team}/slo`: evaluations from stored payloads in `window` (not limited to last N), `incidents` (active outages from that team's `slo_component`s), and the last-N payload workspace for display.
-- `GET /api/teams/slo-summary`: home widget roll-up (met/missed, worst miss) plus compact incident rows from `slo_component`s (title, severity, Jira, outage id). No payload/job lists.
+- `GET /api/teams/slo-summary`: home widget roll-up (met/missed, worst miss) plus compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No payload/job lists.
 - `GET /api/components` and `GET /api/sub-components` omit `slo_component: true` components (and their subs).
 
 **Protected write APIs** (oauth-proxy + HMAC + `IsUserAuthorizedForTeamSLO`). Used by MCP and the frontend:
@@ -374,8 +374,8 @@ Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nigh
 **Home page** ([`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx)):
 
 1. Fetch `/api/teams/slo-summary` next to the existing components/status polls.
-2. If the payload is non-empty, render `TeamSLOSummaryWell`.
-3. Each team block is a `TeamChip` plus SLO roll-up plus worst-miss hint, then compact incident rows from that team's `slo_component`. "View SLO" navigates to `/team/{team}#slo`. Incident rows link to outage details.
+2. If the payload is non-empty, render `TeamSLOSummaryWell` **after** `UnhealthyWell` and before the component wells. In Outage stays the top well.
+3. Each team block is a `TeamChip` plus SLO roll-up plus worst-miss hint. Under that, a nested well per `slo_component` labeled with component and sub-component names, containing compact incident rows. "View SLO" navigates to `/team/{team}#slo`. Incident rows link to outage details.
 
 Public route is read-only. All SLO mutations (bot MCP and frontend add/edit) use the protected route and `IsUserAuthorizedForTeamSLO`. `chai-bot` is an owner for bot-initiated MCP. Human UI users must be a rover-group/user owner of that team SLO.
 
