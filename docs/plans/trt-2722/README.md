@@ -27,9 +27,9 @@ Incident outages on `trt-2955` ([TRT-2955](https://redhat.atlassian.net/browse/T
 | Infra outages for mapped jobs | Chai `record_payload_infra_outage` (`acting_for=chai-bot`) | Create-or-link Degraded unconfirmed outages, later close from later payloads | Not an SLO miss. Keep this path. |
 | TRT incident Jira cards | Chai (`trt_incident_jira` + payload_check revert flow) | File `project=TRT`, labels `trt-incident,ai-generated-jira` | ship-status has no Jira token |
 | Incident outages | ship-status `jira_monitor` on `trt-incidents/incidents` | One outage per Jira issue (`outage_per_reason`) | Chai does not copy incidents into `slo_workspace_items` |
-| SLO workspace facts | Chai upserts via authenticated MCP; humans via team page or Slack | Generic rows plus jsonb details. TRT maps payloads into that. | LLM does not author the store. Deterministic handler, same as infra writes. |
+| SLO workspace facts | Chai upserts via authenticated MCP; humans via team page or Slack | Generic rows plus versioned jsonb `details`. TRT maps payloads into `payload_streams` v1. | LLM does not author the store. Deterministic handler, same as infra writes. |
 | SLO met/missed | ship-status, from stored workspace items | For TRT: count `Accepted` in `window` per YAML stream (`group_key`) | Never open/update/resolve an outage for a miss |
-| Watcher UI | ship-status `/team/TRT#slo` | Recurring-job grouping, correlation, add/edit | Home page is a summary chip only |
+| Watcher UI | ship-status `/team/TRT#slo` | Versioned per-team component; recurring-job grouping, correlation, add/edit | Home page is a summary chip only |
 | Slack | Chai | Payload-check alerts stay. Stop asking for canvas updates. | Do not scrape canvas HTML. No cutover or pointer rewrite. |
 
 Empty or stale SLO rows are a Chai lag problem (handler missed a tag, MCP write failed), not something ship-status backfills.
@@ -60,7 +60,7 @@ Treat this as three layers:
 
 1. **Home-page SLO summary** (small, all teams): met/missed chips, one line of context, compact `slo_component` incident rows, link to `/team/{team}#slo`. Not the watcher canvas. Does not light the ship-on-fire logo.
 2. **Generic SLO status** on the team page: named objectives, window, met/missed, last evaluation (`id="slo"`), plus an incidents panel when the team owns a `slo_component`.
-3. **SLO workspace** (pluggable per team, writable): generic rows (`kind`, `item_key`, `group_key`, `outcome`, jsonb `details`). TRT's first extra workspace is the amd64 payload watcher (`kind: payload_streams`). Chai maps stream/tag/phase into those fields. Authorized humans add/edit on the team page or via Chai in Slack. Other teams omit a workspace, or upsert a different `kind` into the same tables, and still get the SLO strip and incidents panel.
+3. **SLO workspace** (pluggable per team, writable, versioned): generic rows (`kind`, `schema_version`, `item_key`, `group_key`, `outcome`, jsonb `details`). TRT's first extra workspace is the amd64 payload watcher (`kind: payload_streams`, `schema_version: 1`). Chai maps stream/tag/phase into those fields. The team page renders with a versioned component for that team and schema, not a generic jsonb explorer. Other teams omit a workspace, or upsert a different `kind`+version into the same tables, and still get the SLO strip and incidents panel.
 
 ```mermaid
 flowchart TB
@@ -116,7 +116,7 @@ Keep the existing sub-component grid below. Add sections above it:
 
 **Incidents panel** (any team that owns a `slo_component: true` component): active outages from that component, with Jira links and jump-to outage details. This is where `trt-incidents/incidents` is shown for TRT. Same widget for ART/CRT/DPTP when they mark their incident component. Not a `SubComponentCard` in the grid.
 
-**Watcher canvas** (TRT `payload_streams` workspace, amd64 only):
+**Watcher canvas** (TRT `payload_streams` v1 workspace, amd64 only):
 
 - One row per configured amd64 stream (YAML list, e.g. `5.1.0-0.nightly`, `5.1.0-0.ci`, `5.0.0-0.nightly`, `5.0.0-0.ci`). No arm64/multi/ppc/s390x.
 - Last N payloads **on the team page** (`recent_payloads`). The store keeps every tag still inside the SLO `window` so evaluation is not limited to those N rows. Home does not list payloads.
@@ -220,7 +220,7 @@ Other teams reuse this with zero TRT UI: add a Jira-monitored incident component
 Other teams reuse the same SLO page with no TRT-specific UI:
 
 - **Incidents panel first.** Any team can add a Jira-monitored incident component (copy TRT-2955), set `slo_component: true` and `ship_team`. That is enough to get the panel and the home SLO well rows.
-- **ART / CRT / DPTP SLOs** later: content cadence, payload creation interval, mass failures (`prometheus` / `time_since_event` sources, or bot upserts into the same workspace tables with a different `kind`). The TRT `payload_streams` UI stays TRT-only unless another team wants that view. Chai does not need a TRT-shaped handler for those teams in v1.
+- **ART / CRT / DPTP SLOs** later: content cadence, payload creation interval, mass failures (`prometheus` / `time_since_event` sources, or bot upserts into the same workspace tables with a new `(kind, schema_version)`). Each of those teams gets its own versioned workspace component under `frontend/src/components/team/slo/{team}/v{n}/`. They do not reuse `trt/v1`. Chai does not need a TRT-shaped handler for those teams in v1.
 
 ## Data sources
 
@@ -235,7 +235,7 @@ SHIP Status Dash does not poll release-controller, Sippy, or Slack to fill the S
 
 ## Config model
 
-Add team-scoped SLO config to dashboard YAML (production file lives in `openshift/release` `core-services/ship-status/`. Local mirror in [`hack/local/dashboard/config.yaml`](hack/local/dashboard/config.yaml)). Named SLOs attach to team. Incident components use `slo_component: true` on the component. `workspace.kind` selects how stored items are evaluated and rendered. `payload_streams` is TRT's first kind, not the table layout.
+Add team-scoped SLO config to dashboard YAML (production file lives in `openshift/release` `core-services/ship-status/`. Local mirror in [`hack/local/dashboard/config.yaml`](hack/local/dashboard/config.yaml)). Named SLOs attach to team. Incident components use `slo_component: true` on the component. `workspace.kind` plus `workspace.schema_version` is the contract Chai and ship-status share. `payload_streams` v1 is TRT's first pair, not the table layout.
 
 Sketch:
 
@@ -253,6 +253,7 @@ team_slos:
         target: { min_accepted: 1 }
         workspace:
           kind: payload_streams
+          schema_version: 1    # required when workspace is set; Chai and the UI must match
           recent_payloads: 5   # team-page list size only; evaluation uses the full window
           streams:
             - controller: amd64
@@ -267,6 +268,8 @@ team_slos:
 
 `source` is the extension point (`payload_acceptance`, `prometheus`, `time_since_event`, later `http`). Unknown sources are ignored so other teams can land config before ship-status implements their evaluator.
 
+`schema_version` is an integer on the workspace, not a YAML comment. Ship-status owns the document for each `(kind, schema_version)` (Go types plus a JSON schema in this repo). Chai's upsert wrapper must send that version. A bump is a coordinated change: ship-status validator and renderer first, then Chai producer, then YAML. Do not silently coerce an unknown version.
+
 If `owners` is omitted, fall back to union of `owners` on components with that `ship_team` so TRT does not need a fake component. Writes never authorize against the public route. Bot-initiated SLO upserts fail closed if `chai-bot` is not an owner (do not rely on the component-owner fallback alone for the SA identity).
 
 ## Backend design
@@ -277,40 +280,64 @@ Do not make `slo_payloads(stream, tag, phase)` a first-class schema. Those names
 
 Tables (names indicative):
 
-- `slo_workspace_items`: `team`, `kind` (same as YAML `workspace.kind`, e.g. `payload_streams`), `item_key` (opaque unique id within team+kind), optional `group_key` (UI/eval grouping), `occurred_at`, `outcome` (opaque string), `details` jsonb, `notes`, `updated_by`, `updated_at`. Unique `(team, kind, item_key)`.
+- `slo_workspace_items`: `team`, `kind` (same as YAML `workspace.kind`, e.g. `payload_streams`), `schema_version` (integer, required), `item_key` (opaque unique id within team+kind), optional `group_key` (UI/eval grouping), `occurred_at`, `outcome` (opaque string), `details` jsonb, `notes`, `updated_by`, `updated_at`. Unique `(team, kind, item_key)`.
 - `slo_workspace_links`: item id, url, `link_type` (`jira` / `outage` / `other`), optional `outage_id`.
 
-`details` is PostgreSQL jsonb (same as `outage_audit_logs.old` / `.new`). It holds producer-specific facts the typed columns do not: for TRT, failed blocking jobs, payload URL, analysis URL, and anything else PayloadCheckHandler already has. Other kinds put a different document in the same column. Ship-status does not add job columns when Chai grows a field.
+`details` is PostgreSQL jsonb (same as `outage_audit_logs.old` / `.new`). Its shape is defined by `(kind, schema_version)`, not by team name and not by "whatever Chai sent today". Ship-status validates upserts against that document. It does not add typed job columns when Chai grows a field. Bump `schema_version` instead.
 
-TRT mapping (producer and `payload_streams` UI only, not schema):
+`schema_version` lives on the row (and in YAML), not buried only inside jsonb. The frontend must know which renderer to load before it parses `details`.
 
-| Generic column | TRT value |
+Write rules:
+
+- Reject upserts with a missing `schema_version`.
+- Reject upserts whose `(kind, schema_version)` this ship-status build does not know, or whose `details` fail that version's JSON schema.
+- Accept older versions that this build still has a validator and renderer for, so a 24h window can mix v1 and v2 during a rollout.
+- Do not rewrite stored `details` in place when bumping. Chai re-upserts on the next tick (or a human refresh) with the new version.
+
+TRT mapping (producer and `payload_streams` v1 UI only, not the generic table):
+
+| Generic column | TRT v1 value |
 |----------------|-----------|
 | `kind` | `payload_streams` |
+| `schema_version` | `1` |
 | `group_key` | stream name (`5.1.0-0.nightly`) |
 | `item_key` | payload tag |
 | `occurred_at` | tag timestamp |
 | `outcome` | `Accepted` / `Rejected` / `Ready` |
-| `details` | jobs, URLs, extra payload-agent fields |
+| `details` | v1 document: payload URL, analysis URL, failed blocking jobs |
+
+TRT `payload_streams` v1 `details` (indicative, frozen in the JSON schema this repo will ship):
+
+```json
+{
+  "payload_url": "https://amd64.ocp.releases.ci.openshift.org/releasestream/5.1.0-0.nightly/release/5.1.0-0.nightly-2026-09-25-060000",
+  "analysis_url": "https://.../payload-analysis.html",
+  "jobs": [
+    { "name": "periodic-ci-...", "url": "https://prow.ci.openshift.org/...", "state": "failure", "blocking": true }
+  ]
+}
+```
+
+A field added later is a new `schema_version`, not a quiet extra key on v1.
 
 Idempotent upsert by `(team, kind, item_key)`. Persist every row whose `occurred_at` still falls inside the SLO `window` (24h for TRT). `recent_payloads` is a team-page UI cap only for `payload_streams`. The home widget does not list workspace rows (roll-up, worst-miss, and compact `slo_component` incident rows). Do not prune stored rows down to N. An in-window `Accepted` outcome must remain available to `payload_acceptance` even if later rows have pushed it off the visible list. Prune only rows that are outside both the evaluation window and the last-N display set.
 
 **Public read APIs:**
 
-- `GET /api/teams/{team}/slo`: evaluations from stored items in `window` (not limited to last N), `incidents` (active outages from that team's `slo_component`s), and the last-N workspace items for display (interpreted by `kind`).
-- `GET /api/teams/slo-summary`: one block per team in the union of `team_slos` and `slo_component` `ship_team`s. Roll-up when `team_slos` exists; compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No workspace item lists.
+- `GET /api/teams/{team}/slo`: evaluations from stored items in `window` (not limited to last N), `incidents` (active outages from that team's `slo_component`s), last-N workspace items for display (each with `kind` and `schema_version`), and the YAML `workspace.schema_version` so the UI can pick a renderer.
+- `GET /api/teams/slo-summary`: one block per team in the union of `team_slos` and `slo_component` `ship_team`s. Roll-up when `team_slos` exists; compact incident rows grouped by `slo_component` (component name, sub-component name, title, severity, Jira, outage id). No workspace item lists. Home does not load versioned workspace components.
 - `GET /api/components` and `GET /api/sub-components` omit `slo_component: true` components (and their subs).
 
 **Protected write APIs** (oauth-proxy + HMAC + `IsUserAuthorizedForTeamSLO`). Used by MCP and the frontend:
 
-- `PUT /api/teams/{team}/slo/items`: create or replace one workspace item (`kind`, `item_key`, `group_key`, `occurred_at`, `outcome`, `details`, `notes`).
+- `PUT /api/teams/{team}/slo/items`: create or replace one workspace item (`kind`, `schema_version`, `item_key`, `group_key`, `occurred_at`, `outcome`, `details`, `notes`).
 - `PATCH` (or PUT of a subset) for edits.
 - `PUT /api/teams/{team}/slo/items/{kind}/{item_key}/links`: attach Jira or outage.
 - `DELETE` for item or link mistakes.
 
-`payload_acceptance` reads stored items with `kind=payload_streams`, groups by `group_key` (stream), counts `outcome=Accepted` in `window`. Other `source` values do not use this table in v1 (`prometheus` / `time_since_event`). Missed SLO is a boolean/count on the read APIs only. Never open, update, or resolve a ship-status outage because an SLO was missed.
+`payload_acceptance` reads stored items with `kind=payload_streams`, groups by `group_key` (stream), counts `outcome=Accepted` in `window`. That evaluator uses version-stable columns only. Recurring-job grouping and any other `details` parsing are versioned next to the renderer. Other `source` values do not use this table in v1 (`prometheus` / `time_since_event`). Missed SLO is a boolean/count on the read APIs only. Never open, update, or resolve a ship-status outage because an SLO was missed.
 
-A later team workspace (not TRT payloads) reuses the same tables with a new `kind` and its own `details` document. It does not add `stream` / `tag` / `phase` columns.
+A later team workspace reuses the same tables with a new `(kind, schema_version)` and its own `details` document. It does not add `stream` / `tag` / `phase` columns. It does ship a new versioned frontend component.
 
 ## Chai Bot (ship-help-bot) design
 
@@ -327,11 +354,11 @@ Name them `get_*` so Chai's ship_status discovery routes them to the public endp
 
 **Authenticated MCP (write), `acting_for` required:**
 
-- `upsert_slo_item(team, kind, item_key, group_key, occurred_at, outcome, details, notes, acting_for, ...)`
+- `upsert_slo_item(team, kind, schema_version, item_key, group_key, occurred_at, outcome, details, notes, acting_for, ...)`
 - `add_slo_item_link(team, kind, item_key, url, link_type, outage_id?, acting_for)`
 - Existing `create_outage` / `add_outage_link` stay the way to file a TRT incident or infra outage. Workspace tools link to that outage rather than duplicating it.
 
-TRT's handler maps stream/tag/phase/jobs into those arguments. It does not require MCP tools named `stream` / `tag` / `phase`. Other teams upsert the same tools with a different `kind` and `details` document.
+TRT's handler maps stream/tag/phase/jobs into those arguments and always sets `schema_version` to the value ship-status has published for `payload_streams`. It does not require MCP tools named `stream` / `tag` / `phase`. Other teams upsert the same tools with a different `kind`, `schema_version`, and `details` document. If ship-status rejects the version, treat it like any other failed upsert (Slack a human). Do not guess a fallback schema.
 
 Bot-initiated: `acting_for: chai-bot` (locked, same owner string as TRT-2666). User-initiated in Slack: OrgData uid as today. Frontend writes use the logged-in user (no acting-for). Dashboard audit logs the acting identity (`chai-bot` or the human).
 
@@ -343,7 +370,7 @@ Owner persona: **`ocp_payload_ops`** (`payload_check_dev`, amd64, `ocp-dev`). No
 
 On each tick, after the existing Sippy / release-controller / YAML load:
 
-1. For each YAML-configured amd64 stream (ci and nightly, the same list as `workspace.streams`), upsert every new or updated terminal tag in the recent window (Accepted, Rejected, and Ready if still listed). Map to `upsert_slo_item`: `kind=payload_streams`, `group_key=stream`, `item_key=tag`, `outcome=phase`, `occurred_at` from the tag, jobs and URLs in `details`.
+1. For each YAML-configured amd64 stream (ci and nightly, the same list as `workspace.streams`), upsert every new or updated terminal tag in the recent window (Accepted, Rejected, and Ready if still listed). Map to `upsert_slo_item`: `kind=payload_streams`, `schema_version` from the published TRT contract (1 in v1), `group_key=stream`, `item_key=tag`, `outcome=phase`, `occurred_at` from the tag, jobs and URLs in the v1 `details` document.
 2. Keep calling `record_payload_infra_outage` for Rejected tags with mapped infra jobs. Unchanged.
 3. When that wrapper creates or links an outage, also `add_slo_item_link(..., link_type=outage, outage_id=...)`.
 4. When the Slack revert flow files a TRT incident Jira, `add_slo_item_link(..., link_type=jira)` for the affected payload(s). Do not wait for jira_monitor; the incidents panel will catch up.
@@ -384,18 +411,41 @@ Update in ship-help-bot (not this repo):
 - Replace the payload agent.
 - Open a ship-status outage per rejected payload or per missed SLO.
 - Automatically reconcile `Ready` rows after the Firestore watermark has passed. Humans ask Chai to refresh a specific tag.
+- Invent or coerce `schema_version`. If ship-status rejects the document, Slack a human.
 
 ## Frontend design
 
 **Team page** ([`frontend/src/components/team/TeamPage.tsx`](frontend/src/components/team/TeamPage.tsx)):
 
 1. Fetch `/api/teams/{team}/slo`. If empty, keep today's page.
-2. `TeamSLOStatus` strip with `id="slo"` (generic). Scroll into view when the hash is `#slo`.
+2. `TeamSLOStatus` strip with `id="slo"` (generic, all teams). Scroll into view when the hash is `#slo`.
 3. If the team has a `slo_component`, render `TeamSLOIncidents` (`id="incidents"`) with active outage rows linking to existing details pages.
-4. If workspace `kind === payload_streams`, render `PayloadStreamWorkspace` (TRT amd64). When the viewer is authorized (same pattern as outage actions), show add/edit: new payload on a stream, edit phase/jobs/notes, add/remove Jira and outage links. Writes go to the protected API.
+4. If the team has a workspace, render from a **versioned per-team registry**. Do not parse `details` in a shared generic table.
 5. Existing `SubComponentList` unchanged except list APIs no longer return `slo_component` subs.
 
-Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nightly` within the canvas, outage details and Jira browse URLs from failure groups.
+Workspace registry (indicative):
+
+```
+frontend/src/components/team/slo/
+  TeamSLOStatus.tsx
+  TeamSLOIncidents.tsx
+  registry.ts
+  unknown/UnknownSLOWorkspace.tsx
+  trt/v1/PayloadStreamsWorkspace.tsx
+```
+
+`registry.ts` maps `(team, kind, schema_version)` to a React component. TRT v1 is `payload_streams` / `1` → `trt/v1/PayloadStreamsWorkspace`. ART later adds `art/v1/...`. Bumping TRT's `details` shape means `trt/v2/...` plus a ship-status JSON schema `payload_streams` v2. Leave v1 mounted until no displayed rows still use it.
+
+Team page lookup:
+
+- Group displayed items by `schema_version`.
+- For each group, load `registry[team][kind][schema_version]`.
+- Unknown pair: `UnknownSLOWorkspace` (kind, version, item count). Do not guess fields. Do not crash the rest of the team page.
+- When the viewer is authorized, the versioned component owns add/edit for that schema (TRT v1: new payload, edit phase/jobs/notes, links). Writes include `schema_version`.
+
+Home stays generic. It never imports team workspace components.
+
+Deep links: `/team/TRT#slo` from the home widget, `/team/TRT#stream-5.1.0-0.nightly` within the TRT v1 canvas, outage details and Jira browse URLs from failure groups.
 
 **Home page** ([`frontend/src/components/ComponentStatusList.tsx`](frontend/src/components/ComponentStatusList.tsx)):
 
@@ -422,10 +472,10 @@ Work both repos in this order. ship-status contract first so Chai can integrate 
 
 1. **ship-status: config + store + read APIs + SLO strip + home summary.** Persist empty workspace. Team page `id="slo"`. Home widget links to `/team/{team}#slo`. Include `chai-bot` on `team_slos.owners` in local YAML.
 2. **ship-status: `slo_component` + incidents panel.** Flag on TRT Incidents, omit from home/team list APIs, `TeamSLOIncidents` plus incident rows on the home SLO well. TRT-2955 stays the outage backend.
-3. **ship-status: protected writes + authenticated MCP** for workspace items. `upsert_slo_item` / `add_slo_item_link`. Wire local e2e with chai-bot SA and `X-Acting-For`. This is the contract Chai consumes.
-4. **ship-status: watcher workspace UI** from persisted rows (jobs, recurring badges, notes) plus frontend add/edit. No release-controller fill-in. Join payload rows to the incidents panel.
-5. **Chai: deterministic SLO upserts** in `PayloadCheckHandler` / `payload_infra`-style wrapper. Accepted + Rejected (+ Ready) on every configured amd64 stream (ci and nightly). Link infra outages and Jira keys. Slack on upsert failure with enough detail for a human to replay. Instructions: never outage-on-SLO-miss; stop asking for Slack canvas updates. Tests around the handler, not wording in an LLM reply.
-6. **Other teams** add `slo_component: true` (and later their own `team_slos`) without a `payload_streams` workspace and without a Chai payload handler. If they later push facts, they reuse `slo_workspace_items` with a new `kind`.
+3. **ship-status: protected writes + authenticated MCP** for workspace items. `upsert_slo_item` / `add_slo_item_link`, required `schema_version`, JSON schema validation. Wire local e2e with chai-bot SA and `X-Acting-For`. This is the contract Chai consumes.
+4. **ship-status: watcher workspace UI** as a versioned per-team registry (`trt/v1` first) plus frontend add/edit. JSON schema for `payload_streams` v1. Unknown versions render the fallback, not a guessed table. Join payload rows to the incidents panel.
+5. **Chai: deterministic SLO upserts** in `PayloadCheckHandler` / `payload_infra`-style wrapper. Send `schema_version: 1` with the v1 details document. Accepted + Rejected (+ Ready) on every configured amd64 stream (ci and nightly). Link infra outages and Jira keys. Slack on upsert failure with enough detail for a human to replay. Instructions: never outage-on-SLO-miss; stop asking for Slack canvas updates. Tests around the handler, not wording in an LLM reply.
+6. **Other teams** add `slo_component: true` (and later their own `team_slos`) without a `payload_streams` workspace and without a Chai payload handler. If they later push facts, they reuse `slo_workspace_items` with a new `(kind, schema_version)` and a new versioned frontend component.
 
 SHIP Status Dash v1 is complete when Chai can upsert and the team page renders it. Chai v1 is complete when amd64 ci and nightly tags land in ship-status on the existing 5-minute tick without an LLM authoring the rows.
 
@@ -443,6 +493,8 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Iframe of Sippy or the edge payload-monitor HTML.
 - Replacing Sippy component readiness or the payload agent (TRT-2609). Chai remains the producer. ship-status is the store/UI.
 - Authenticated Jira search from ship-status pods. Chai or the UI sends keys/URLs.
+- Auto-migrating stored `details` between schema versions. Chai re-upserts.
+- One generic jsonb table UI shared by every team. Each team workspace is a versioned component.
 
 ## Locked decisions
 
@@ -455,24 +507,26 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Failed SLO upsert: do not block the Firestore watermark. Slack the failure (stream, tag, error, whether the watermark advanced). A human asks Chai to refresh that tag, or edits on the team page. No automatic failed-tag queue and no automatic post-watermark phase reconciliation in v1.
 - Interactive Chai skill: fetch current phase for a requested stream and tag, then upsert. Independent of the watermark. Used after a write-failure Slack, a missing payload, or a stale `Ready` row.
 - Persist SLO workspace items for the full evaluation `window`. `recent_payloads` is team-page display-only for `payload_streams`. The home widget does not list workspace rows. An in-window `Accepted` outcome is never pruned just because later items filled the last-N list.
-- Store schema is generic (`slo_workspace_items` + jsonb `details`). Do not add `stream` / `tag` / `phase` columns. TRT maps those onto `group_key` / `item_key` / `outcome` in the producer and the `payload_streams` UI.
+- Store schema is generic (`slo_workspace_items` + jsonb `details`). Do not add `stream` / `tag` / `phase` columns. TRT maps those onto `group_key` / `item_key` / `outcome` in the producer and the `payload_streams` v1 UI.
+- `(kind, schema_version)` is the Chai/ship-status contract. Required on YAML workspace and every stored row. Ship-status owns the JSON schema and a versioned per-team frontend component. Reject unknown versions. Mixed versions in a window render with the matching component, not a migration of old jsonb. Home does not load those components.
 - Slack canvas: on-demand only. Stop asking Chai to update it. No cutover. ship-status never scrapes it.
-- Recurring-job grouping: ship-status, from stored `details` on `payload_streams` items.
+- Recurring-job grouping: ship-status, from stored `details` using the item's `schema_version` (TRT `payload_streams` v1 first).
 
 ## Implementation todos
 
 **SHIP Status Dash (this repo)**
 
 - Define `team_slos` YAML (including `chai-bot` owners), public read APIs, persisted workspace store, TeamPage SLO strip, and home-page widget linking to `#slo`.
-- Render TRT amd64 `payload_streams` from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up plus compact incident rows, no payload tables.
-- Protected write API plus authenticated MCP (`upsert_slo_item` / `add_slo_item_link`) so producers can upsert generic workspace rows. TRT maps payloads into that (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
+- Render TRT amd64 `payload_streams` **v1** from persisted upserts only (no release-controller poll): last N **displayed on the team page**, failed jobs, recurring-job grouping, plus frontend add/edit. Evaluation uses the full `window`. Home widget stays roll-up plus compact incident rows, no payload tables.
+- Versioned per-team workspace registry (`frontend/src/components/team/slo/{team}/v{n}/`) plus JSON schema per `(kind, schema_version)`. Unknown versions use the fallback component. Bumps add a new version; they do not mutate v1 in place.
+- Protected write API plus authenticated MCP (`upsert_slo_item` / `add_slo_item_link`) so producers can upsert generic workspace rows with `schema_version`. TRT maps payloads into the v1 document (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
 - Add `SLOComponent` on `types.Component` in `pkg/types/config.go` (and `slo_component` on the frontend `Component` type). Set it on TRT Incidents in local YAML. Filter list APIs on that field.
 - Generic team SLO incidents panel backed by `slo_component: true` (TRT Incidents first). Omit those components from home/team list APIs. List their outages on the home SLO well. Reuse for other teams.
 - Add `prometheus` / `time_since_event` sources so ART, CRT, and DPTP can use the same team-page SLO strip. Incidents panel is already generic via YAML.
 
 **Chai Bot (ship-help-bot)**
 
-- Wrapper + `PayloadCheckHandler` upserts for every configured amd64 stream (ci and nightly; Accepted/Rejected/Ready), `acting_for=chai-bot`. Do not hold the Firestore watermark on ship-status errors.
+- Wrapper + `PayloadCheckHandler` upserts for every configured amd64 stream (ci and nightly; Accepted/Rejected/Ready), `acting_for=chai-bot`, `schema_version` matching ship-status `payload_streams` v1. Do not hold the Firestore watermark on ship-status errors.
 - Slack a human when an SLO upsert fails: stream, tag, error, watermark status, and how to ask Chai to refresh that tag.
 - Interactive skill: on user request, look up a named stream and tag and upsert it (watermark-independent). Covers write failures, missing payloads, and stale `Ready` rows.
 - After `record_payload_infra_outage` create/link, attach `slo_workspace_links` (`outage`). After incident Jira create, attach `jira` links.
