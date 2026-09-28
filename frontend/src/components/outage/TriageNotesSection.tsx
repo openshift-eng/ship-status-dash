@@ -17,6 +17,7 @@ import { useState } from 'react'
 import type { TriageNote } from '../../types'
 import { getTriageNoteEndpoint, getTriageNotesEndpoint } from '../../utils/endpoints'
 import { relativeTime } from '../../utils/helpers'
+import MarkdownRenderer from '../MarkdownRenderer'
 
 const NoteList = styled(Box)(({ theme }) => ({
   display: 'flex',
@@ -47,12 +48,6 @@ const NoteAuthor = styled(Typography)(() => ({
 const NoteTimestamp = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: '0.75rem',
-}))
-
-const NoteBody = styled(Typography)(() => ({
-  whiteSpace: 'pre-wrap',
-  fontSize: '0.9375rem',
-  lineHeight: 1.6,
 }))
 
 const NoteActions = styled(Box)(({ theme }) => ({
@@ -306,7 +301,7 @@ const TriageNotesSection = ({
                     </EditActions>
                   </>
                 ) : (
-                  <NoteBody variant="body2">{note.body}</NoteBody>
+                  <MarkdownRenderer content={note.body} />
                 )}
               </NoteItem>
             )

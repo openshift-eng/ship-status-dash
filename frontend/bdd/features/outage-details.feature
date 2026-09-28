@@ -32,6 +32,28 @@ Feature: Outage Details
     Given I navigate to outage 2 for "sippy/sippy-ui" as a guest
     Then I should see a relationship link "Caused by" pointing to "/prow/deck/outages/1"
 
+  Scenario: Outage description renders Markdown formatting
+    Given I navigate to outage 2 for "sippy/sippy-ui" as a guest
+    Then I should see a rendered heading "Summary"
+    And I should see a rendered link "incident report" pointing to "https://example.com/incident"
+    And I should see a rendered code block containing "HTTP 500"
+    And I should see rendered bold text "500 errors"
+
+  Scenario: Triage note renders Markdown formatting
+    Given I navigate to outage 2 for "sippy/sippy-ui" as a guest
+    Then I should see rendered bold text "database logs"
+    And I should see rendered inline code "connection timeout"
+
+  Scenario: Plain-text description displays without Markdown
+    Given I navigate to outage 1 for "prow/deck" as a guest
+    Then I should see the description "Deck UI is slow to respond"
+
+  Scenario: Unsafe HTML and scripts in descriptions do not execute
+    Given I navigate to outage 3 for "prow/hook" as a guest
+    Then I should not see a script tag on the page
+    And I should see the safe text "Safe text here"
+    And unsafe links should not be clickable
+
   Scenario: Audit log modal opens and shows change history
     Given I am logged in as an admin for "Prow"
     And I navigate to outage 1 for "prow/deck" as an admin

@@ -37,6 +37,7 @@ import { getOutageEndpoint } from '../../utils/endpoints'
 import { formatDuration, formatStatusSeverityText, relativeTime } from '../../utils/helpers'
 import { deslugify, slugify } from '../../utils/slugify'
 import { getStatusTintStyles } from '../../utils/styles'
+import MarkdownRenderer from '../MarkdownRenderer'
 import { StatusChip } from '../StatusColors'
 
 import OutageActions from './actions/OutageActions'
@@ -581,7 +582,14 @@ const OutageDetailsPage = () => {
                 />
               </ChipSpacer>
             </FieldBox>
-            {outage.description && <Field label="Description" value={outage.description} />}
+            {outage.description && (
+              <FieldBox>
+                <FieldLabel variant="caption" color="text.secondary">
+                  Description
+                </FieldLabel>
+                <MarkdownRenderer content={outage.description} />
+              </FieldBox>
+            )}
           </Section>
         </FullWidthGridItem>
 
