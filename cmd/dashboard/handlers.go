@@ -274,6 +274,13 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		initialTriageNote = strings.TrimSpace(*outageReq.InitialTriageNote)
 	}
 
+	if initialTriageNote != "" {
+		if err := utils.ValidateMarkdown(initialTriageNote); err != nil {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in initial triage note: %s", err))
+			return
+		}
+	}
+
 	if err := h.outageManager.CreateOutage(&outage, nil, activeUser, initialTriageNote); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
@@ -566,6 +573,11 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := utils.ValidateMarkdown(req.Body); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in body: %s", err))
+		return
+	}
+
 	note := &types.TriageNote{
 		OutageID: uint(outageID),
 		Body:     strings.TrimSpace(req.Body),
@@ -678,6 +690,11 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 	body := strings.TrimSpace(req.Body)
 	if body == "" {
 		respondWithError(w, http.StatusBadRequest, "Body is required")
+		return
+	}
+
+	if err := utils.ValidateMarkdown(body); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in body: %s", err))
 		return
 	}
 
@@ -1875,7 +1892,15 @@ func (h *Handlers) ReportSuspectedOutageJSON(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, subComponent.ReportThreshold)
+	description := strings.TrimSpace(req.Description)
+	if description != "" {
+		if err := utils.ValidateMarkdown(description); err != nil {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in description: %s", err))
+			return
+		}
+	}
+
+	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, description, activeUser, subComponent.ReportThreshold)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to process suspected outage report")
 		respondWithError(w, http.StatusInternalServerError, "Failed to process report")

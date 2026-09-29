@@ -2,6 +2,7 @@ import { Link, Typography, styled } from '@mui/material'
 import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import remarkBreaks from 'remark-breaks'
 
 const MarkdownContainer = styled('div')(({ theme }) => ({
   '& > *:first-of-type': {
@@ -110,6 +111,7 @@ const MarkdownRenderer = ({ content }: MarkdownRendererProps) => {
   return (
     <MarkdownContainer data-testid="markdown-content">
       <ReactMarkdown
+        remarkPlugins={[remarkBreaks]}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
         components={markdownComponents}
       >

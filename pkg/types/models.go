@@ -121,6 +121,8 @@ func (o *Outage) Validate() (string, bool) {
 
 	if strings.TrimSpace(o.Description) == "" {
 		validationErrors = append(validationErrors, "Description is required")
+	} else if err := utils.ValidateMarkdown(o.Description); err != nil {
+		validationErrors = append(validationErrors, fmt.Sprintf("Description contains invalid Markdown: %s", err))
 	}
 
 	if o.DiscoveredFrom == "" {
