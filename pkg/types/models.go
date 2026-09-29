@@ -338,6 +338,18 @@ type TriageNote struct {
 	Author   string `json:"author" gorm:"column:author;not null"`
 }
 
+// Validate checks the triage note and returns an error message and whether it's valid.
+func (n *TriageNote) Validate() (string, bool) {
+	body := strings.TrimSpace(n.Body)
+	if body == "" {
+		return "Body is required", false
+	}
+	if err := utils.ValidateMarkdown(body); err != nil {
+		return fmt.Sprintf("Body contains invalid Markdown: %s", err), false
+	}
+	return "", true
+}
+
 // LinkType represents the category of an outage link.
 type LinkType string
 

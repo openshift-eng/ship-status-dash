@@ -275,8 +275,9 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if initialTriageNote != "" {
-		if err := utils.ValidateMarkdown(initialTriageNote); err != nil {
-			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in initial triage note: %s", err))
+		note := &types.TriageNote{Body: initialTriageNote}
+		if msg, valid := note.Validate(); !valid {
+			respondWithError(w, http.StatusBadRequest, msg)
 			return
 		}
 	}
@@ -568,20 +569,15 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Body) == "" {
-		respondWithError(w, http.StatusBadRequest, "Body is required")
-		return
-	}
-
-	if err := utils.ValidateMarkdown(req.Body); err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in body: %s", err))
-		return
-	}
-
 	note := &types.TriageNote{
 		OutageID: uint(outageID),
 		Body:     strings.TrimSpace(req.Body),
 		Author:   activeUser,
+	}
+
+	if msg, valid := note.Validate(); !valid {
+		respondWithError(w, http.StatusBadRequest, msg)
+		return
 	}
 
 	if err := h.outageManager.AddTriageNote(note); err != nil {
@@ -687,18 +683,13 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	body := strings.TrimSpace(req.Body)
-	if body == "" {
-		respondWithError(w, http.StatusBadRequest, "Body is required")
+	validateNote := &types.TriageNote{Body: strings.TrimSpace(req.Body)}
+	if msg, valid := validateNote.Validate(); !valid {
+		respondWithError(w, http.StatusBadRequest, msg)
 		return
 	}
 
-	if err := utils.ValidateMarkdown(body); err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in body: %s", err))
-		return
-	}
-
-	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, body, activeUser)
+	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, validateNote.Body, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
