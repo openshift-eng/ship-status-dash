@@ -121,6 +121,8 @@ func (o *Outage) Validate() (string, bool) {
 
 	if strings.TrimSpace(o.Description) == "" {
 		validationErrors = append(validationErrors, "Description is required")
+	} else if err := utils.ValidateMarkdown(o.Description); err != nil {
+		validationErrors = append(validationErrors, fmt.Sprintf("Description contains invalid Markdown: %s", err))
 	}
 
 	if o.DiscoveredFrom == "" {
@@ -334,6 +336,18 @@ type TriageNote struct {
 	OutageID uint   `json:"outage_id" gorm:"column:outage_id;not null;index"`
 	Body     string `json:"body" gorm:"column:body;type:text;not null"`
 	Author   string `json:"author" gorm:"column:author;not null"`
+}
+
+// Validate checks the triage note and returns an error message and whether it's valid.
+func (n *TriageNote) Validate() (string, bool) {
+	body := strings.TrimSpace(n.Body)
+	if body == "" {
+		return "Body is required", false
+	}
+	if err := utils.ValidateMarkdown(body); err != nil {
+		return fmt.Sprintf("Body contains invalid Markdown: %s", err), false
+	}
+	return "", true
 }
 
 // LinkType represents the category of an outage link.

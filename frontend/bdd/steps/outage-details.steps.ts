@@ -90,3 +90,57 @@ Then(
     await expect(dialog.getByText(entry2, { exact: false })).toBeVisible()
   },
 )
+
+Then('I should see a rendered heading {string}', async ({ page }, headingText: string) => {
+  await expect(
+    page.locator('[data-testid="markdown-content"] :is(h1,h2,h3,h4,h5,h6)', {
+      hasText: headingText,
+    }),
+  ).toBeVisible()
+})
+
+Then(
+  'I should see a rendered link {string} pointing to {string}',
+  async ({ page }, linkText: string, href: string) => {
+    const link = page.locator('[data-testid="markdown-content"] a', { hasText: linkText })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', href)
+    await expect(link).toHaveAttribute('target', '_blank')
+  },
+)
+
+Then(
+  'I should see a rendered code block containing {string}',
+  async ({ page }, codeText: string) => {
+    await expect(
+      page.locator('[data-testid="markdown-content"] pre code', { hasText: codeText }),
+    ).toBeVisible()
+  },
+)
+
+Then('I should see rendered bold text {string}', async ({ page }, text: string) => {
+  await expect(
+    page.locator('[data-testid="markdown-content"] strong', { hasText: text }),
+  ).toBeVisible()
+})
+
+Then('I should see rendered inline code {string}', async ({ page }, text: string) => {
+  const inlineCode = page.locator('[data-testid="markdown-content"] :not(pre) > code', {
+    hasText: text,
+  })
+  await expect(inlineCode).toBeVisible()
+})
+
+Then('I should not see a script tag on the page', async ({ page }) => {
+  const scriptTags = page.locator('[data-testid="markdown-content"] script')
+  await expect(scriptTags).toHaveCount(0)
+})
+
+Then('I should see the safe text {string}', async ({ page }, text: string) => {
+  await expect(page.getByText(text)).toBeVisible()
+})
+
+Then('unsafe links should not be clickable', async ({ page }) => {
+  const jsLinks = page.locator('[data-testid="markdown-content"] a[href^="javascript:"]')
+  await expect(jsLinks).toHaveCount(0)
+})

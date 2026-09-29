@@ -151,7 +151,8 @@ export const mockResolvedOutage: Outage = {
   start_time: twoDaysAgo,
   end_time: { Time: oneDayAgo, Valid: true },
   auto_resolve: false,
-  description: 'Sippy UI was completely unavailable',
+  description:
+    '## Summary\n\nSippy UI was completely unavailable.\n\n- Dashboard returned **500 errors**\n- API endpoints unreachable\n\nSee [incident report](https://example.com/incident) for details.\n\n```\nHTTP 500 Internal Server Error\n```',
   created_by: 'admin',
   resolved_by: 'admin',
   confirmed_by: 'admin',
@@ -161,7 +162,7 @@ export const mockResolvedOutage: Outage = {
       ID: 1,
       CreatedAt: twoDaysAgo,
       outage_id: 2,
-      body: 'Investigating root cause',
+      body: 'Investigating root cause\n\n- Checked **database logs**\n- Found `connection timeout` errors',
       author: 'admin',
     },
   ],
@@ -199,7 +200,32 @@ export const mockResolvedOutage: Outage = {
   ],
 }
 
-export const mockOutages: Outage[] = [mockActiveOutage, mockResolvedOutage]
+export const mockXssOutage: Outage = {
+  ID: 3,
+  CreatedAt: oneHourAgo,
+  UpdatedAt: oneHourAgo,
+  last_auditable_update: oneHourAgo,
+  component_name: 'Prow',
+  sub_component_name: 'Hook',
+  severity: 'Down',
+  start_time: oneHourAgo,
+  end_time: { Time: '', Valid: false },
+  auto_resolve: false,
+  description: '<script>alert("xss")</script>\n\n[click me](javascript:alert(1))',
+  created_by: 'testuser',
+  confirmed_at: { Time: oneHourAgo, Valid: true },
+  triage_notes: [
+    {
+      ID: 3,
+      CreatedAt: oneHourAgo,
+      outage_id: 3,
+      body: '<img src=x onerror=alert(1)>\n\nSafe text here',
+      author: 'admin',
+    },
+  ],
+}
+
+export const mockOutages: Outage[] = [mockActiveOutage, mockResolvedOutage, mockXssOutage]
 
 export const mockOutageAuditLogs: OutageAuditLog[] = [
   {

@@ -274,6 +274,14 @@ func (h *Handlers) CreateOutageJSON(w http.ResponseWriter, r *http.Request) {
 		initialTriageNote = strings.TrimSpace(*outageReq.InitialTriageNote)
 	}
 
+	if initialTriageNote != "" {
+		note := &types.TriageNote{Body: initialTriageNote}
+		if msg, valid := note.Validate(); !valid {
+			respondWithError(w, http.StatusBadRequest, msg)
+			return
+		}
+	}
+
 	if err := h.outageManager.CreateOutage(&outage, nil, activeUser, initialTriageNote); err != nil {
 		logger.WithField("error", err).Error("Failed to create outage in database")
 		respondWithError(w, http.StatusInternalServerError, "Failed to create outage")
@@ -561,15 +569,15 @@ func (h *Handlers) AddTriageNoteJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Body) == "" {
-		respondWithError(w, http.StatusBadRequest, "Body is required")
-		return
-	}
-
 	note := &types.TriageNote{
 		OutageID: uint(outageID),
 		Body:     strings.TrimSpace(req.Body),
 		Author:   activeUser,
+	}
+
+	if msg, valid := note.Validate(); !valid {
+		respondWithError(w, http.StatusBadRequest, msg)
+		return
 	}
 
 	if err := h.outageManager.AddTriageNote(note); err != nil {
@@ -675,13 +683,13 @@ func (h *Handlers) UpdateTriageNoteJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	body := strings.TrimSpace(req.Body)
-	if body == "" {
-		respondWithError(w, http.StatusBadRequest, "Body is required")
+	validateNote := &types.TriageNote{Body: strings.TrimSpace(req.Body)}
+	if msg, valid := validateNote.Validate(); !valid {
+		respondWithError(w, http.StatusBadRequest, msg)
 		return
 	}
 
-	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, body, activeUser)
+	updated, err := h.outageManager.UpdateTriageNote(outageID, noteID, validateNote.Body, activeUser)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondWithError(w, http.StatusNotFound, "Triage note not found")
@@ -1875,7 +1883,15 @@ func (h *Handlers) ReportSuspectedOutageJSON(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, strings.TrimSpace(req.Description), activeUser, subComponent.ReportThreshold)
+	description := strings.TrimSpace(req.Description)
+	if description != "" {
+		if err := utils.ValidateMarkdown(description); err != nil {
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid Markdown in description: %s", err))
+			return
+		}
+	}
+
+	result, err := h.outageManager.ReportSuspectedOutage(componentName, subComponentName, description, activeUser, subComponent.ReportThreshold)
 	if err != nil {
 		logger.WithField("error", err).Error("Failed to process suspected outage report")
 		respondWithError(w, http.StatusInternalServerError, "Failed to process report")
