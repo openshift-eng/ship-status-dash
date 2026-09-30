@@ -336,12 +336,16 @@ func cleanupActiveOutages(t *testing.T, client *TestHTTPClient, componentName, s
 	}
 }
 
-// cleanupOutages deletes all outages for a component/sub-component, including resolved ones.
-func cleanupOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName string) {
+// cleanupOutages deletes outages for a component/sub-component, including resolved ones.
+// createdBy limits the delete to that creator. An empty value deletes every outage.
+func cleanupOutages(t *testing.T, client *TestHTTPClient, componentName, subComponentName, createdBy string) {
 	t.Helper()
 	outages := getOutages(t, client, componentName, subComponentName)
 	deleted := 0
 	for _, outage := range outages {
+		if createdBy != "" && outage.CreatedBy != createdBy {
+			continue
+		}
 		resp, err := client.Delete(fmt.Sprintf("/api/components/%s/%s/outages/%d",
 			utils.Slugify(componentName), utils.Slugify(subComponentName), outage.ID))
 		require.NoError(t, err, "delete outage %d", outage.ID)

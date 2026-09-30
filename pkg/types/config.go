@@ -1,10 +1,30 @@
 package types
 
+import (
+	"encoding/json"
+
+	"gopkg.in/yaml.v3"
+
+	"ship-status-dash/pkg/utils"
+)
+
 // DashboardConfig contains the dashboardapplication configuration including component definitions.
 type DashboardConfig struct {
-	Components        []*Component `json:"components" yaml:"components"`
-	Tags              []Tag        `json:"tags" yaml:"tags"`
-	TrustedDelegators []string     `json:"trusted_delegators,omitempty" yaml:"trusted_delegators,omitempty"`
+	Components        []*Component    `json:"components" yaml:"components"`
+	Tags              []Tag           `json:"tags" yaml:"tags"`
+	TrustedDelegators []string        `json:"trusted_delegators,omitempty" yaml:"trusted_delegators,omitempty"`
+	TeamSLOs          []TeamSLOConfig `json:"team_slos,omitempty" yaml:"team_slos,omitempty"`
+}
+
+// AssignSlugs sets component and sub-component slugs from their names.
+// Call this before ValidateTeamSLOs so slo_component lookups use Slug.
+func (c *DashboardConfig) AssignSlugs() {
+	for _, component := range c.Components {
+		component.Slug = utils.Slugify(component.Name)
+		for i := range component.Subcomponents {
+			component.Subcomponents[i].Slug = utils.Slugify(component.Subcomponents[i].Name)
+		}
+	}
 }
 
 func (c *DashboardConfig) GetComponentBySlug(slug string) *Component {
@@ -66,6 +86,9 @@ type Component struct {
 	SlackReporting []SlackReportingConfig `json:"slack_reporting,omitempty" yaml:"slack_reporting,omitempty"`
 	Subcomponents  []SubComponent         `json:"sub_components" yaml:"sub_components"`
 	Owners         []Owner                `json:"owners" yaml:"owners"`
+	// SLOComponent hides this component from home and team list APIs.
+	// SLO well membership is team_slos[].slo_components, not ship_team.
+	SLOComponent bool `json:"slo_component,omitempty" yaml:"slo_component,omitempty"`
 }
 
 func (c *Component) GetSubComponentBySlug(slug string) *SubComponent {
@@ -124,6 +147,103 @@ type Owner struct {
 	ServiceAccount string `json:"service_account,omitempty" yaml:"service_account,omitempty"`
 	// User is a username of a user who is an admin of the component, this is used for development/testing purposes only
 	User string `json:"user,omitempty" yaml:"user,omitempty"`
+}
+
+// TeamSLOConfig is the team-scoped SLO definition from dashboard YAML.
+type TeamSLOConfig struct {
+	Team   string  `json:"team" yaml:"team"`
+	Owners []Owner `json:"owners" yaml:"owners"`
+	// SLOComponents are component slugs whose active outages appear in this team's SLO wells.
+	// Each slug must match a component with slo_component set.
+	SLOComponents []string   `json:"slo_components,omitempty" yaml:"slo_components,omitempty"`
+	SLOs          []NamedSLO `json:"slos" yaml:"slos"`
+}
+
+// NamedSLO is one objective. At most one SLO per team may set Workspace.
+type NamedSLO struct {
+	Name        string        `json:"name" yaml:"name"`
+	DisplayName string        `json:"display_name" yaml:"display_name"`
+	Source      string        `json:"source" yaml:"source"`
+	Workspace   *SLOWorkspace `json:"workspace,omitempty" yaml:"workspace,omitempty"`
+}
+
+// SLOWorkspace is the versioned document contract shared with producers.
+// Spec holds the schema-specific settings. Generic code does not interpret it.
+type SLOWorkspace struct {
+	Kind          string          `json:"kind" yaml:"kind"`
+	SchemaVersion int             `json:"schema_version" yaml:"schema_version"`
+	Spec          json.RawMessage `json:"spec,omitempty" yaml:"-"`
+}
+
+// UnmarshalYAML keeps kind and schema_version and stores every other field in Spec.
+func (w *SLOWorkspace) UnmarshalYAML(value *yaml.Node) error {
+	var raw map[string]any
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	if kind, ok := raw["kind"].(string); ok {
+		w.Kind = kind
+	}
+	switch version := raw["schema_version"].(type) {
+	case int:
+		w.SchemaVersion = version
+	case int64:
+		w.SchemaVersion = int(version)
+	case uint64:
+		w.SchemaVersion = int(version)
+	}
+	delete(raw, "kind")
+	delete(raw, "schema_version")
+	if len(raw) == 0 {
+		w.Spec = nil
+		return nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	w.Spec = encoded
+	return nil
+}
+
+// MarshalYAML writes kind, schema_version, and the spec fields.
+// A config reload round-trip has to keep those fields or validation rejects the file.
+func (w SLOWorkspace) MarshalYAML() (any, error) {
+	out := map[string]any{
+		"kind":           w.Kind,
+		"schema_version": w.SchemaVersion,
+	}
+	if len(w.Spec) == 0 {
+		return out, nil
+	}
+	var extra map[string]any
+	if err := json.Unmarshal(w.Spec, &extra); err != nil {
+		return nil, err
+	}
+	for key, value := range extra {
+		out[key] = value
+	}
+	return out, nil
+}
+
+// TeamSLOByTeam returns the SLO config for a team, or nil.
+func (c *DashboardConfig) TeamSLOByTeam(team string) *TeamSLOConfig {
+	for i := range c.TeamSLOs {
+		if c.TeamSLOs[i].Team == team {
+			return &c.TeamSLOs[i]
+		}
+	}
+	return nil
+}
+
+// Workspace returns the single workspace on this team, or nil.
+func (t *TeamSLOConfig) Workspace() *SLOWorkspace {
+	for i := range t.SLOs {
+		if t.SLOs[i].Workspace != nil {
+			return t.SLOs[i].Workspace
+		}
+	}
+	return nil
 }
 
 // ComponentMonitorConfig contains the configuration for the component monitor.

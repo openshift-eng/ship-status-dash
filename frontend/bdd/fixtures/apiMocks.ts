@@ -11,11 +11,13 @@ import {
   mockOutages,
   mockTags,
   mockTriageNote,
+  mockTRTSummary,
+  mockTRTTeamSLO,
   mockUnhealthySubComponents,
 } from './mockData'
 
 export const PUBLIC = 'http://localhost:8180'
-export const PROTECTED = 'http://localhost:8443'
+export const PROTECTED = 'http://localhost:3030'
 
 interface MockApiOptions {
   authenticated?: boolean
@@ -214,6 +216,11 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
   })
 
   // --- Tags ---
+  await page.route(`${PUBLIC}/api/teams/slo-summary`, (route) => json(route, { teams: [] }))
+  await page.route(`${PUBLIC}/api/teams/*/slo`, (route) =>
+    json(route, { team: '', evaluations: [], slo_components: [], items: [] }),
+  )
+
   await page.route(`${PUBLIC}/api/tags`, (route) => {
     return json(route, mockTags)
   })
@@ -292,5 +299,16 @@ export async function setupApiMocks(page: Page, options: MockApiOptions = {}) {
       return route.fulfill({ status: 204 })
     }
     return route.fallback()
+  })
+}
+
+export async function installTRTSLOMocks(page: Page) {
+  await page.route(`${PUBLIC}/api/teams/slo-summary`, (route) => json(route, mockTRTSummary))
+  await page.route(`${PUBLIC}/api/teams/*/slo`, (route) => {
+    const team = new URL(route.request().url()).pathname.split('/').filter(Boolean).at(-2)
+    if (team === 'TRT') {
+      return json(route, mockTRTTeamSLO)
+    }
+    return json(route, { team: '', evaluations: [], slo_components: [], items: [] })
   })
 }

@@ -31,6 +31,30 @@ Write endpoints support delegated authorization via the `X-Acting-For` HTTP head
 - **GET** `/api/sub-components` - List sub-components; optional query parameters `componentName`, `tag`, `team`, and `status`. Filters combine with AND across parameter names (`componentName`, `tag`, `team`, and `status`). Within `status`, multiple values are matched with OR: `status` may be repeated and/or comma-separated (e.g. `status=Down&status=Degraded` or `status=Down,Degraded`) and returns sub-components matching any listed status. Valid `status` values are `Healthy`, `Degraded`, `Down`, `CapacityExhausted`, and `Suspected` (`Partial` is component-level only and is rejected). Each returned item includes a `status` field with the sub-component's current status.
   - **Public:** Yes
 
+### Team SLOs
+
+- **GET** `/api/teams/slo-summary` - Home-page roll-up. One block per `team_slos` entry. Evaluations and compact active outages for components listed in that entry's `slo_components`. No workspace item lists.
+  - **Public:** Yes
+
+- **GET** `/api/teams/{team}/slo` - Team page SLO: evaluations, active outages for components listed in `team_slos[].slo_components`, and stored workspace items.
+  - **Public:** Yes
+
+- **PUT** `/api/teams/{team}/slo/items` - Create or replace one workspace item (`kind`, `schema_version`, `item_key`, `group_key`, `occurred_at`, `outcome`, `details`, `notes`).
+  - **Public:** No (requires authentication and team SLO authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
+- **DELETE** `/api/teams/{team}/slo/items/{kind}/{itemKey}` - Delete one workspace item.
+  - **Public:** No (requires authentication and team SLO authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
+- **PUT** `/api/teams/{team}/slo/items/{kind}/{itemKey}/links` - Attach a link (`url`, `link_type` of `jira`, `outage`, or `other`, optional `outage_id`).
+  - **Public:** No (requires authentication and team SLO authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
+- **DELETE** `/api/teams/{team}/slo/items/{kind}/{itemKey}/links/{linkId}` - Delete one workspace link.
+  - **Public:** No (requires authentication and team SLO authorization)
+  - Supports `X-Acting-For` header for delegated authorization
+
 ### Tags
 
 - **GET** `/api/tags` - Get the configured tag definitions

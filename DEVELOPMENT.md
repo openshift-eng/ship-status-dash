@@ -69,6 +69,15 @@ This script:
 - Starts the mock oauth-proxy on port 8443 (protected route, requires basic auth)
 - Sets up a user with credentials: `developer:password`
 - Generates a temporary HMAC secret for request signing
+- After migrate, runs `go run ./cmd/seed-slo --dsn "$DSN" --config hack/local/dashboard/config.yaml` so `/team/TRT` has a current SLO workspace
+
+Re-seed without restarting the dashboard:
+
+```bash
+go run ./cmd/seed-slo --dsn "postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable" --config hack/local/dashboard/config.yaml
+```
+
+`--dsn` is required. `--config` defaults to `hack/local/dashboard/config.yaml`. E2e passes `test/e2e/scripts/dashboard-config.yaml`.
 
 **Slack Integration**: To enable Slack integration for outage reporting, set the `SLACK_BOT_TOKEN` environment variable before running the script:
 
@@ -146,11 +155,13 @@ Both processes use the same HMAC secret:
 3. Start the development server. [`frontend/.env.development`](frontend/.env.development) already sets `VITE_PUBLIC_DOMAIN` and `VITE_PROTECTED_DOMAIN` for local URLs; override inline if needed:
    ```bash
    VITE_PUBLIC_DOMAIN=http://localhost:8180 \
-   VITE_PROTECTED_DOMAIN=http://localhost:8443 \
+   VITE_PROTECTED_DOMAIN=http://localhost:3030 \
    npm start
    ```
 
 The frontend will be available at `http://localhost:3030`.
+
+In development, Login and other protected calls use that same origin. Vite proxies `/oauth` and `/api` to the mock oauth proxy on port 8443, so the browser does not need to open port 8443. The basic-auth prompt still uses `developer:password`.
 
 ---
 
@@ -177,6 +188,7 @@ make local-e2e
 The e2e script (`test/e2e/scripts/local-e2e.sh`):
 - Starts a PostgreSQL test container using podman
 - Runs database migrations
+- Seeds the TRT SLO workspace from `test/e2e/scripts/dashboard-config.yaml`
 - Starts the dashboard server on a dynamically assigned port (8080-8099)
 - Starts the mock oauth-proxy on a dynamically assigned port (8443-8499)
 - Starts the mock-monitored-component on port 9000

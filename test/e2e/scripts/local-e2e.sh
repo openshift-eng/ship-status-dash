@@ -174,12 +174,13 @@ if [ "$USE_EXISTING_POSTGRES" = true ]; then
 else
   DSN="postgres://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME?sslmode=disable&client_encoding=UTF8"
 fi
-export TEST_DATABASE_DSN="$DSN"
-
 echo "Running migration..."
 PROJECT_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$PROJECT_ROOT"
 go run ./cmd/migrate --dsn "$DSN"
+
+echo "Seeding SLO payloads..."
+go run ./cmd/seed-slo --dsn "$DSN" --config test/e2e/scripts/dashboard-config.yaml
 
 echo "Generating HMAC secret..."
 HMAC_SECRET=$(openssl rand -hex 32)
@@ -250,7 +251,7 @@ export TEST_DASHBOARD_CONFIG_PATH="$DASHBOARD_CONFIG"
 
 # Start dashboard server in background
 unset SKIP_AUTH # make sure we are using authentication
-go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s --config-update-poll-interval 10s --slack-base-url "http://localhost:3030" --slack-workspace-url "https://rhsandbox.slack.com/" 2> "$DASHBOARD_LOG" &
+go run ./cmd/dashboard --config "$DASHBOARD_CONFIG" --port $DASHBOARD_PORT --dsn "$DSN" --hmac-secret-file "$HMAC_SECRET_FILE" --absent-report-check-interval 15s --trt-payload-prune-interval 15s --config-update-poll-interval 10s --slack-base-url "http://localhost:3030" --slack-workspace-url "https://rhsandbox.slack.com/" 2> "$DASHBOARD_LOG" &
 DASHBOARD_PID=$!
 
 # Wait for dashboard server to be ready
