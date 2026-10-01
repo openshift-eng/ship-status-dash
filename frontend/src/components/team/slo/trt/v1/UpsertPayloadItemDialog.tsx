@@ -290,7 +290,10 @@ const UpsertPayloadItemDialog = ({
           schema_version: SCHEMA_VERSION,
           item_key: tag.trim(),
           group_key: stream,
-          occurred_at: occurred.toISOString(),
+          occurred_at:
+            item && occurredAt === formatDateForDateTimeLocal(new Date(item.occurred_at))
+              ? item.occurred_at
+              : occurred.toISOString(),
           outcome,
           notes,
           details: {
