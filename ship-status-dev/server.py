@@ -440,11 +440,11 @@ def frontend_start(
 ) -> str:
     """Start the Vite dev server (``npm run start`` in ``frontend``) in the background.
 
-    Defaults to port 3030. Sets ``VITE_PUBLIC_DOMAIN`` to the dashboard and
-    ``VITE_PROTECTED_DOMAIN`` to this Vite origin. Vite proxies ``/oauth`` and
-    ``/api`` to the mock oauth proxy. Login basic-auth is same-origin, so the
-    protected domain is the Vite origin, not the proxy port. Skips starting if
-    already running unless ``restart`` is True.
+    Defaults to port 3030. Sets ``VITE_PUBLIC_DOMAIN`` to the dashboard,
+    ``VITE_PROTECTED_DOMAIN`` to this Vite origin, and ``VITE_PROXY_PORT`` so
+    Vite proxies ``/oauth`` and ``/api`` to the mock oauth proxy. Login
+    basic-auth is same-origin, so the protected domain is the Vite origin, not
+    the proxy port. Skips starting if already running unless ``restart`` is True.
     """
     frontend_dir = REPO_ROOT / "frontend"
     if not (frontend_dir / "package.json").is_file():
@@ -470,6 +470,7 @@ def frontend_start(
     env = os.environ.copy()
     env["VITE_PUBLIC_DOMAIN"] = f"http://localhost:{dashboard_port}"
     env["VITE_PROTECTED_DOMAIN"] = f"http://localhost:{frontend_port}"
+    env["VITE_PROXY_PORT"] = str(proxy_port)
 
     logf = open(log_path, "a", encoding="utf-8")
     try:

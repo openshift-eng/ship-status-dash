@@ -75,6 +75,7 @@ interface JobDraft {
   draftId: string
   name: string
   url: string
+  state: string
   notes: string
   recurring_count?: number
 }
@@ -102,6 +103,7 @@ const newJobDraft = (partial?: Partial<JobDraft>): JobDraft => {
     draftId: `job-${jobDraftSeq}`,
     name: partial?.name ?? '',
     url: partial?.url ?? '',
+    state: partial?.state?.trim() || 'failure',
     notes: partial?.notes ?? '',
     recurring_count: partial?.recurring_count,
   }
@@ -275,7 +277,7 @@ const UpsertPayloadItemDialog = ({
         .map((job) => ({
           name: job.name.trim(),
           url: job.url.trim(),
-          state: 'failure',
+          state: job.state.trim() || 'failure',
           notes: job.notes,
           ...(job.recurring_count !== undefined ? { recurring_count: job.recurring_count } : {}),
         }))

@@ -255,15 +255,17 @@ team_slos:
         workspace:
           kind: payload_streams
           schema_version: 1    # required when workspace is set; Chai and the UI must match
-          recent_payloads: 5   # team-page list size only; evaluation uses the hardcoded 24h window
+          window: 24h          # evaluation and retention window
+          min_accepted: 1
+          recent_payloads: 5   # team-page list size only
           streams:
-            - controller: amd64
+            - release_controller: amd64
               name: "5.1.0-0.nightly"
-            - controller: amd64
+            - release_controller: amd64
               name: "5.1.0-0.ci"
-            - controller: amd64
+            - release_controller: amd64
               name: "5.0.0-0.nightly"
-            - controller: amd64
+            - release_controller: amd64
               name: "5.0.0-0.ci"
 ```
 
@@ -281,16 +283,16 @@ Do not infer the watched set from leftover `group_key`s in the database. YAML is
 
 ### How met/missed is computed
 
-This is not a generic query over jsonb. Ship-status registers evaluators in Go, keyed by `source`. YAML only names the evaluator (`source: payload_acceptance`). Window and target live in that Go code, not YAML: 24h and `min_accepted: 1`. v1 ships that one evaluator.
+This is not a generic query over jsonb. Ship-status registers evaluators in Go, keyed by `source`. YAML names the evaluator (`source: payload_acceptance`) and supplies `window` and `min_accepted`. v1 ships that one evaluator. TRT sets `window: 24h` and `min_accepted: 1`.
 
 `payload_acceptance` (TRT, this repo):
 
 1. Take `workspace.streams` from YAML (not every `group_key` in the table).
-2. For each of those streams, select stored items with `kind=payload_streams`, `group_key` equal to that stream name, and `occurred_at` inside the last 24h.
+2. For each of those streams, select stored items with `kind=payload_streams`, `group_key` equal to that stream name, and `occurred_at` inside `window`.
 3. Count items whose `outcome` is `Accepted`.
-4. That stream is met if the count is at least 1.
+4. That stream is met if the count is at least `min_accepted`.
 5. The named SLO is met when every YAML stream is met. Names not in YAML are ignored even if rows remain.
-6. `last_accepted_at` for a stream is the `occurred_at` of its newest stored `Accepted` row, including the row kept after it leaves the 24h window. The 24h count does not include that row once it is older than the window.
+6. `last_accepted_at` for a stream is the `occurred_at` of its newest stored `Accepted` row, including the row kept after it leaves the window. The in-window count does not include that row once it is older than the window.
 
 Those steps use version-stable columns only (`group_key`, `occurred_at`, `outcome`). Job notes, payload URLs, and `recurring_count` are display. They do not change met/missed.
 
@@ -597,7 +599,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Store schema is generic (`slo_workspace_items` + jsonb `details`). Do not add `stream` / `tag` / `phase` columns. TRT maps those onto `group_key` / `item_key` / `outcome` in the producer and the `payload_streams` v1 UI.
 - TRT v1 `details` always includes `payload_url` (release-controller). `analysis_url` when payload-agent HTML exists. Failed jobs may have `notes`. Chai writes notes on the first insert. Humans can add or edit after. Scheduled ticks do not clobber. A human-requested refresh replaces the row (Chai authoritative on that write).
 - `owners` is required on `team_slos`. No fallback to component owners.
-- `payload_acceptance` is a named Go evaluator selected by YAML `source`. It hardcodes 24h and min 1 `Accepted` per YAML stream. Window and target are returned on the GET APIs for display. v1 does not add another `source`.
+- `payload_acceptance` is a named Go evaluator selected by YAML `source`. It scores `Accepted` rows inside the configured `window` against `min_accepted` for each YAML stream. Window and target are returned on the GET APIs for display. v1 does not add another `source`.
 - `(kind, schema_version)` is the Chai/ship-status contract. Required on YAML workspace and every stored row. Ship-status owns the JSON schema and a versioned per-team frontend component. Reject unknown versions. Mixed versions in a window render with the matching component, not a migration of old jsonb. Home does not load those components.
 - Slack canvas: on-demand only. Stop asking Chai to update it. No cutover. ship-status never scrapes it.
 - Recurring badge: Chai stamps `details.jobs[].recurring_count` on the payload it is inserting, from previous stored rows in that stream. The badge is that stored value. Older rows are left alone. ship-status does not derive a streak at read time.

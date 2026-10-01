@@ -161,7 +161,7 @@ Both processes use the same HMAC secret:
 
 The frontend will be available at `http://localhost:3030`.
 
-In development, Login and other protected calls use that same origin. Vite proxies `/oauth` and `/api` to the mock oauth proxy on port 8443, so the browser does not need to open port 8443. The basic-auth prompt still uses `developer:password`.
+In development, Login and other protected calls use that same origin. The dev server binds to loopback (`127.0.0.1`). Set `VITE_DEV_HOST` to listen on another address. Vite proxies `/oauth` and `/api` to `http://127.0.0.1:$VITE_PROXY_PORT` (default `8443`), so the browser does not need to open port 8443. The basic-auth prompt still uses `developer:password`.
 
 ---
 
