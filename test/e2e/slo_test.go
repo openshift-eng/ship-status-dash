@@ -714,8 +714,23 @@ func deleteWorkspaceItems(t *testing.T, client *TestHTTPClient) {
 	t.Helper()
 	view := getTeamSLO(t, client)
 	for _, key := range itemKeys(view.Items) {
-		deleteSLOItem(t, client, key)
+		// The pruner may remove a listed row before this DELETE runs.
+		deleteSLOItemStatus(t, client, key, http.StatusOK, http.StatusNotFound)
 	}
+}
+
+func deleteSLOItemStatus(t *testing.T, client *TestHTTPClient, itemKey string, allowed ...int) {
+	t.Helper()
+	resp, err := client.Delete(sloItemPath(itemKey))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	for _, want := range allowed {
+		if resp.StatusCode == want {
+			return
+		}
+	}
+	body, _ := io.ReadAll(resp.Body)
+	t.Fatalf("status %d, want one of %v: %s", resp.StatusCode, allowed, body)
 }
 
 func sloItemPath(itemKey string) string {
