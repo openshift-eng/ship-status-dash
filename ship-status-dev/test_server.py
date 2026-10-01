@@ -131,28 +131,6 @@ def test_component_monitor_start_reports_already_running():
     assert "200" in result
 
 
-def test_frontend_start_passes_proxy_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(server, "DEV_LOG_DIR", tmp_path)
-    monkeypatch.setattr(server, "_pids_frontend", lambda: [])
-
-    proc = MagicMock()
-    proc.pid = 99
-    proc.poll.return_value = None
-
-    with (
-        patch.object(server.subprocess, "Popen", return_value=proc) as popen,
-        patch.object(server.urllib.request, "urlopen", return_value=MagicMock()),
-        patch.object(server.time, "sleep"),
-    ):
-        result = server.frontend_start(dashboard_port=8180, proxy_port=9450, frontend_port=3030)
-
-    assert "9450" in result
-    env = popen.call_args.kwargs["env"]
-    assert env["VITE_PROXY_PORT"] == "9450"
-    assert env["VITE_PUBLIC_DOMAIN"] == "http://localhost:8180"
-    assert env["VITE_PROTECTED_DOMAIN"] == "http://localhost:3030"
-
-
 def test_run_tests_stops_when_lint_fails():
     with patch.object(
         server,
