@@ -2154,6 +2154,7 @@ func (h *Handlers) PutSLOItemJSON(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	req.Kind = strings.TrimSpace(req.Kind)
 	if msg := req.validate(h.config().TeamSLOByTeam(team)); msg != "" {
 		respondWithError(w, http.StatusBadRequest, msg)
 		return

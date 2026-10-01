@@ -29,6 +29,10 @@ func NewTRTSLOPayloadPruner(configManager *config.Manager[types.DashboardConfig]
 }
 
 func (p *TRTSLOPayloadPruner) Start(ctx context.Context) {
+	if p.checkInterval <= 0 {
+		p.logger.WithField("check_interval", p.checkInterval).Error("TRT payload pruner disabled: interval must be positive")
+		return
+	}
 	p.logger.WithField("check_interval", p.checkInterval).Info("Starting TRT payload pruner")
 	ticker := time.NewTicker(p.checkInterval)
 	defer ticker.Stop()

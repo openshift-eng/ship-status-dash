@@ -231,6 +231,19 @@ func TestPruneAndDisplay(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []uint{4, 5}, drop)
 
+	futureAccepted := types.SLOWorkspaceItem{
+		Model: gorm.Model{ID: 7}, ItemKey: "future", GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(time.Hour),
+	}
+	withFuture := append([]types.SLOWorkspaceItem{futureAccepted}, items...)
+	futureSettings := settings
+	futureSettings.RecentPayloads = 1
+	futureRaw, err := json.Marshal(futureSettings)
+	require.NoError(t, err)
+	futureWS := &types.SLOWorkspace{Kind: payloadv1.Kind, SchemaVersion: payloadv1.SchemaVersion, Spec: futureRaw}
+	futureDrop, err := PruneIDs(now, futureWS, withFuture)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []uint{4, 5}, futureDrop)
+
 	shuffled := append([]types.SLOWorkspaceItem(nil), items...)
 	for i, j := 0, len(shuffled)-1; i < j; i, j = i+1, j-1 {
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]

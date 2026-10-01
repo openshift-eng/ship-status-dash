@@ -141,7 +141,7 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
   const status = sloStatus(evaluation?.met)
   const result = trtPayloadResult(evaluation)
   const missedCount = result ? result.groups.filter((group) => !group.met).length : 0
-  const open = () => navigate(`/team/${encodeURIComponent(team)}`)
+  const open = () => navigate(`/team/${encodeURIComponent(team)}#slo`)
 
   return (
     <ClickableWell

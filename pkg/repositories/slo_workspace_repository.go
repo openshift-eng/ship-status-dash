@@ -42,27 +42,13 @@ func (r *gormSLOWorkspaceRepository) ListByTeam(team string) ([]types.SLOWorkspa
 }
 
 func (r *gormSLOWorkspaceRepository) UpsertItem(item *types.SLOWorkspaceItem) (*types.SLOWorkspaceItem, error) {
-	var existing types.SLOWorkspaceItem
-	err := r.db.Where("team = ? AND kind = ? AND item_key = ?", item.Team, item.Kind, item.ItemKey).First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if err := r.db.Create(item).Error; err != nil {
-			return nil, err
-		}
-		return r.getItem(item.Team, item.Kind, item.ItemKey)
-	}
+	err := r.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "team"}, {Name: "kind"}, {Name: "item_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"schema_version", "group_key", "occurred_at", "outcome", "details", "notes", "updated_by", "updated_at",
+		}),
+	}).Create(item).Error
 	if err != nil {
-		return nil, err
-	}
-	updates := map[string]interface{}{
-		"schema_version": item.SchemaVersion,
-		"group_key":      item.GroupKey,
-		"occurred_at":    item.OccurredAt,
-		"outcome":        item.Outcome,
-		"details":        item.Details,
-		"notes":          item.Notes,
-		"updated_by":     item.UpdatedBy,
-	}
-	if err := r.db.Model(&existing).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	return r.getItem(item.Team, item.Kind, item.ItemKey)

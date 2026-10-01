@@ -218,7 +218,7 @@ const UpsertPayloadItemDialog = ({
     }
 
     const keptIds = new Set(pairs.flatMap((pair) => (pair.keep ? [pair.keep.ID] : [])))
-    for (const existing of baseline) {
+    for (const existing of editing ? baseline : []) {
       if (keptIds.has(existing.ID)) {
         continue
       }

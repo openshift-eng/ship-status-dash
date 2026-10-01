@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -15,6 +16,13 @@ import (
 	payloadv1 "ship-status-dash/pkg/slo/payloadstreams/v1"
 	"ship-status-dash/pkg/types"
 )
+
+func TestTRTSLOPayloadPrunerRejectsNonpositiveInterval(t *testing.T) {
+	pruner := NewTRTSLOPayloadPruner(nil, nil, 0, logrus.New())
+	assert.NotPanics(t, func() {
+		pruner.Start(context.Background())
+	})
+}
 
 func TestSLOPayloadRetention(t *testing.T) {
 	now := time.Now().UTC()

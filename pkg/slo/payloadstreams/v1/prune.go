@@ -31,7 +31,7 @@ func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) 
 
 	var drop []uint
 	for _, name := range streams {
-		drop = append(drop, pruneStream(cutoff, settings.RecentPayloads, byStream[name])...)
+		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[name])...)
 	}
 	for _, item := range other {
 		if item.OccurredAt.Before(cutoff) {
@@ -41,7 +41,7 @@ func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) 
 	return drop
 }
 
-func pruneStream(cutoff time.Time, recent int, items []types.SLOWorkspaceItem) []uint {
+func pruneStream(now, cutoff time.Time, recent int, items []types.SLOWorkspaceItem) []uint {
 	if len(items) == 0 {
 		return nil
 	}
@@ -59,7 +59,7 @@ func pruneStream(cutoff time.Time, recent int, items []types.SLOWorkspaceItem) [
 		}
 	}
 	for _, item := range sorted {
-		if item.Outcome == "Accepted" {
+		if item.Outcome == "Accepted" && !item.OccurredAt.After(now) {
 			keep[item.ID] = true
 			break
 		}
