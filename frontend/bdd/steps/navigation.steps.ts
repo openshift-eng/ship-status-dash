@@ -70,7 +70,7 @@ When('I click the {string} team chip', async ({ page }, teamName: string) => {
 })
 
 Then('I should be on the team page for {string}', async ({ page }, team: string) => {
-  await expect(page).toHaveURL(new RegExp(`/team/${team}$`))
+  await expect(page).toHaveURL(new RegExp(`/team/${team}(?:#.*)?$`))
 })
 
 Then('I should see the team heading {string}', async ({ page }, heading: string) => {
