@@ -11,6 +11,13 @@ export const getPublicDomain = () => {
 }
 
 export const getProtectedDomain = () => {
+  // The Vite dev server proxies /oauth and /api. Protected calls have to stay
+  // on the page origin so the browser basic-auth challenge covers them.
+  // VITE_PROTECTED_DOMAIN is sometimes the mock proxy (port 8443). Using that
+  // value navigates the browser off this origin.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    return window.location.origin
+  }
   const envDomain = import.meta.env.VITE_PROTECTED_DOMAIN
   if (!envDomain) {
     throw new Error('VITE_PROTECTED_DOMAIN environment variable is required')
