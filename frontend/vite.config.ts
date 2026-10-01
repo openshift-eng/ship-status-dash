@@ -10,7 +10,7 @@ const LEGACY_PUBLIC = 'http://localhost:8080'
 const DEFAULT_PUBLIC = 'http://localhost:8180'
 const DEFAULT_PROTECTED = 'http://localhost:8443'
 const DEFAULT_PROXY_TARGET = 'http://127.0.0.1:8443'
-const DEFAULT_DEV_HOST = '127.0.0.1'
+const DEFAULT_DEV_HOST = '::'
 
 function viteCacheProfile(): string {
   const raw = process.env.SHIP_STATUS_VITE_CACHE_PROFILE?.trim()
@@ -70,7 +70,8 @@ export default defineConfig(({ mode }) => {
     },
     cacheDir: path.join(__dirname, 'node_modules', `.vite-${viteCacheProfile()}`),
     server: {
-      // Loopback by default. Set VITE_DEV_HOST to listen on another interface.
+      // localhost resolves to ::1 first. Vite takes one host, so 127.0.0.1 refuses that
+      // address. :: accepts both ::1 and 127.0.0.1. Set VITE_DEV_HOST to override.
       host: viteDevHost,
       port: 3030,
       proxy: {

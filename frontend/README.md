@@ -38,7 +38,7 @@ The app will open at [http://localhost:3030](http://localhost:3030).
 - Public route (port 8180): No authentication required
 - Protected route (port 8443): Requires basic auth (`developer:password`)
 
-In local dev, Login stays on port 3030. The dev server binds to loopback (`127.0.0.1`). Set `VITE_DEV_HOST` to listen on another address. Vite proxies `/oauth` and protected `/api` calls to `http://127.0.0.1:$VITE_PROXY_PORT` (default `8443`), so the browser does not open that port itself. Sign in with `developer:password` when the browser asks.
+In local dev, Login stays on port 3030. The dev server listens on `::` so `localhost` works for both `::1` and `127.0.0.1`. Set `VITE_DEV_HOST` to bind a different address. Vite proxies `/oauth` and protected `/api` calls to `http://127.0.0.1:$VITE_PROXY_PORT` (default `8443`), so the browser does not open that port itself. Sign in with `developer:password` when the browser asks.
 
 ## Available Scripts
 
