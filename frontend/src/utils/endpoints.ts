@@ -144,6 +144,27 @@ export const getOutageRelationshipEndpoint = (
 ) =>
   `${getProtectedDomain()}/api/components/${slugify(componentName)}/${slugify(subComponentName)}/outages/${outageId}/relationships/${relationshipId}`
 
+export const getTeamSLOEndpoint = (team: string) =>
+  `${getPublicDomain()}/api/teams/${encodeURIComponent(team)}/slo`
+
+export const getTeamSLOSummaryEndpoint = () => `${getPublicDomain()}/api/teams/slo-summary`
+
+export const putSLOItemEndpoint = (team: string) =>
+  `${getProtectedDomain()}/api/teams/${encodeURIComponent(team)}/slo/items`
+
+const sloItemLinkPath = (team: string, kind: string, itemKey: string) =>
+  `${getProtectedDomain()}/api/teams/${encodeURIComponent(team)}/slo/items/${encodeURIComponent(kind)}/${encodeURIComponent(itemKey)}/links`
+
+export const putSLOItemLinkEndpoint = (team: string, kind: string, itemKey: string) =>
+  sloItemLinkPath(team, kind, itemKey)
+
+export const deleteSLOItemLinkEndpoint = (
+  team: string,
+  kind: string,
+  itemKey: string,
+  linkId: number,
+) => `${sloItemLinkPath(team, kind, itemKey)}/${linkId}`
+
 export const getUserEndpoint = () => `${getProtectedDomain()}/api/user`
 
 export const getExternalPageEndpoint = (slug: string) =>

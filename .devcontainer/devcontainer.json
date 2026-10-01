@@ -6,7 +6,15 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "runArgs": ["--name", "ship-status-dev", "--network", "ship-status-net", "--env-file", ".devcontainer/.env"],
+  "runArgs": [
+    "--name", "ship-status-dev",
+    "--network", "ship-status-net",
+    "--env-file", ".devcontainer/.env",
+    "-p", "127.0.0.1:3030:3030",
+    "-p", "127.0.0.1:8180:8180",
+    "-p", "127.0.0.1:8443:8443",
+    "-p", "127.0.0.1:9090:9090"
+  ],
   "mounts": [
     "source=${localEnv:HOME}/.config/gcloud,target=/home/vscode/.config/gcloud,type=bind,readonly",
     "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,readonly"
@@ -15,13 +23,12 @@
   "workspaceFolder": "/workspace",
   "remoteUser": "vscode",
   "initializeCommand": ".devcontainer/init-services.sh",
-  "forwardPorts": [8180, 8443, 3030, 5433, 9090],
   "portsAttributes": {
-    "8180": { "label": "Dashboard API" },
-    "8443": { "label": "Mock OAuth Proxy" },
-    "3030": { "label": "Vite Dev Server" },
-    "5433": { "label": "PostgreSQL" },
-    "9090": { "label": "Prometheus" }
+    "3030": { "label": "Vite Dev Server", "onAutoForward": "ignore" },
+    "8180": { "label": "Dashboard API", "onAutoForward": "ignore" },
+    "8443": { "label": "Mock OAuth Proxy", "onAutoForward": "ignore" },
+    "5433": { "label": "PostgreSQL", "onAutoForward": "ignore" },
+    "9090": { "label": "Prometheus", "onAutoForward": "ignore" }
   },
   "containerEnv": {
     "SHIP_STATUS_DSN": "postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable",

@@ -18,13 +18,15 @@ The preferred way to develop is the [dev container](.devcontainer/README.md). It
 
 **Services** (see the [dev container README](.devcontainer/README.md) for full detail):
 
+The devcontainer publishes 3030, 8180, 8443, and 9090 on the host loopback. Login and protected API calls open `http://localhost:8443` in the browser, so those ports are not left to editor port forwarding. Recreate the devcontainer after pulling a change to the published ports.
+
 | Service | Port | How to start |
 |---------|------|----------------|
 | PostgreSQL | 5433 (host) | Started automatically by `init-services.sh` |
-| Dashboard API | 8180 | `/ship-status-dev-serve` or the `dashboard_serve` MCP tool |
-| Mock OAuth Proxy | 8443 | Started with the dashboard |
-| Vite dev server | 3030 | `/ship-status-dev-frontend` or the `frontend_serve` MCP tool |
-| Prometheus | 9090 | `/ship-status-dev-app` when testing component-monitor |
+| Dashboard API | 8180 (host) | `/ship-status-dev-serve` or the `dashboard_serve` MCP tool |
+| Mock OAuth Proxy | 8443 (host) | Started with the dashboard |
+| Vite dev server | 3030 (host) | `/ship-status-dev-frontend` or the `frontend_serve` MCP tool |
+| Prometheus | 9090 (host) | `/ship-status-dev-app` when testing component-monitor |
 
 Default database URL inside the container: `postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable` (`SHIP_STATUS_DSN`).
 
@@ -69,6 +71,15 @@ This script:
 - Starts the mock oauth-proxy on port 8443 (protected route, requires basic auth)
 - Sets up a user with credentials: `developer:password`
 - Generates a temporary HMAC secret for request signing
+- After migrate, runs `go run ./cmd/seed-slo --dsn "$DSN" --config hack/local/dashboard/config.yaml` so `/team/TRT` has a current SLO workspace
+
+Re-seed without restarting the dashboard:
+
+```bash
+go run ./cmd/seed-slo --dsn "postgres://postgres:yourpassword@localhost:5432/ship_status?sslmode=disable" --config hack/local/dashboard/config.yaml
+```
+
+`--dsn` is required. `--config` defaults to `hack/local/dashboard/config.yaml`. E2e passes `test/e2e/scripts/dashboard-config.yaml`.
 
 **Slack Integration**: To enable Slack integration for outage reporting, set the `SLACK_BOT_TOKEN` environment variable before running the script:
 
@@ -121,6 +132,7 @@ Protected Route: http://localhost:8443 → Mock OAuth Proxy → Dashboard (local
 The mock-oauth-proxy:
 - Accepts Basic Auth credentials
 - Validates against [YAML user configuration](hack/local/dashboard/mock-oauth-proxy-config.yaml)
+- Sets a session cookie after browser login so later calls from the Vite origin are authenticated
 - Forwards authenticated requests to dashboard
 - Adds `X-Forwarded-User`, `X-Forwarded-Email`, and signs with HMAC
 
@@ -152,6 +164,8 @@ Both processes use the same HMAC secret:
 
 The frontend will be available at `http://localhost:3030`.
 
+Login opens the mock oauth proxy (`VITE_PROTECTED_DOMAIN`). Protected API calls go there directly. After you sign in with `developer:password`, the proxy sets a session cookie so later calls from the Vite app are authenticated.
+
 ---
 
 ## End-to-End Tests
@@ -177,6 +191,7 @@ make local-e2e
 The e2e script (`test/e2e/scripts/local-e2e.sh`):
 - Starts a PostgreSQL test container using podman
 - Runs database migrations
+- Seeds the TRT SLO workspace from `test/e2e/scripts/dashboard-config.yaml`
 - Starts the dashboard server on a dynamically assigned port (8080-8099)
 - Starts the mock oauth-proxy on a dynamically assigned port (8443-8499)
 - Starts the mock-monitored-component on port 9000

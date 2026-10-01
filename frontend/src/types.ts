@@ -164,8 +164,80 @@ export interface Component {
     service_account?: string
     user?: string
   }>
+  slo_component?: boolean
   status?: string
   last_ping_time?: string
+}
+
+export interface SLOWorkspace {
+  kind: string
+  schema_version: number
+  spec?: unknown
+}
+
+export interface SLOEvaluation {
+  name: string
+  display_name: string
+  source: string
+  met: boolean
+  result?: unknown
+}
+
+export interface SLOJob {
+  name: string
+  url: string
+  state: string
+  notes?: string
+  recurring_count?: number
+}
+
+export interface SLOPayloadDetails {
+  payload_url?: string
+  analysis_url?: string
+  jobs: SLOJob[]
+}
+
+export interface SLOItemLink {
+  ID: number
+  url: string
+  link_type: 'jira' | 'outage' | 'other'
+  outage_id?: number
+}
+
+export interface SLOItem {
+  id: number
+  kind: string
+  schema_version: number
+  item_key: string
+  group_key: string
+  occurred_at: string
+  outcome: string
+  details: SLOPayloadDetails
+  notes: string
+  updated_by: string
+  links: SLOItemLink[]
+}
+
+export interface SLOComponentBlock {
+  component: string
+  sub_component: string
+  outages: Outage[]
+}
+
+export interface TeamSLO {
+  team: string
+  workspace?: SLOWorkspace
+  evaluations: SLOEvaluation[]
+  slo_components: SLOComponentBlock[]
+  items: SLOItem[]
+}
+
+export interface TeamSLOSummary {
+  teams: Array<{
+    team: string
+    evaluations: SLOEvaluation[]
+    slo_components: SLOComponentBlock[]
+  }>
 }
 
 export interface Tag {

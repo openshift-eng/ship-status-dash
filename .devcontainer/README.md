@@ -13,13 +13,15 @@ Use the `/ship-status-dev-setup` slash command in Claude Code or Cursor to set u
 
 ## Services
 
+PostgreSQL is published by `init-services.sh`. The devcontainer publishes 3030, 8180, 8443, and 9090 on the host loopback (`127.0.0.1`). The browser opens the mock oauth proxy at `http://localhost:8443` directly, so editor port forwarding is turned off for these ports. Recreate the devcontainer after changing the published ports.
+
 | Service | Container | Port | Notes |
 |---------|-----------|------|-------|
 | PostgreSQL | ship-status-postgres | 5433 | Auto-started by init-services.sh (host port 5433 → container 5432) |
-| Dashboard API | (in devcontainer) | 8180 | Start with `/ship-status-dev-serve` |
-| Mock OAuth Proxy | (in devcontainer) | 8443 | Started alongside dashboard |
-| Vite Dev Server | (in devcontainer) | 3030 | Start with `/ship-status-dev-frontend` |
-| Prometheus | (native, on demand) | 9090 | Started by `/ship-status-dev-app` |
+| Dashboard API | devcontainer | 8180 | Published on the host. Start with `/ship-status-dev-serve` |
+| Mock OAuth Proxy | devcontainer | 8443 | Published on the host. Started alongside the dashboard |
+| Vite Dev Server | devcontainer | 3030 | Published on the host. Start with `/ship-status-dev-frontend` |
+| Prometheus | devcontainer | 9090 | Published on the host. Started by `/ship-status-dev-app` |
 
 ## Manual Setup
 

@@ -38,7 +38,7 @@ The app will open at [http://localhost:3030](http://localhost:3030).
 - Public route (port 8180): No authentication required
 - Protected route (port 8443): Requires basic auth (`developer:password`)
 
-Basic auth will be requested upon startup. It is as simple as logging in with `developer:password`
+In local dev, Login opens the mock oauth proxy (`VITE_PROTECTED_DOMAIN`, port 8443) and protected `/api` calls go there directly. After you sign in with `developer:password`, the proxy sets a session cookie so later calls from this app are authenticated.
 
 ## Available Scripts
 

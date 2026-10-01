@@ -440,9 +440,9 @@ def frontend_start(
 ) -> str:
     """Start the Vite dev server (``npm run start`` in ``frontend``) in the background.
 
-    Defaults to port 3030. Sets ``VITE_PUBLIC_DOMAIN`` and ``VITE_PROTECTED_DOMAIN``
-    based on the dashboard and proxy ports. Skips starting if already running unless
-    ``restart`` is True.
+    Defaults to port 3030. Sets ``VITE_PUBLIC_DOMAIN`` to the dashboard and
+    ``VITE_PROTECTED_DOMAIN`` to the mock oauth proxy. Protected calls go
+    there directly. Skips starting if already running unless ``restart`` is True.
     """
     frontend_dir = REPO_ROOT / "frontend"
     if not (frontend_dir / "package.json").is_file():
@@ -519,6 +519,7 @@ def frontend_start(
 
     return (
         f"frontend_start started (pid {proc.pid}). URL: http://localhost:{frontend_port} "
+        f"(protected calls use the mock oauth proxy on {proxy_port}). "
         f"log: {log_path}"
     )
 
