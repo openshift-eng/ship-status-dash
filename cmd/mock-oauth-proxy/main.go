@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"crypto"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -127,12 +131,61 @@ func authenticateUser(username, password string, config *Config) (*User, error) 
 	return nil, fmt.Errorf("user not found")
 }
 
-func oauthStartHandler(config *Config, logger *logrus.Logger) http.Handler {
+const devSessionCookie = "ship-status-dev"
+
+func devSessionValue(secret []byte, username string) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(username))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return username + "." + sig
+}
+
+func usernameFromDevSession(secret []byte, value string) (string, bool) {
+	dot := strings.LastIndex(value, ".")
+	if dot <= 0 || dot == len(value)-1 {
+		return "", false
+	}
+	username := value[:dot]
+	sig := value[dot+1:]
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(username))
+	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(sig), []byte(expected)) != 1 {
+		return "", false
+	}
+	return username, true
+}
+
+func setDevSessionCookie(w http.ResponseWriter, secret []byte, username string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     devSessionCookie,
+		Value:    devSessionValue(secret, username),
+		Path:     "/",
+		MaxAge:   12 * 60 * 60,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func userByUsername(config *Config, username string) *User {
+	for i := range config.Users {
+		if config.Users[i].Username == username {
+			return &config.Users[i]
+		}
+	}
+	return nil
+}
+
+func unauthorized(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+}
+
+func oauthStartHandler(config *Config, logger *logrus.Logger, hmacSecret []byte) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			unauthorized(w)
 			return
 		}
 
@@ -142,8 +195,7 @@ func oauthStartHandler(config *Config, logger *logrus.Logger) http.Handler {
 				"username": username,
 				"error":    err,
 			}).Warn("Authentication failed")
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			unauthorized(w)
 			return
 		}
 
@@ -151,6 +203,7 @@ func oauthStartHandler(config *Config, logger *logrus.Logger) http.Handler {
 			"username": user.Username,
 		}).Info("User authenticated, redirecting to callback")
 
+		setDevSessionCookie(w, hmacSecret, user.Username)
 		http.Redirect(w, r, "/oauth/callback", http.StatusFound)
 	})
 }
@@ -166,6 +219,7 @@ func basicAuthHandler(
 	config *Config,
 	upstreamURL *url.URL,
 	hmacAuth hmacauth.HmacAuth,
+	hmacSecret []byte,
 	logger *logrus.Logger,
 	frontendDevURL string,
 ) http.Handler {
@@ -230,23 +284,14 @@ func basicAuthHandler(
 				"auth_type":       "bearer",
 				"service_account": sa.Name,
 			}).Info("Service account authenticated")
-		} else {
-			username, password, ok := r.BasicAuth()
-			if !ok {
-				requestLogger.Warn("No BasicAuth credentials provided")
-				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
+		} else if username, password, ok := r.BasicAuth(); ok {
 			user, err := authenticateUser(username, password, config)
 			if err != nil {
 				requestLogger.WithFields(logrus.Fields{
 					"username": username,
 					"error":    err,
 				}).Warn("Authentication failed")
-				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				unauthorized(w)
 				return
 			}
 
@@ -256,6 +301,24 @@ func basicAuthHandler(
 				"username":  user.Username,
 				"auth_type": "basic",
 			}).Info("User authenticated")
+		} else if cookie, err := r.Cookie(devSessionCookie); err == nil {
+			username, ok := usernameFromDevSession(hmacSecret, cookie.Value)
+			user := userByUsername(config, username)
+			if !ok || user == nil {
+				requestLogger.Warn("Invalid session cookie")
+				unauthorized(w)
+				return
+			}
+			forwardedUser = user.Username
+			forwardedEmail = user.Email
+			requestLogger.WithFields(logrus.Fields{
+				"username":  user.Username,
+				"auth_type": "cookie",
+			}).Info("User authenticated")
+		} else {
+			requestLogger.Warn("No credentials provided")
+			unauthorized(w)
+			return
 		}
 
 		// Set forwarded headers for upstream
@@ -338,9 +401,9 @@ func main() {
 
 	router := mux.NewRouter()
 	router.Handle("/health", unauthProxy)
-	router.Handle("/oauth/start", oauthStartHandler(config, logger))
+	router.Handle("/oauth/start", oauthStartHandler(config, logger, hmacSecret))
 	router.Handle("/oauth/callback", oauthCallbackHandler(opts.FrontendDevURL))
-	router.PathPrefix("/").Handler(basicAuthHandler(config, upstreamURL, hmacAuth, logger, opts.FrontendDevURL))
+	router.PathPrefix("/").Handler(basicAuthHandler(config, upstreamURL, hmacAuth, hmacSecret, logger, opts.FrontendDevURL))
 
 	server := &http.Server{
 		Addr:              ":" + opts.Port,

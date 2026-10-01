@@ -53,10 +53,6 @@ export default defineConfig(({ mode }) => {
       // Bind the IPv6 wildcard so both localhost (::1) and 127.0.0.1 work.
       host: '::',
       port: 3030,
-      proxy: {
-        '/oauth': 'http://127.0.0.1:8443',
-        '/api': 'http://127.0.0.1:8443',
-      },
     },
     build: {
       outDir: 'build',

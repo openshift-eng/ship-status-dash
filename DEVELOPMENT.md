@@ -18,13 +18,15 @@ The preferred way to develop is the [dev container](.devcontainer/README.md). It
 
 **Services** (see the [dev container README](.devcontainer/README.md) for full detail):
 
+The devcontainer publishes 3030, 8180, 8443, and 9090 on the host loopback. Login and protected API calls open `http://localhost:8443` in the browser, so those ports are not left to editor port forwarding. Recreate the devcontainer after pulling a change to the published ports.
+
 | Service | Port | How to start |
 |---------|------|----------------|
 | PostgreSQL | 5433 (host) | Started automatically by `init-services.sh` |
-| Dashboard API | 8180 | `/ship-status-dev-serve` or the `dashboard_serve` MCP tool |
-| Mock OAuth Proxy | 8443 | Started with the dashboard |
-| Vite dev server | 3030 | `/ship-status-dev-frontend` or the `frontend_serve` MCP tool |
-| Prometheus | 9090 | `/ship-status-dev-app` when testing component-monitor |
+| Dashboard API | 8180 (host) | `/ship-status-dev-serve` or the `dashboard_serve` MCP tool |
+| Mock OAuth Proxy | 8443 (host) | Started with the dashboard |
+| Vite dev server | 3030 (host) | `/ship-status-dev-frontend` or the `frontend_serve` MCP tool |
+| Prometheus | 9090 (host) | `/ship-status-dev-app` when testing component-monitor |
 
 Default database URL inside the container: `postgres://postgres:password@ship-status-postgres:5432/ship_status?sslmode=disable` (`SHIP_STATUS_DSN`).
 
@@ -130,6 +132,7 @@ Protected Route: http://localhost:8443 → Mock OAuth Proxy → Dashboard (local
 The mock-oauth-proxy:
 - Accepts Basic Auth credentials
 - Validates against [YAML user configuration](hack/local/dashboard/mock-oauth-proxy-config.yaml)
+- Sets a session cookie after browser login so later calls from the Vite origin are authenticated
 - Forwards authenticated requests to dashboard
 - Adds `X-Forwarded-User`, `X-Forwarded-Email`, and signs with HMAC
 
@@ -155,13 +158,13 @@ Both processes use the same HMAC secret:
 3. Start the development server. [`frontend/.env.development`](frontend/.env.development) already sets `VITE_PUBLIC_DOMAIN` and `VITE_PROTECTED_DOMAIN` for local URLs; override inline if needed:
    ```bash
    VITE_PUBLIC_DOMAIN=http://localhost:8180 \
-   VITE_PROTECTED_DOMAIN=http://localhost:3030 \
+   VITE_PROTECTED_DOMAIN=http://localhost:8443 \
    npm start
    ```
 
 The frontend will be available at `http://localhost:3030`.
 
-In development, Login and other protected calls use the Vite page origin, not the value of `VITE_PROTECTED_DOMAIN` when that value is the mock proxy port. Vite proxies `/oauth` and `/api` to the mock oauth proxy on port 8443, so the browser does not need to open port 8443. The basic-auth prompt still uses `developer:password`.
+Login opens the mock oauth proxy (`VITE_PROTECTED_DOMAIN`). Protected API calls go there directly. After you sign in with `developer:password`, the proxy sets a session cookie so later calls from the Vite app are authenticated.
 
 ---
 

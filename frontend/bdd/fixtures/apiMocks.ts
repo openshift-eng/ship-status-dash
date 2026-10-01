@@ -17,7 +17,7 @@ import {
 } from './mockData'
 
 export const PUBLIC = 'http://localhost:8180'
-export const PROTECTED = 'http://localhost:3030'
+export const PROTECTED = 'http://localhost:8443'
 
 interface MockApiOptions {
   authenticated?: boolean
