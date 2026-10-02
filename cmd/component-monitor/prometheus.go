@@ -120,7 +120,6 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 			}
 		}
 
-		// If kubeconfigDir is provided and cluster is set (and not inClusterConfigName), check if kubeconfig file exists
 		if hasCluster && kubeconfigDir != "" && location.Cluster != inClusterConfigName {
 			kubeconfigPath := filepath.Join(kubeconfigDir, location.Cluster+".config")
 			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {

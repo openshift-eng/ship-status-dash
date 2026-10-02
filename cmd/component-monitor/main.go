@@ -32,6 +32,7 @@ type Options struct {
 	KubeconfigDir            string
 	ReportAuthTokenFile      string
 	DryRun                   bool
+	ValidateOnly             bool
 	ConfigUpdatePollInterval time.Duration
 	HealthPort               int
 }
@@ -46,6 +47,7 @@ func NewOptions() *Options {
 	flag.StringVar(&opts.KubeconfigDir, "kubeconfig-dir", "", "Path to directory containing kubeconfig files for different clusters (each file named after the cluster)")
 	flag.StringVar(&opts.ReportAuthTokenFile, "report-auth-token-file", "", "Path to file containing bearer token for authenticating report requests")
 	flag.BoolVar(&opts.DryRun, "dry-run", false, "Run probes once and output JSON report instead of sending to dashboard")
+	flag.BoolVar(&opts.ValidateOnly, "validate-only", false, "Validate config and exit without starting the monitor")
 	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
 	flag.IntVar(&opts.HealthPort, "health-port", 8080, "Port for the health/readiness HTTP endpoint")
 	flag.Parse()
@@ -61,6 +63,10 @@ func (o *Options) Validate() error {
 
 	if _, err := os.Stat(o.ConfigPath); os.IsNotExist(err) {
 		return errors.New("config file does not exist: " + o.ConfigPath)
+	}
+
+	if o.ValidateOnly {
+		return nil
 	}
 
 	if o.Name == "" {
@@ -324,6 +330,14 @@ func main() {
 
 	if err := opts.Validate(); err != nil {
 		log.WithField("error", err).Fatal("Invalid command-line options")
+	}
+
+	if opts.ValidateOnly {
+		if _, err := loadAndValidateConfig(log, opts.ConfigPath, opts.KubeconfigDir); err != nil {
+			log.WithField("error", err).Fatal("Config validation failed")
+		}
+		fmt.Println("Config validation passed")
+		return
 	}
 
 	loadFunc := func(path string) (*types.ComponentMonitorConfig, error) {
