@@ -6,46 +6,62 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
+
+	"ship-status-dash/pkg/types"
 )
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
-	validConfig := `
-components:
-  - name: "Test Component"
-    description: "A test component"
-    sub_components:
-      - name: "Sub1"
-        description: "A sub-component"
-    owners:
-      - user: "developer"
-`
-	invalidConfigNoOwner := `
-components:
-  - name: "Test Component"
-    description: "A test component"
-    sub_components:
-      - name: "Sub1"
-        description: "A sub-component"
-`
-	invalidYAML := `{{{not yaml`
+	validConfig := types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name:        "Test Component",
+				Description: "A test component",
+				Subcomponents: []types.SubComponent{
+					{
+						Name:        "Sub1",
+						Description: "A sub-component",
+					},
+				},
+				Owners: []types.Owner{
+					{User: "developer"},
+				},
+			},
+		},
+	}
+
+	invalidConfigNoOwner := types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name:        "Test Component",
+				Description: "A test component",
+				Subcomponents: []types.SubComponent{
+					{
+						Name:        "Sub1",
+						Description: "A sub-component",
+					},
+				},
+			},
+		},
+	}
 
 	tests := []struct {
 		name    string
-		content string
+		config  any
 		wantErr bool
 	}{
 		{
-			name:    "valid config",
-			content: validConfig,
+			name:   "valid config",
+			config: validConfig,
 		},
 		{
 			name:    "invalid config missing owner",
-			content: invalidConfigNoOwner,
+			config:  invalidConfigNoOwner,
 			wantErr: true,
 		},
 		{
 			name:    "invalid YAML",
-			content: invalidYAML,
+			config:  nil,
 			wantErr: true,
 		},
 	}
@@ -56,7 +72,19 @@ components:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
-			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+
+			var content []byte
+			if tt.config == nil {
+				content = []byte(`{{{not yaml`)
+			} else {
+				var err error
+				content, err = yaml.Marshal(tt.config)
+				if err != nil {
+					t.Fatalf("marshal config: %v", err)
+				}
+			}
+
+			if err := os.WriteFile(path, content, 0o600); err != nil {
 				t.Fatalf("write config: %v", err)
 			}
 

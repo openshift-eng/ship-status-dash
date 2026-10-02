@@ -6,48 +6,59 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v3"
+
+	"ship-status-dash/pkg/types"
 )
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
-	validConfig := `
-frequency: 20s
-components:
-  - component_slug: "test"
-    sub_component_slug: "frontend"
-    http_monitor:
-      url: "http://localhost:8080/health"
-      code: 200
-      retry_after: 5s
-`
-	invalidConfigBadFrequency := `
-frequency: not-a-duration
-components:
-  - component_slug: "test"
-    sub_component_slug: "frontend"
-    http_monitor:
-      url: "http://localhost:8080/health"
-      code: 200
-      retry_after: 5s
-`
-	invalidYAML := `{{{not yaml`
+	validConfig := types.ComponentMonitorConfig{
+		Frequency: "20s",
+		Components: []types.MonitoringComponent{
+			{
+				ComponentSlug:    "test",
+				SubComponentSlug: "frontend",
+				HTTPMonitor: &types.HTTPMonitor{
+					URL:        "http://localhost:8080/health",
+					Code:       200,
+					RetryAfter: "5s",
+				},
+			},
+		},
+	}
+
+	invalidConfigBadFrequency := types.ComponentMonitorConfig{
+		Frequency: "not-a-duration",
+		Components: []types.MonitoringComponent{
+			{
+				ComponentSlug:    "test",
+				SubComponentSlug: "frontend",
+				HTTPMonitor: &types.HTTPMonitor{
+					URL:        "http://localhost:8080/health",
+					Code:       200,
+					RetryAfter: "5s",
+				},
+			},
+		},
+	}
 
 	tests := []struct {
 		name    string
-		content string
+		config  any
 		wantErr bool
 	}{
 		{
-			name:    "valid config",
-			content: validConfig,
+			name:   "valid config",
+			config: validConfig,
 		},
 		{
 			name:    "invalid config bad frequency",
-			content: invalidConfigBadFrequency,
+			config:  invalidConfigBadFrequency,
 			wantErr: true,
 		},
 		{
 			name:    "invalid YAML",
-			content: invalidYAML,
+			config:  nil,
 			wantErr: true,
 		},
 	}
@@ -58,7 +69,19 @@ components:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
-			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+
+			var content []byte
+			if tt.config == nil {
+				content = []byte(`{{{not yaml`)
+			} else {
+				var err error
+				content, err = yaml.Marshal(tt.config)
+				if err != nil {
+					t.Fatalf("marshal config: %v", err)
+				}
+			}
+
+			if err := os.WriteFile(path, content, 0o600); err != nil {
 				t.Fatalf("write config: %v", err)
 			}
 
