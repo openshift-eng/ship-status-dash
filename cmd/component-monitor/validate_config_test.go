@@ -12,48 +12,44 @@ import (
 )
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
-	validConfig := types.ComponentMonitorConfig{
-		Frequency: "20s",
-		Components: []types.MonitoringComponent{
-			{
-				ComponentSlug:    "test",
-				SubComponentSlug: "frontend",
-				HTTPMonitor: &types.HTTPMonitor{
-					URL:        "http://localhost:8080/health",
-					Code:       200,
-					RetryAfter: "5s",
-				},
-			},
-		},
-	}
-
-	invalidConfigBadFrequency := types.ComponentMonitorConfig{
-		Frequency: "not-a-duration",
-		Components: []types.MonitoringComponent{
-			{
-				ComponentSlug:    "test",
-				SubComponentSlug: "frontend",
-				HTTPMonitor: &types.HTTPMonitor{
-					URL:        "http://localhost:8080/health",
-					Code:       200,
-					RetryAfter: "5s",
-				},
-			},
-		},
-	}
-
 	tests := []struct {
 		name    string
-		config  any
+		config  *types.ComponentMonitorConfig
 		wantErr bool
 	}{
 		{
-			name:   "valid config",
-			config: validConfig,
+			name: "valid config",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "20s",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "test",
+						SubComponentSlug: "frontend",
+						HTTPMonitor: &types.HTTPMonitor{
+							URL:        "http://localhost:8080/health",
+							Code:       200,
+							RetryAfter: "5s",
+						},
+					},
+				},
+			},
 		},
 		{
-			name:    "invalid config bad frequency",
-			config:  invalidConfigBadFrequency,
+			name: "invalid config bad frequency",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "not-a-duration",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "test",
+						SubComponentSlug: "frontend",
+						HTTPMonitor: &types.HTTPMonitor{
+							URL:        "http://localhost:8080/health",
+							Code:       200,
+							RetryAfter: "5s",
+						},
+					},
+				},
+			},
 			wantErr: true,
 		},
 		{

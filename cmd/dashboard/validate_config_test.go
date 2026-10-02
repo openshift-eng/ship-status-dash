@@ -12,51 +12,47 @@ import (
 )
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
-	validConfig := types.DashboardConfig{
-		Components: []*types.Component{
-			{
-				Name:        "Test Component",
-				Description: "A test component",
-				Subcomponents: []types.SubComponent{
-					{
-						Name:        "Sub1",
-						Description: "A sub-component",
-					},
-				},
-				Owners: []types.Owner{
-					{User: "developer"},
-				},
-			},
-		},
-	}
-
-	invalidConfigNoOwner := types.DashboardConfig{
-		Components: []*types.Component{
-			{
-				Name:        "Test Component",
-				Description: "A test component",
-				Subcomponents: []types.SubComponent{
-					{
-						Name:        "Sub1",
-						Description: "A sub-component",
-					},
-				},
-			},
-		},
-	}
-
 	tests := []struct {
 		name    string
-		config  any
+		config  *types.DashboardConfig
 		wantErr bool
 	}{
 		{
-			name:   "valid config",
-			config: validConfig,
+			name: "valid config",
+			config: &types.DashboardConfig{
+				Components: []*types.Component{
+					{
+						Name:        "Test Component",
+						Description: "A test component",
+						Subcomponents: []types.SubComponent{
+							{
+								Name:        "Sub1",
+								Description: "A sub-component",
+							},
+						},
+						Owners: []types.Owner{
+							{User: "developer"},
+						},
+					},
+				},
+			},
 		},
 		{
-			name:    "invalid config missing owner",
-			config:  invalidConfigNoOwner,
+			name: "invalid config missing owner",
+			config: &types.DashboardConfig{
+				Components: []*types.Component{
+					{
+						Name:        "Test Component",
+						Description: "A test component",
+						Subcomponents: []types.SubComponent{
+							{
+								Name:        "Sub1",
+								Description: "A sub-component",
+							},
+						},
+					},
+				},
+			},
 			wantErr: true,
 		},
 		{
