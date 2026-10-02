@@ -84,7 +84,7 @@ func (o *Options) Validate() error {
 	return nil
 }
 
-func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir string) (*types.ComponentMonitorConfig, error) {
+func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir string, validateKubeconfigs bool) (*types.ComponentMonitorConfig, error) {
 	log.Infof("Loading config from %s", configPath)
 
 	configFile, err := os.ReadFile(configPath)
@@ -186,7 +186,7 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	setDefaultStepValues(&cfg)
 	setDefaultSeverityValues(&cfg)
 
-	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir); err != nil {
+	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir, validateKubeconfigs); err != nil {
 		return nil, fmt.Errorf("invalid prometheus location configuration: %w", err)
 	}
 
@@ -313,7 +313,35 @@ func startOrchestratorWithConfig(config *types.ComponentMonitorConfig, kubeconfi
 	return orchestratorCancel, nil
 }
 
+func runValidateConfig(args []string) int {
+	fs := flag.NewFlagSet("validate-config", flag.ContinueOnError)
+	configPath := fs.String("config-path", "", "Path to component monitor config file")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if *configPath == "" {
+		fmt.Fprintln(os.Stderr, "Error: --config-path flag is required")
+		return 1
+	}
+
+	log := logrus.New()
+	log.SetLevel(logrus.InfoLevel)
+	log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+
+	if _, err := loadAndValidateConfig(log, *configPath, "", false); err != nil {
+		fmt.Fprintf(os.Stderr, "Config validation failed: %v\n", err)
+		return 1
+	}
+	fmt.Println("Config validation passed")
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "validate-config" {
+		os.Exit(runValidateConfig(os.Args[2:]))
+	}
+
 	log := logrus.New()
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.TextFormatter{
@@ -327,7 +355,7 @@ func main() {
 	}
 
 	loadFunc := func(path string) (*types.ComponentMonitorConfig, error) {
-		return loadAndValidateConfig(log, path, opts.KubeconfigDir)
+		return loadAndValidateConfig(log, path, opts.KubeconfigDir, true)
 	}
 
 	configManager, err := config.NewManager(opts.ConfigPath, loadFunc, log, opts.ConfigUpdatePollInterval)

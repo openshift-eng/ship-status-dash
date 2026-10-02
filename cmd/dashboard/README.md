@@ -77,6 +77,16 @@ OpenShift Deployment/Route changes are maintained in [openshift/release](https:/
 
 Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev/`](../../ship-status-dev/)), not these servers.
 
+## Config Validation
+
+The `validate-config` subcommand validates a dashboard configuration file without starting the server or connecting to a database:
+
+```bash
+dashboard validate-config --config path/to/config.yaml
+```
+
+It loads and validates the YAML structure, component owners, slug assignment, team SLO definitions, and tag references. It exits with a non-zero code and prints errors when validation fails.
+
 ## Open Graph Metadata
 
 The SPA handler injects Open Graph and standard HTML metadata into the `index.html` response for each route, enabling rich link previews in Slack and other clients that read OG tags. When adding a new frontend route, add a corresponding pattern to `metaRoutes` in `meta.go` so link previews render correctly.

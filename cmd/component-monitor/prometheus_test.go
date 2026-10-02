@@ -484,7 +484,7 @@ func TestValidatePrometheusLocations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validatePrometheusConfiguration(tt.components, tt.kubeconfigDir)
+			err := validatePrometheusConfiguration(tt.components, tt.kubeconfigDir, true)
 			diff := cmp.Diff(tt.expectedErr, err, testhelper.EquateErrorMessage)
 			if diff != "" {
 				t.Errorf("validatePrometheusConfiguration() error mismatch (-want +got):\n%s", diff)

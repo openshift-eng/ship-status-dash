@@ -231,7 +231,32 @@ func loadGroupMembership(log *logrus.Logger, config *types.DashboardConfig, kube
 	return cache
 }
 
+func runValidateConfig(args []string) int {
+	fs := flag.NewFlagSet("validate-config", flag.ContinueOnError)
+	configPath := fs.String("config", "", "Path to dashboard config file")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	if *configPath == "" {
+		fmt.Fprintln(os.Stderr, "Error: --config flag is required")
+		return 1
+	}
+
+	log := setupLogger()
+	if _, err := loadAndValidateConfig(log, *configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Config validation failed: %v\n", err)
+		return 1
+	}
+	fmt.Println("Config validation passed")
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "validate-config" {
+		os.Exit(runValidateConfig(os.Args[2:]))
+	}
+
 	log := setupLogger()
 	opts := NewOptions()
 

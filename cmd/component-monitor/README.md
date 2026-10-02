@@ -346,4 +346,16 @@ When a `duration` is specified for a Prometheus query, the component-monitor exe
 
 ## Configuration Testing
 
+### Config Validation
+
+The `validate-config` subcommand validates a component-monitor configuration file without starting the monitor or connecting to any external services:
+
+```bash
+component-monitor validate-config --config-path path/to/config.yaml
+```
+
+It loads and validates the YAML structure, frequency values, monitor configurations, and Prometheus location settings. It exits with a non-zero code and prints errors when validation fails. Runtime-only checks (kubeconfig file existence) are skipped so the command works in CI environments without cluster credentials.
+
+### Dry-Run Mode
+
 To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md) and the `component-monitor-dry-run` make target. The job runs on app.ci in the `ship-status` namespace, mounts the production `component-monitor-kubeconfigs` secret, and prints a JSON report without sending it to the dashboard.
