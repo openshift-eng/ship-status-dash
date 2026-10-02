@@ -161,7 +161,7 @@ func TestLoadAndValidateConfigFrequency(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := loadAndValidateConfig(log, writeMonitorConfig(t, tt.cfg), "", true)
+			_, err := loadAndValidateConfig(log, writeMonitorConfig(t, tt.cfg), "")
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)

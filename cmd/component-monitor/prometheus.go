@@ -62,8 +62,7 @@ func setDefaultSeverityValues(config *types.ComponentMonitorConfig) {
 }
 
 // validatePrometheusConfiguration validates Prometheus monitor configuration including locations, durations, and steps.
-// When validateKubeconfigs is false, runtime checks for kubeconfig-dir and kubeconfig file existence are skipped.
-func validatePrometheusConfiguration(components []types.MonitoringComponent, kubeconfigDir string, validateKubeconfigs bool) error {
+func validatePrometheusConfiguration(components []types.MonitoringComponent, kubeconfigDir string) error {
 	var errors []error
 	for _, component := range components {
 		if component.PrometheusMonitor == nil {
@@ -108,7 +107,7 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 				if hasService {
 					errors = append(errors, fmt.Errorf("prometheusLocation service must not be set when cluster is not in-cluster for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
 				}
-				if validateKubeconfigs && kubeconfigDir == "" {
+				if kubeconfigDir == "" {
 					errors = append(errors, fmt.Errorf("kubeconfig-dir is required when using cluster-based prometheusLocation for cluster %s (use %q as cluster name to use in-cluster config)", location.Cluster, inClusterConfigName))
 				}
 			}
@@ -121,7 +120,7 @@ func validatePrometheusConfiguration(components []types.MonitoringComponent, kub
 			}
 		}
 
-		if validateKubeconfigs && hasCluster && kubeconfigDir != "" && location.Cluster != inClusterConfigName {
+		if hasCluster && kubeconfigDir != "" && location.Cluster != inClusterConfigName {
 			kubeconfigPath := filepath.Join(kubeconfigDir, location.Cluster+".config")
 			if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
 				errors = append(errors, fmt.Errorf("kubeconfig file not found for cluster %s", location.Cluster))

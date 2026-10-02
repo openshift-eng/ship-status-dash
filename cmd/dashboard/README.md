@@ -79,10 +79,10 @@ Local dev MCP for starting the stack is **`ship-status-dev`** ([`ship-status-dev
 
 ## Config Validation
 
-The `validate-config` subcommand validates a dashboard configuration file without starting the server or connecting to a database:
+The `--validate-only` flag validates a dashboard configuration file without starting the server or connecting to a database:
 
 ```bash
-dashboard validate-config --config path/to/config.yaml
+dashboard --validate-only --config path/to/config.yaml
 ```
 
 It loads and validates the YAML structure, component owners, slug assignment, team SLO definitions, and tag references. It exits with a non-zero code and prints errors when validation fails.

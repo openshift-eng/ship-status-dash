@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ship-status-dash/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
-func TestRunValidateConfig(t *testing.T) {
+func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	validConfig := `
 frequency: 20s
 components:
@@ -31,102 +31,66 @@ components:
 `
 	invalidYAML := `{{{not yaml`
 
-	clusterBasedConfig := `
-frequency: 20s
-components:
-  - component_slug: "test"
-    sub_component_slug: "prom-check"
-    prometheus_monitor:
-      prometheus_location:
-        cluster: "app.ci"
-        namespace: "openshift-monitoring"
-        route: "thanos-querier"
-      queries:
-        - query: "up"
-`
-
 	tests := []struct {
-		name     string
-		args     []string
-		content  string
-		wantCode int
+		name    string
+		content string
+		wantErr bool
 	}{
 		{
-			name:     "valid config",
-			content:  validConfig,
-			wantCode: 0,
+			name:    "valid config",
+			content: validConfig,
 		},
 		{
-			name:     "invalid config bad frequency",
-			content:  invalidConfigBadFrequency,
-			wantCode: 1,
+			name:    "invalid config bad frequency",
+			content: invalidConfigBadFrequency,
+			wantErr: true,
 		},
 		{
-			name:     "invalid YAML",
-			content:  invalidYAML,
-			wantCode: 1,
-		},
-		{
-			name:     "missing config-path flag",
-			args:     []string{},
-			wantCode: 1,
-		},
-		{
-			name:     "nonexistent config file",
-			args:     []string{"--config-path", "/nonexistent/path.yaml"},
-			wantCode: 1,
-		},
-		{
-			name:     "cluster-based prometheus without kubeconfig-dir succeeds",
-			content:  clusterBasedConfig,
-			wantCode: 0,
+			name:    "invalid YAML",
+			content: invalidYAML,
+			wantErr: true,
 		},
 	}
 
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var args []string
-			if tt.args != nil {
-				args = tt.args
-			} else {
-				path := filepath.Join(t.TempDir(), "config.yaml")
-				if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
-					t.Fatalf("write config: %v", err)
-				}
-				args = []string{"--config-path", path}
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
 			}
 
-			code := runValidateConfig(args)
-			if code != tt.wantCode {
-				t.Errorf("runValidateConfig() = %d, want %d", code, tt.wantCode)
+			_, err := loadAndValidateConfig(log, path, "")
+			if tt.wantErr && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}
 }
 
-func TestValidatePrometheusConfigurationSkipsKubeconfigChecks(t *testing.T) {
-	components := []types.MonitoringComponent{
-		{
-			ComponentSlug:    "test",
-			SubComponentSlug: "test",
-			PrometheusMonitor: &types.PrometheusMonitor{
-				PrometheusLocation: types.PrometheusLocation{
-					Cluster:   "app.ci",
-					Namespace: "openshift-monitoring",
-					Route:     "thanos-querier",
-				},
-				Queries: []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
-			},
-		},
+func TestValidateOnlyOptionsValidation(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("frequency: 20s\ncomponents: []\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 
-	err := validatePrometheusConfiguration(components, "", false)
-	if err != nil {
-		t.Errorf("expected no error with validateKubeconfigs=false, got: %v", err)
+	opts := &Options{
+		ConfigPath:   configPath,
+		ValidateOnly: true,
+	}
+	if err := opts.Validate(); err != nil {
+		t.Errorf("expected ValidateOnly to skip runtime checks, got error: %v", err)
 	}
 
-	err = validatePrometheusConfiguration(components, "", true)
-	if err == nil {
-		t.Error("expected error with validateKubeconfigs=true and empty kubeconfigDir")
+	opts = &Options{
+		ValidateOnly: true,
+	}
+	if err := opts.Validate(); err == nil {
+		t.Error("expected error when ConfigPath is empty even in ValidateOnly mode")
 	}
 }

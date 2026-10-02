@@ -38,6 +38,7 @@ type Options struct {
 	HMACSecretFile            string
 	CORSOrigin                string
 	KubeconfigPath            string
+	ValidateOnly              bool
 	AbsentReportCheckInterval time.Duration
 	TRTPayloadPruneInterval   time.Duration
 	ConfigUpdatePollInterval  time.Duration
@@ -58,6 +59,7 @@ func NewOptions() *Options {
 	flag.DurationVar(&opts.AbsentReportCheckInterval, "absent-report-check-interval", 5*time.Minute, "Interval for checking absent monitored component reports")
 	flag.DurationVar(&opts.TRTPayloadPruneInterval, "trt-payload-prune-interval", 30*time.Minute, "Interval for deleting TRT payload items outside retention")
 	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
+	flag.BoolVar(&opts.ValidateOnly, "validate-only", false, "Validate config and exit without starting the server")
 	flag.StringVar(&opts.SlackBaseURL, "slack-base-url", "", "Base URL for building outage links in Slack messages. Required if slack reporting is enabled.")
 	flag.StringVar(&opts.SlackWorkspaceURL, "slack-workspace-url", "https://rhsandbox.slack.com/", "Slack workspace URL for constructing thread links. Required if slack reporting is enabled.")
 	flag.Parse()
@@ -73,6 +75,10 @@ func (o *Options) Validate() error {
 		errs = append(errs, errors.New("config path is required (use --config flag)"))
 	} else if _, err := os.Stat(o.ConfigPath); os.IsNotExist(err) {
 		errs = append(errs, errors.New("config file does not exist: "+o.ConfigPath))
+	}
+
+	if o.ValidateOnly {
+		return apimachineryerrors.NewAggregate(errs)
 	}
 
 	if o.Port == "" {
@@ -231,37 +237,20 @@ func loadGroupMembership(log *logrus.Logger, config *types.DashboardConfig, kube
 	return cache
 }
 
-func runValidateConfig(args []string) int {
-	fs := flag.NewFlagSet("validate-config", flag.ContinueOnError)
-	configPath := fs.String("config", "", "Path to dashboard config file")
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "Error: --config flag is required")
-		return 1
-	}
-
-	log := setupLogger()
-	if _, err := loadAndValidateConfig(log, *configPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Config validation failed: %v\n", err)
-		return 1
-	}
-	fmt.Println("Config validation passed")
-	return 0
-}
-
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "validate-config" {
-		os.Exit(runValidateConfig(os.Args[2:]))
-	}
-
 	log := setupLogger()
 	opts := NewOptions()
 
 	if err := opts.Validate(); err != nil {
 		log.WithField("error", err).Fatal("Invalid command-line options")
+	}
+
+	if opts.ValidateOnly {
+		if _, err := loadAndValidateConfig(log, opts.ConfigPath); err != nil {
+			log.WithField("error", err).Fatal("Config validation failed")
+		}
+		fmt.Println("Config validation passed")
+		return
 	}
 
 	loadFunc := func(path string) (*types.DashboardConfig, error) {

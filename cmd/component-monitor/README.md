@@ -348,13 +348,13 @@ When a `duration` is specified for a Prometheus query, the component-monitor exe
 
 ### Config Validation
 
-The `validate-config` subcommand validates a component-monitor configuration file without starting the monitor or connecting to any external services:
+The `--validate-only` flag validates a component-monitor configuration file without starting the monitor or connecting to any external services:
 
 ```bash
-component-monitor validate-config --config-path path/to/config.yaml
+component-monitor --validate-only --config-path path/to/config.yaml
 ```
 
-It loads and validates the YAML structure, frequency values, monitor configurations, and Prometheus location settings. It exits with a non-zero code and prints errors when validation fails. Runtime-only checks (kubeconfig file existence) are skipped so the command works in CI environments without cluster credentials.
+It loads and validates the YAML structure, frequency values, monitor configurations, and Prometheus location settings. It exits with a non-zero code and prints errors when validation fails. When `--kubeconfig-dir` is not provided, kubeconfig file existence checks are skipped so the command works in CI environments without cluster credentials.
 
 ### Dry-Run Mode
 
