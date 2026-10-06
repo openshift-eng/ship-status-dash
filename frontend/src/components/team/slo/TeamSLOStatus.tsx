@@ -2,7 +2,7 @@ import { Box, Chip, styled, Typography } from '@mui/material'
 
 import type { SLOComponentBlock, SLOEvaluation } from '../../../types'
 
-import { formatAge } from './format'
+import { formatAge, streamDomId } from './format'
 import { trtPayloadResult, worstMiss } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
@@ -104,6 +104,9 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                   size="small"
                   label={`${group.key} · ${formatAge(group.last_accepted_at)}`}
                   color={group.met ? 'success' : 'warning'}
+                  clickable
+                  component="a"
+                  href={`#${streamDomId(group.key)}`}
                 />
               ))}
             </ChipRow>
