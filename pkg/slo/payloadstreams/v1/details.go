@@ -80,9 +80,12 @@ func (d PayloadDetails) Validate() error {
 	}
 	noteIDs := make(map[string]struct{}, len(d.SharedCauses))
 	for i, note := range d.SharedCauses {
-		id := strings.TrimSpace(note.ID)
-		if id == "" {
+		id := note.ID
+		if strings.TrimSpace(id) == "" {
 			return fmt.Errorf("shared_causes[%d].id is required", i)
+		}
+		if id != strings.TrimSpace(id) {
+			return fmt.Errorf("shared_causes[%d].id must not have surrounding whitespace", i)
 		}
 		if strings.TrimSpace(note.Text) == "" {
 			return fmt.Errorf("shared_causes[%d].text is required", i)
@@ -124,6 +127,9 @@ func (d PayloadDetails) Validate() error {
 		for j, id := range job.NoteIDs {
 			if strings.TrimSpace(id) == "" {
 				return fmt.Errorf("jobs[%d].note_ids[%d] is required", i, j)
+			}
+			if id != strings.TrimSpace(id) {
+				return fmt.Errorf("jobs[%d].note_ids[%d] must not have surrounding whitespace", i, j)
 			}
 			if _, ok := noteIDs[id]; !ok {
 				return fmt.Errorf("jobs[%d].note_ids[%d] %q does not match a shared cause", i, j, id)

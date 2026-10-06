@@ -176,22 +176,36 @@ const newJobDraft = (
     url: partial?.url ?? '',
     state: partial?.state?.trim() || 'failure',
     notes: partial?.notes ?? '',
-    noteIds: (partial?.noteIds ?? partial?.note_ids ?? []).filter(
-      (id) => !id.startsWith('passed:'),
-    ),
+    noteIds: partial?.noteIds ?? partial?.note_ids ?? [],
     laterPassTag: partial?.laterPassTag ?? partial?.later_pass?.tag ?? '',
     laterPassURL: partial?.laterPassURL ?? partial?.later_pass?.url ?? '',
     recurring_count: partial?.recurring_count,
   }
 }
 
-const legacyLaterPass = (notes: SLOSharedCause[], jobName: string) => {
-  const prefix = `passed:${jobName}:`
-  const note = notes.find((item) => item.id.startsWith(prefix) && item.url)
-  if (!note?.url) {
-    return undefined
+const migrateLegacyPasses = (notes: SLOSharedCause[], jobs: SLOJob[]) => {
+  const converted = new Set<string>()
+  const nextJobs = jobs.map((job) => {
+    if (job.later_pass) {
+      return job
+    }
+    const prefix = `passed:${job.name}:`
+    const note = notes.find(
+      (item) => !converted.has(item.id) && item.id.startsWith(prefix) && item.url,
+    )
+    if (!note?.url) {
+      return job
+    }
+    converted.add(note.id)
+    return { ...job, later_pass: { tag: note.id.slice(prefix.length), url: note.url } }
+  })
+  return {
+    notes: notes.filter((note) => !converted.has(note.id)),
+    jobs: nextJobs.map((job) => ({
+      ...job,
+      note_ids: (job.note_ids ?? []).filter((id) => !converted.has(id)),
+    })),
   }
-  return { tag: note.id.slice(prefix.length), url: note.url }
 }
 
 const newNoteDraft = (
@@ -317,19 +331,11 @@ const UpsertPayloadItemDialog = ({
   const [payloadURL, setPayloadURL] = useState(item?.details.payload_url ?? '')
   const [analysisURL, setAnalysisURL] = useState(item?.details.analysis_url ?? '')
   const [notes, setNotes] = useState(item?.notes ?? '')
+  const migrated = migrateLegacyPasses(item?.details.shared_causes ?? [], item?.details.jobs ?? [])
   const [payloadNotes, setPayloadNotes] = useState<NoteDraft[]>(
-    (item?.details.shared_causes ?? [])
-      .filter((note) => !note.id.startsWith('passed:'))
-      .map((note) => newNoteDraft(note)),
+    migrated.notes.map((note) => newNoteDraft(note)),
   )
-  const [jobs, setJobs] = useState<JobDraft[]>(
-    (item ? item.details.jobs : []).map((job) =>
-      newJobDraft({
-        ...job,
-        later_pass: job.later_pass ?? legacyLaterPass(item?.details.shared_causes ?? [], job.name),
-      }),
-    ),
-  )
+  const [jobs, setJobs] = useState<JobDraft[]>(migrated.jobs.map((job) => newJobDraft(job)))
   const [links, setLinks] = useState<LinkDraft[]>(initialLinks(item))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -447,12 +453,13 @@ const UpsertPayloadItemDialog = ({
             ...(noteLinks.length > 0 ? { links: noteLinks } : {}),
           }
         })
+      const retainedCauseIDs = new Set(bodyNotes.map((cause) => cause.id))
       const bodyJobs: SLOJob[] = jobs
         .filter((job) => job.name.trim() !== '')
         .map((job) => {
           const noteIDs = job.noteIds
             .map((id) => id.trim())
-            .filter((id) => id !== '' && !id.startsWith('passed:'))
+            .filter((id) => id !== '' && (retainedCauseIDs.has(id) || !id.startsWith('passed:')))
           const laterTag = job.laterPassTag.trim()
           const laterURL = job.laterPassURL.trim()
           return {
@@ -670,9 +677,19 @@ const UpsertPayloadItemDialog = ({
                   <Button
                     variant="outlined"
                     color="error"
-                    onClick={() =>
+                    onClick={() => {
+                      const removedID = note.id.trim()
                       setPayloadNotes((current) => current.filter((_, i) => i !== index))
-                    }
+                      if (removedID === '') {
+                        return
+                      }
+                      setJobs((current) =>
+                        current.map((job) => ({
+                          ...job,
+                          noteIds: job.noteIds.filter((id) => id.trim() !== removedID),
+                        })),
+                      )
+                    }}
                   >
                     Remove cause
                   </Button>

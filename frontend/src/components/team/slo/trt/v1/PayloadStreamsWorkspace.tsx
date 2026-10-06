@@ -270,7 +270,7 @@ const passBelongsToJob = (note: SLOSharedCause, job: SLOJob, jobs: SLOJob[]) => 
 }
 
 const causeDomId = (itemKey: string, noteId: string, index: number) =>
-  `cause-${slugify(itemKey) || 'payload'}-${slugify(noteId) || index}`
+  `cause-${slugify(itemKey) || 'payload'}-${index}-${slugify(noteId) || 'cause'}`
 
 const causeLinks = (note: SLOSharedCause) => {
   if (note.links && note.links.length > 0) {

@@ -74,6 +74,20 @@ func TestValidateDetails(t *testing.T) {
 			wantErr: "later_pass.url is required",
 		},
 		{
+			name:    "cause id with surrounding whitespace",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":" 1","text":"skew"}],"jobs":[]}`),
+			wantErr: "must not have surrounding whitespace",
+		},
+		{
+			name:    "note id with surrounding whitespace",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1 "]}]}`),
+			wantErr: "note_ids[0] must not have surrounding whitespace",
+		},
+		{
 			name:    "unknown note id",
 			kind:    payloadv1.Kind,
 			version: 1,
