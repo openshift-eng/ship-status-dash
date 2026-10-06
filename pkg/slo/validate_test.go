@@ -29,10 +29,10 @@ func TestValidateDetails(t *testing.T) {
 		{name: "unknown version", kind: payloadv1.Kind, version: 2, details: ok, wantErr: "unknown workspace schema"},
 		{name: "missing payload url", kind: payloadv1.Kind, version: 1, details: []byte(`{"jobs":[]}`), wantErr: "payload_url is required"},
 		{
-			name:    "payload notes and job references",
+			name:    "shared causes and job references",
 			kind:    payloadv1.Kind,
 			version: 1,
-			details: []byte(`{"payload_url":"https://example.test","payload_notes":[{"id":"1","text":"skew"},{"id":"passed:e2e:tag","text":"passed","url":"https://prow.example/run"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1"],"notes":"7/7 children"}]}`),
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew"},{"id":"passed:e2e:tag","text":"passed","url":"https://prow.example/run"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1"],"notes":"7/7 children"}]}`),
 		},
 		{
 			name:    "finished at",
@@ -51,13 +51,13 @@ func TestValidateDetails(t *testing.T) {
 			name:    "cause links",
 			kind:    payloadv1.Kind,
 			version: 1,
-			details: []byte(`{"payload_url":"https://example.test","payload_notes":[{"id":"TRT-1","text":"OVN disruption","links":[{"label":"Jira","url":"https://issues.redhat.com/browse/TRT-1"},{"label":"incident","url":"https://example.test/incident"}]}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["TRT-1"]}]}`),
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"TRT-1","text":"OVN disruption","links":[{"label":"Jira","url":"https://issues.redhat.com/browse/TRT-1"},{"label":"incident","url":"https://example.test/incident"}]}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["TRT-1"]}]}`),
 		},
 		{
 			name:    "blank cause link",
 			kind:    payloadv1.Kind,
 			version: 1,
-			details: []byte(`{"payload_url":"https://example.test","payload_notes":[{"id":"1","text":"skew","links":[{"label":"","url":"https://example.test"}]}],"jobs":[]}`),
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew","links":[{"label":"","url":"https://example.test"}]}],"jobs":[]}`),
 			wantErr: "links[0].label is required",
 		},
 		{
@@ -78,7 +78,7 @@ func TestValidateDetails(t *testing.T) {
 			kind:    payloadv1.Kind,
 			version: 1,
 			details: []byte(`{"payload_url":"https://example.test","jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["missing"]}]}`),
-			wantErr: "does not match a payload note",
+			wantErr: "does not match a shared cause",
 		},
 	}
 	for _, tt := range tests {

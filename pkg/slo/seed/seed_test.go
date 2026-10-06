@@ -355,7 +355,7 @@ func itemsWithPayloadNotes(t *testing.T, items []types.SLOWorkspaceItem) []types
 	for _, item := range items {
 		var doc payloadv1.PayloadDetails
 		require.NoError(t, json.Unmarshal(item.Details, &doc))
-		if len(doc.PayloadNotes) > 0 {
+		if len(doc.SharedCauses) > 0 {
 			noted = append(noted, item)
 		}
 	}
@@ -371,8 +371,8 @@ func assertSeededNotes(t *testing.T, item types.SLOWorkspaceItem, jobNoteIDs ...
 	require.NoError(t, json.Unmarshal(item.Details, &doc))
 	assert.Equal(t, item.OccurredAt.Format(time.RFC3339), doc.FinishedAt)
 	require.Len(t, doc.Jobs, len(jobNoteIDs))
-	seen := map[string]payloadv1.PayloadNote{}
-	for _, note := range doc.PayloadNotes {
+	seen := map[string]payloadv1.SharedCause{}
+	for _, note := range doc.SharedCauses {
 		seen[note.ID] = note
 		assert.NotEmpty(t, note.Text)
 	}
@@ -415,7 +415,7 @@ func assertLaterPass(t *testing.T, item types.SLOWorkspaceItem, jobName string, 
 	t.Helper()
 	var doc payloadv1.PayloadDetails
 	require.NoError(t, json.Unmarshal(item.Details, &doc))
-	for _, note := range doc.PayloadNotes {
+	for _, note := range doc.SharedCauses {
 		assert.NotContains(t, note.ID, "passed:")
 	}
 	var job *payloadv1.PayloadJob
@@ -439,17 +439,17 @@ func assertLaterPass(t *testing.T, item types.SLOWorkspaceItem, jobName string, 
 	}
 }
 
-func noteByID(t *testing.T, item types.SLOWorkspaceItem, id string) payloadv1.PayloadNote {
+func noteByID(t *testing.T, item types.SLOWorkspaceItem, id string) payloadv1.SharedCause {
 	t.Helper()
 	var doc payloadv1.PayloadDetails
 	require.NoError(t, json.Unmarshal(item.Details, &doc))
-	for _, note := range doc.PayloadNotes {
+	for _, note := range doc.SharedCauses {
 		if note.ID == id {
 			return note
 		}
 	}
 	t.Fatalf("payload %s has no note %s", item.ItemKey, id)
-	return payloadv1.PayloadNote{}
+	return payloadv1.SharedCause{}
 }
 
 func jobsOf(t *testing.T, item types.SLOWorkspaceItem) []payloadv1.PayloadJob {

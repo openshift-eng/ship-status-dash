@@ -183,16 +183,16 @@ export interface SLOEvaluation {
   result?: unknown
 }
 
-export interface SLOPayloadNoteLink {
+export interface SLOSharedCauseLink {
   label: string
   url: string
 }
 
-export interface SLOPayloadNote {
+export interface SLOSharedCause {
   id: string
   text: string
   url?: string
-  links?: SLOPayloadNoteLink[]
+  links?: SLOSharedCauseLink[]
 }
 
 export interface SLOLaterPass {
@@ -214,7 +214,7 @@ export interface SLOPayloadDetails {
   payload_url?: string
   analysis_url?: string
   finished_at?: string
-  payload_notes?: SLOPayloadNote[]
+  shared_causes?: SLOSharedCause[]
   jobs: SLOJob[]
 }
 

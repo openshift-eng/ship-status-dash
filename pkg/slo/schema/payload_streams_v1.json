@@ -8,7 +8,7 @@
     "payload_url": { "type": "string", "minLength": 1 },
     "analysis_url": { "type": "string" },
     "finished_at": { "type": "string", "minLength": 1 },
-    "payload_notes": {
+    "shared_causes": {
       "type": "array",
       "items": {
         "type": "object",

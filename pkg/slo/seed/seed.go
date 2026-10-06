@@ -53,7 +53,7 @@ type payloadSpec struct {
 	ago      time.Duration
 	outcome  string
 	jobs     []payloadv1.PayloadJob
-	notes    []payloadv1.PayloadNote
+	notes    []payloadv1.SharedCause
 	itemNote string
 	analysis bool
 }
@@ -274,7 +274,7 @@ func itemFor(now time.Time, team string, stream payloadv1.Stream, spec payloadSp
 	doc := payloadv1.PayloadDetails{
 		PayloadURL:   fmt.Sprintf("https://%s.ocp.releases.ci.openshift.org/releasestream/%s/release/%s", stream.ReleaseController, name, tag),
 		FinishedAt:   occurred.Format(time.RFC3339),
-		PayloadNotes: spec.notes,
+		SharedCauses: spec.notes,
 		Jobs:         jobs,
 	}
 	if spec.analysis {
@@ -514,8 +514,8 @@ func specWithJobs(ago time.Duration, outcome string, analysis bool, jobs ...payl
 	}
 }
 
-func notesForJobs(jobs []payloadv1.PayloadJob) []payloadv1.PayloadNote {
-	var notes []payloadv1.PayloadNote
+func notesForJobs(jobs []payloadv1.PayloadJob) []payloadv1.SharedCause {
+	var notes []payloadv1.SharedCause
 	seen := map[string]bool{}
 	for _, job := range jobs {
 		for _, id := range job.NoteIDs {
@@ -529,19 +529,19 @@ func notesForJobs(jobs []payloadv1.PayloadJob) []payloadv1.PayloadNote {
 	return notes
 }
 
-func payloadNote(id string) payloadv1.PayloadNote {
+func payloadNote(id string) payloadv1.SharedCause {
 	switch id {
 	case noteDisruptionID:
-		return payloadv1.PayloadNote{
+		return payloadv1.SharedCause{
 			ID:   id,
 			Text: "Same disruption as TRT-4120. Not infra.",
-			Links: []payloadv1.PayloadNoteLink{{
+			Links: []payloadv1.SharedCauseLink{{
 				Label: "Jira",
 				URL:   JiraURL,
 			}},
 		}
 	default:
-		return payloadv1.PayloadNote{ID: id}
+		return payloadv1.SharedCause{ID: id}
 	}
 }
 
@@ -566,11 +566,11 @@ func addIncidentLink(item *types.SLOWorkspaceItem, outageURL string) {
 	if err := json.Unmarshal(item.Details, &doc); err != nil {
 		return
 	}
-	for i := range doc.PayloadNotes {
-		if doc.PayloadNotes[i].ID != noteDisruptionID {
+	for i := range doc.SharedCauses {
+		if doc.SharedCauses[i].ID != noteDisruptionID {
 			continue
 		}
-		doc.PayloadNotes[i].Links = append(doc.PayloadNotes[i].Links, payloadv1.PayloadNoteLink{
+		doc.SharedCauses[i].Links = append(doc.SharedCauses[i].Links, payloadv1.SharedCauseLink{
 			Label: "incident",
 			URL:   outageURL,
 		})

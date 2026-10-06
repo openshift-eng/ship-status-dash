@@ -13,22 +13,22 @@ type PayloadDetails struct {
 	PayloadURL   string        `json:"payload_url"`
 	AnalysisURL  string        `json:"analysis_url,omitempty"`
 	FinishedAt   string        `json:"finished_at,omitempty"`
-	PayloadNotes []PayloadNote `json:"payload_notes,omitempty"`
+	SharedCauses []SharedCause `json:"shared_causes,omitempty"`
 	Jobs         []PayloadJob  `json:"jobs"`
 }
 
-// PayloadNoteLink is one labeled URL on a shared cause.
-type PayloadNoteLink struct {
+// SharedCauseLink is one labeled URL on a shared cause.
+type SharedCauseLink struct {
 	Label string `json:"label"`
 	URL   string `json:"url"`
 }
 
-// PayloadNote is one shared explanation.
-type PayloadNote struct {
+// SharedCause is one explanation shared by jobs on a payload.
+type SharedCause struct {
 	ID    string            `json:"id"`
 	Text  string            `json:"text"`
 	URL   string            `json:"url,omitempty"`
-	Links []PayloadNoteLink `json:"links,omitempty"`
+	Links []SharedCauseLink `json:"links,omitempty"`
 }
 
 // LaterPass is a newer payload where this job succeeded.
@@ -78,25 +78,25 @@ func (d PayloadDetails) Validate() error {
 	if d.Jobs == nil {
 		return fmt.Errorf("jobs is required")
 	}
-	noteIDs := make(map[string]struct{}, len(d.PayloadNotes))
-	for i, note := range d.PayloadNotes {
+	noteIDs := make(map[string]struct{}, len(d.SharedCauses))
+	for i, note := range d.SharedCauses {
 		id := strings.TrimSpace(note.ID)
 		if id == "" {
-			return fmt.Errorf("payload_notes[%d].id is required", i)
+			return fmt.Errorf("shared_causes[%d].id is required", i)
 		}
 		if strings.TrimSpace(note.Text) == "" {
-			return fmt.Errorf("payload_notes[%d].text is required", i)
+			return fmt.Errorf("shared_causes[%d].text is required", i)
 		}
 		if _, ok := noteIDs[id]; ok {
-			return fmt.Errorf("payload_notes[%d].id %q is duplicated", i, id)
+			return fmt.Errorf("shared_causes[%d].id %q is duplicated", i, id)
 		}
 		noteIDs[id] = struct{}{}
 		for j, link := range note.Links {
 			if strings.TrimSpace(link.Label) == "" {
-				return fmt.Errorf("payload_notes[%d].links[%d].label is required", i, j)
+				return fmt.Errorf("shared_causes[%d].links[%d].label is required", i, j)
 			}
 			if strings.TrimSpace(link.URL) == "" {
-				return fmt.Errorf("payload_notes[%d].links[%d].url is required", i, j)
+				return fmt.Errorf("shared_causes[%d].links[%d].url is required", i, j)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func (d PayloadDetails) Validate() error {
 				return fmt.Errorf("jobs[%d].note_ids[%d] is required", i, j)
 			}
 			if _, ok := noteIDs[id]; !ok {
-				return fmt.Errorf("jobs[%d].note_ids[%d] %q does not match a payload note", i, j, id)
+				return fmt.Errorf("jobs[%d].note_ids[%d] %q does not match a shared cause", i, j, id)
 			}
 		}
 	}

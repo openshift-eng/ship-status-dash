@@ -8,7 +8,7 @@ import type {
   SLOEvaluation,
   SLOItem,
   SLOJob,
-  SLOPayloadNote,
+  SLOSharedCause,
   SLOWorkspace,
 } from '../../../../../types'
 import { getStatusChipColor } from '../../../../../utils/helpers'
@@ -260,7 +260,7 @@ const PassLine = styled(Box)(({ theme }) => ({
 
 const isPassNote = (id: string) => id.startsWith('passed:')
 
-const passBelongsToJob = (note: SLOPayloadNote, job: SLOJob, jobs: SLOJob[]) => {
+const passBelongsToJob = (note: SLOSharedCause, job: SLOJob, jobs: SLOJob[]) => {
   const referenced = jobs.some((item) => (item.note_ids ?? []).includes(note.id))
   if (referenced) {
     return (job.note_ids ?? []).includes(note.id)
@@ -272,7 +272,7 @@ const passBelongsToJob = (note: SLOPayloadNote, job: SLOJob, jobs: SLOJob[]) => 
 const causeDomId = (itemKey: string, noteId: string, index: number) =>
   `cause-${slugify(itemKey) || 'payload'}-${slugify(noteId) || index}`
 
-const causeLinks = (note: SLOPayloadNote) => {
+const causeLinks = (note: SLOSharedCause) => {
   if (note.links && note.links.length > 0) {
     return note.links
   }
@@ -288,7 +288,7 @@ const jobsReferencing = (jobs: SLOJob[], noteId: string) =>
 interface FailedJobsProps {
   itemKey: string
   jobs: SLOJob[]
-  notes: SLOPayloadNote[]
+  notes: SLOSharedCause[]
   highlightedCause: string
   onFocusCause: (domId: string) => void
 }
@@ -387,7 +387,12 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                     ) : (
                       jobPasses.map((note) => (
                         <PassLine key={note.id}>
-                          <Chip size="small" color="success" variant="outlined" label="Later pass" />
+                          <Chip
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                            label="Later pass"
+                          />
                           <JobNote component="span">{note.text}</JobNote>
                           {note.url && (
                             <Link href={note.url} target="_blank" rel="noopener noreferrer">
@@ -626,7 +631,7 @@ const PayloadStreamsWorkspace = ({
                       <FailedJobs
                         itemKey={row.item_key}
                         jobs={row.details.jobs}
-                        notes={row.details.payload_notes ?? []}
+                        notes={row.details.shared_causes ?? []}
                         highlightedCause={highlightedCause}
                         onFocusCause={focusCause}
                       />

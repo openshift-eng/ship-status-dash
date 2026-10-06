@@ -20,8 +20,8 @@ import type {
   SLOItem,
   SLOItemLink,
   SLOJob,
-  SLOPayloadNote,
-  SLOPayloadNoteLink,
+  SLOSharedCause,
+  SLOSharedCauseLink,
 } from '../../../../../types'
 import {
   deleteSLOItemLinkEndpoint,
@@ -157,7 +157,7 @@ let jobDraftSeq = 0
 let noteDraftSeq = 0
 let causeLinkSeq = 0
 
-const newCauseLink = (partial?: Partial<SLOPayloadNoteLink>): CauseLinkDraft => {
+const newCauseLink = (partial?: Partial<SLOSharedCauseLink>): CauseLinkDraft => {
   causeLinkSeq += 1
   return {
     draftId: `cause-link-${causeLinkSeq}`,
@@ -176,14 +176,16 @@ const newJobDraft = (
     url: partial?.url ?? '',
     state: partial?.state?.trim() || 'failure',
     notes: partial?.notes ?? '',
-    noteIds: (partial?.noteIds ?? partial?.note_ids ?? []).filter((id) => !id.startsWith('passed:')),
+    noteIds: (partial?.noteIds ?? partial?.note_ids ?? []).filter(
+      (id) => !id.startsWith('passed:'),
+    ),
     laterPassTag: partial?.laterPassTag ?? partial?.later_pass?.tag ?? '',
     laterPassURL: partial?.laterPassURL ?? partial?.later_pass?.url ?? '',
     recurring_count: partial?.recurring_count,
   }
 }
 
-const legacyLaterPass = (notes: SLOPayloadNote[], jobName: string) => {
+const legacyLaterPass = (notes: SLOSharedCause[], jobName: string) => {
   const prefix = `passed:${jobName}:`
   const note = notes.find((item) => item.id.startsWith(prefix) && item.url)
   if (!note?.url) {
@@ -193,7 +195,7 @@ const legacyLaterPass = (notes: SLOPayloadNote[], jobName: string) => {
 }
 
 const newNoteDraft = (
-  partial?: Partial<Omit<NoteDraft, 'links'>> & { links?: SLOPayloadNoteLink[] },
+  partial?: Partial<Omit<NoteDraft, 'links'>> & { links?: SLOSharedCauseLink[] },
 ): NoteDraft => {
   noteDraftSeq += 1
   return {
@@ -316,7 +318,7 @@ const UpsertPayloadItemDialog = ({
   const [analysisURL, setAnalysisURL] = useState(item?.details.analysis_url ?? '')
   const [notes, setNotes] = useState(item?.notes ?? '')
   const [payloadNotes, setPayloadNotes] = useState<NoteDraft[]>(
-    (item?.details.payload_notes ?? [])
+    (item?.details.shared_causes ?? [])
       .filter((note) => !note.id.startsWith('passed:'))
       .map((note) => newNoteDraft(note)),
   )
@@ -324,7 +326,7 @@ const UpsertPayloadItemDialog = ({
     (item ? item.details.jobs : []).map((job) =>
       newJobDraft({
         ...job,
-        later_pass: job.later_pass ?? legacyLaterPass(item?.details.payload_notes ?? [], job.name),
+        later_pass: job.later_pass ?? legacyLaterPass(item?.details.shared_causes ?? [], job.name),
       }),
     ),
   )
@@ -432,7 +434,7 @@ const UpsertPayloadItemDialog = ({
     setError('')
     let succeeded = false
     try {
-      const bodyNotes: SLOPayloadNote[] = payloadNotes
+      const bodyNotes: SLOSharedCause[] = payloadNotes
         .filter((note) => note.id.trim() !== '' || note.text.trim() !== '')
         .map((note) => {
           const noteLinks = note.links
@@ -484,7 +486,7 @@ const UpsertPayloadItemDialog = ({
             payload_url: payloadURL.trim(),
             ...(analysisURL.trim() ? { analysis_url: analysisURL.trim() } : {}),
             ...(item?.details.finished_at ? { finished_at: item.details.finished_at } : {}),
-            ...(bodyNotes.length > 0 ? { payload_notes: bodyNotes } : {}),
+            ...(bodyNotes.length > 0 ? { shared_causes: bodyNotes } : {}),
             jobs: bodyJobs,
           },
         }),
