@@ -1,4 +1,9 @@
+import ExpandMore from '@mui/icons-material/ExpandMore'
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
   Button,
   Dialog,
   DialogActions,
@@ -7,11 +12,17 @@ import {
   MenuItem,
   styled,
   TextField,
-  Typography,
 } from '@mui/material'
 import { useState } from 'react'
+import type { ReactNode, SyntheticEvent } from 'react'
 
-import type { SLOItem, SLOItemLink, SLOJob } from '../../../../../types'
+import type {
+  SLOItem,
+  SLOItemLink,
+  SLOJob,
+  SLOPayloadNote,
+  SLOPayloadNoteLink,
+} from '../../../../../types'
 import {
   deleteSLOItemLinkEndpoint,
   putSLOItemEndpoint,
@@ -30,18 +41,45 @@ const Field = styled(TextField)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }))
 
-const Section = styled('section')(({ theme }) => ({
-  marginTop: theme.spacing(1),
-  marginBottom: theme.spacing(3),
+const FormAccordion = styled(Accordion)(({ theme }) => ({
+  borderRadius: theme.spacing(1),
+  '&:before': {
+    display: 'none',
+  },
+  '&.Mui-expanded': {
+    margin: 0,
+  },
+  '&:first-of-type, &:last-of-type': {
+    borderRadius: theme.spacing(1),
+  },
 }))
 
-const SectionTitle = styled(Typography)(({ theme }) => ({
+const Summary = styled(AccordionSummary)(({ theme }) => ({
   fontWeight: 600,
-  fontSize: '1rem',
-  marginBottom: theme.spacing(2),
-  paddingBottom: theme.spacing(1),
-  borderBottom: `1px solid ${theme.palette.divider}`,
+  '& .MuiAccordionSummary-content, & .MuiAccordionSummary-content.Mui-expanded': {
+    margin: theme.spacing(1.5, 0),
+  },
 }))
+
+const SummaryContent = styled('span')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  width: '100%',
+  gap: theme.spacing(2),
+}))
+
+const SummaryCount = styled('span')(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  fontSize: '0.875rem',
+  fontWeight: 400,
+}))
+
+const Details = styled(AccordionDetails)({
+  paddingTop: 0,
+  display: 'flex',
+  flexDirection: 'column',
+})
 
 const Entry = styled('div')(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
@@ -61,15 +99,18 @@ const ErrorText = styled('p')(({ theme }) => ({
   margin: theme.spacing(1, 0),
 }))
 
-const Fields = styled('fieldset')({
+const Fields = styled('fieldset')(({ theme }) => ({
   border: 0,
   margin: 0,
   padding: 0,
   minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1),
   '&:disabled': {
     pointerEvents: 'none',
   },
-})
+}))
 
 interface JobDraft {
   draftId: string
@@ -77,7 +118,24 @@ interface JobDraft {
   url: string
   state: string
   notes: string
+  noteIds: string[]
+  laterPassTag: string
+  laterPassURL: string
   recurring_count?: number
+}
+
+interface CauseLinkDraft {
+  draftId: string
+  label: string
+  url: string
+}
+
+interface NoteDraft {
+  draftId: string
+  id: string
+  text: string
+  url: string
+  links: CauseLinkDraft[]
 }
 
 interface LinkDraft {
@@ -96,8 +154,21 @@ interface UpsertPayloadItemDialogProps {
 }
 
 let jobDraftSeq = 0
+let noteDraftSeq = 0
+let causeLinkSeq = 0
 
-const newJobDraft = (partial?: Partial<JobDraft>): JobDraft => {
+const newCauseLink = (partial?: Partial<SLOPayloadNoteLink>): CauseLinkDraft => {
+  causeLinkSeq += 1
+  return {
+    draftId: `cause-link-${causeLinkSeq}`,
+    label: partial?.label ?? '',
+    url: partial?.url ?? '',
+  }
+}
+
+const newJobDraft = (
+  partial?: Partial<JobDraft> & { note_ids?: string[]; later_pass?: { tag: string; url: string } },
+): JobDraft => {
   jobDraftSeq += 1
   return {
     draftId: `job-${jobDraftSeq}`,
@@ -105,8 +176,45 @@ const newJobDraft = (partial?: Partial<JobDraft>): JobDraft => {
     url: partial?.url ?? '',
     state: partial?.state?.trim() || 'failure',
     notes: partial?.notes ?? '',
+    noteIds: (partial?.noteIds ?? partial?.note_ids ?? []).filter((id) => !id.startsWith('passed:')),
+    laterPassTag: partial?.laterPassTag ?? partial?.later_pass?.tag ?? '',
+    laterPassURL: partial?.laterPassURL ?? partial?.later_pass?.url ?? '',
     recurring_count: partial?.recurring_count,
   }
+}
+
+const legacyLaterPass = (notes: SLOPayloadNote[], jobName: string) => {
+  const prefix = `passed:${jobName}:`
+  const note = notes.find((item) => item.id.startsWith(prefix) && item.url)
+  if (!note?.url) {
+    return undefined
+  }
+  return { tag: note.id.slice(prefix.length), url: note.url }
+}
+
+const newNoteDraft = (
+  partial?: Partial<Omit<NoteDraft, 'links'>> & { links?: SLOPayloadNoteLink[] },
+): NoteDraft => {
+  noteDraftSeq += 1
+  return {
+    draftId: `note-${noteDraftSeq}`,
+    id: partial?.id ?? '',
+    text: partial?.text ?? '',
+    url: partial?.url ?? '',
+    links: (partial?.links ?? []).map((link) => newCauseLink(link)),
+  }
+}
+
+const causeChoices = (notes: NoteDraft[], selected: string[]) => {
+  const ids = notes
+    .map((note) => note.id.trim())
+    .filter((id) => id !== '' && !id.startsWith('passed:'))
+  selected.forEach((id) => {
+    if (id !== '' && !ids.includes(id)) {
+      ids.push(id)
+    }
+  })
+  return ids
 }
 
 const emptyLink = (): LinkDraft => ({ url: '', link_type: 'jira' })
@@ -152,6 +260,32 @@ const pairDesiredLinks = (drafts: LinkDraft[], baseline: SLOItemLink[]): LinkPai
   return pairs
 }
 
+type SectionKey = 'payload' | 'causes' | 'jobs' | 'links'
+
+const SectionAccordion = ({
+  title,
+  count,
+  expanded,
+  onChange,
+  children,
+}: {
+  title: string
+  count?: number
+  expanded: boolean
+  onChange: (event: SyntheticEvent, expanded: boolean) => void
+  children: ReactNode
+}) => (
+  <FormAccordion disableGutters variant="outlined" expanded={expanded} onChange={onChange}>
+    <Summary expandIcon={<ExpandMore />}>
+      <SummaryContent>
+        {title}
+        {count !== undefined && <SummaryCount>{count}</SummaryCount>}
+      </SummaryContent>
+    </Summary>
+    <Details>{children}</Details>
+  </FormAccordion>
+)
+
 const initialLinks = (item?: SLOItem): LinkDraft[] => {
   const existing = (item ? item.links : []).map((link) => ({
     id: link.ID,
@@ -181,15 +315,41 @@ const UpsertPayloadItemDialog = ({
   const [payloadURL, setPayloadURL] = useState(item?.details.payload_url ?? '')
   const [analysisURL, setAnalysisURL] = useState(item?.details.analysis_url ?? '')
   const [notes, setNotes] = useState(item?.notes ?? '')
+  const [payloadNotes, setPayloadNotes] = useState<NoteDraft[]>(
+    (item?.details.payload_notes ?? [])
+      .filter((note) => !note.id.startsWith('passed:'))
+      .map((note) => newNoteDraft(note)),
+  )
   const [jobs, setJobs] = useState<JobDraft[]>(
-    (item ? item.details.jobs : []).map((job) => newJobDraft(job)),
+    (item ? item.details.jobs : []).map((job) =>
+      newJobDraft({
+        ...job,
+        later_pass: job.later_pass ?? legacyLaterPass(item?.details.payload_notes ?? [], job.name),
+      }),
+    ),
   )
   const [links, setLinks] = useState<LinkDraft[]>(initialLinks(item))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
+    payload: true,
+    causes: false,
+    jobs: false,
+    links: false,
+  })
+
+  const toggleSection = (key: SectionKey) => (_event: SyntheticEvent, isExpanded: boolean) => {
+    setExpanded((current) => ({ ...current, [key]: isExpanded }))
+  }
 
   const updateJob = (index: number, patch: Partial<JobDraft>) => {
     setJobs((current) => current.map((job, i) => (i === index ? { ...job, ...patch } : job)))
+  }
+
+  const updatePayloadNote = (index: number, patch: Partial<NoteDraft>) => {
+    setPayloadNotes((current) =>
+      current.map((note, i) => (i === index ? { ...note, ...patch } : note)),
+    )
   }
 
   const updateLink = (index: number, patch: Partial<LinkDraft>) => {
@@ -272,15 +432,39 @@ const UpsertPayloadItemDialog = ({
     setError('')
     let succeeded = false
     try {
+      const bodyNotes: SLOPayloadNote[] = payloadNotes
+        .filter((note) => note.id.trim() !== '' || note.text.trim() !== '')
+        .map((note) => {
+          const noteLinks = note.links
+            .filter((link) => link.label.trim() !== '' || link.url.trim() !== '')
+            .map((link) => ({ label: link.label.trim(), url: link.url.trim() }))
+          return {
+            id: note.id.trim(),
+            text: note.text.trim(),
+            ...(note.url.trim() ? { url: note.url.trim() } : {}),
+            ...(noteLinks.length > 0 ? { links: noteLinks } : {}),
+          }
+        })
       const bodyJobs: SLOJob[] = jobs
         .filter((job) => job.name.trim() !== '')
-        .map((job) => ({
-          name: job.name.trim(),
-          url: job.url.trim(),
-          state: job.state.trim() || 'failure',
-          notes: job.notes,
-          ...(job.recurring_count !== undefined ? { recurring_count: job.recurring_count } : {}),
-        }))
+        .map((job) => {
+          const noteIDs = job.noteIds
+            .map((id) => id.trim())
+            .filter((id) => id !== '' && !id.startsWith('passed:'))
+          const laterTag = job.laterPassTag.trim()
+          const laterURL = job.laterPassURL.trim()
+          return {
+            name: job.name.trim(),
+            url: job.url.trim(),
+            state: job.state.trim() || 'failure',
+            notes: job.notes,
+            ...(noteIDs.length > 0 ? { note_ids: noteIDs } : {}),
+            ...(laterTag !== '' && laterURL !== ''
+              ? { later_pass: { tag: laterTag, url: laterURL } }
+              : {}),
+            ...(job.recurring_count !== undefined ? { recurring_count: job.recurring_count } : {}),
+          }
+        })
       const response = await fetch(putSLOItemEndpoint(team), {
         method: 'PUT',
         credentials: 'include',
@@ -299,6 +483,8 @@ const UpsertPayloadItemDialog = ({
           details: {
             payload_url: payloadURL.trim(),
             ...(analysisURL.trim() ? { analysis_url: analysisURL.trim() } : {}),
+            ...(item?.details.finished_at ? { finished_at: item.details.finished_at } : {}),
+            ...(bodyNotes.length > 0 ? { payload_notes: bodyNotes } : {}),
             jobs: bodyJobs,
           },
         }),
@@ -329,12 +515,24 @@ const UpsertPayloadItemDialog = ({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="lg">
       <DialogTitle>{editing ? 'Edit payload' : 'Add payload'}</DialogTitle>
       <Content>
         <Fields disabled={saving}>
-          <Section>
-            <SectionTitle>Payload</SectionTitle>
+          <SectionAccordion
+            title="Payload"
+            expanded={expanded.payload}
+            onChange={toggleSection('payload')}
+          >
+            <Field
+              fullWidth
+              multiline
+              minRows={2}
+              label="Payload notes"
+              value={notes}
+              helperText="Freeform note shown with the payload details"
+              onChange={(event) => setNotes(event.target.value)}
+            />
             <Field
               select
               fullWidth
@@ -389,16 +587,110 @@ const UpsertPayloadItemDialog = ({
               value={analysisURL}
               onChange={(event) => setAnalysisURL(event.target.value)}
             />
-            <Field
-              fullWidth
-              label="Payload notes"
-              value={notes}
-              multiline
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          </Section>
-          <Section>
-            <SectionTitle>Failed jobs</SectionTitle>
+          </SectionAccordion>
+          <SectionAccordion
+            title="Shared root causes"
+            count={payloadNotes.length}
+            expanded={expanded.causes}
+            onChange={toggleSection('causes')}
+          >
+            {payloadNotes.map((note, index) => (
+              <Entry key={note.draftId}>
+                <Field
+                  fullWidth
+                  label="Cause id"
+                  value={note.id}
+                  onChange={(event) => updatePayloadNote(index, { id: event.target.value })}
+                />
+                <Field
+                  fullWidth
+                  label="Title"
+                  value={note.text}
+                  onChange={(event) => updatePayloadNote(index, { text: event.target.value })}
+                />
+                {note.links.map((link, linkIndex) => (
+                  <Box key={link.draftId}>
+                    <Field
+                      fullWidth
+                      label="Link label"
+                      value={link.label}
+                      onChange={(event) =>
+                        updatePayloadNote(index, {
+                          links: note.links.map((item, i) =>
+                            i === linkIndex ? { ...item, label: event.target.value } : item,
+                          ),
+                        })
+                      }
+                    />
+                    <Field
+                      fullWidth
+                      label="Link URL"
+                      value={link.url}
+                      onChange={(event) =>
+                        updatePayloadNote(index, {
+                          links: note.links.map((item, i) =>
+                            i === linkIndex ? { ...item, url: event.target.value } : item,
+                          ),
+                        })
+                      }
+                    />
+                    <EntryActions>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() =>
+                          updatePayloadNote(index, {
+                            links: note.links.filter((_, i) => i !== linkIndex),
+                          })
+                        }
+                      >
+                        Remove link
+                      </Button>
+                    </EntryActions>
+                  </Box>
+                ))}
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    updatePayloadNote(index, { links: [...note.links, newCauseLink()] })
+                  }
+                >
+                  Add link
+                </Button>
+                <Field
+                  fullWidth
+                  label="Link URL"
+                  value={note.url}
+                  helperText="Optional single link. Use the list above for more than one."
+                  onChange={(event) => updatePayloadNote(index, { url: event.target.value })}
+                />
+                <EntryActions>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() =>
+                      setPayloadNotes((current) => current.filter((_, i) => i !== index))
+                    }
+                  >
+                    Remove cause
+                  </Button>
+                </EntryActions>
+              </Entry>
+            ))}
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => setPayloadNotes((current) => [...current, newNoteDraft()])}
+            >
+              Add cause
+            </Button>
+          </SectionAccordion>
+          <SectionAccordion
+            title="Failed jobs"
+            count={jobs.length}
+            expanded={expanded.jobs}
+            onChange={toggleSection('jobs')}
+          >
             {jobs.map((job, index) => (
               <Entry key={job.draftId}>
                 <Field
@@ -414,10 +706,43 @@ const UpsertPayloadItemDialog = ({
                   onChange={(event) => updateJob(index, { url: event.target.value })}
                 />
                 <Field
+                  select
                   fullWidth
-                  label="Job notes"
+                  label="Root causes"
+                  value={job.noteIds}
+                  helperText="Choose one or more shared causes"
+                  slotProps={{ select: { multiple: true } }}
+                  onChange={(event) => {
+                    const value = event.target.value as string | string[]
+                    updateJob(index, {
+                      noteIds: typeof value === 'string' ? value.split(',') : value,
+                    })
+                  }}
+                >
+                  {causeChoices(payloadNotes, job.noteIds).map((id) => (
+                    <MenuItem key={id} value={id}>
+                      {id}
+                    </MenuItem>
+                  ))}
+                </Field>
+                <Field
+                  fullWidth
+                  label="Job-specific note"
                   value={job.notes}
                   onChange={(event) => updateJob(index, { notes: event.target.value })}
+                />
+                <Field
+                  fullWidth
+                  label="Later pass tag"
+                  value={job.laterPassTag}
+                  helperText="Newer payload where this job succeeded"
+                  onChange={(event) => updateJob(index, { laterPassTag: event.target.value })}
+                />
+                <Field
+                  fullWidth
+                  label="Later pass URL"
+                  value={job.laterPassURL}
+                  onChange={(event) => updateJob(index, { laterPassURL: event.target.value })}
                 />
                 <EntryActions>
                   <Button
@@ -437,9 +762,13 @@ const UpsertPayloadItemDialog = ({
             >
               Add job
             </Button>
-          </Section>
-          <Section>
-            <SectionTitle>Links</SectionTitle>
+          </SectionAccordion>
+          <SectionAccordion
+            title="Links"
+            count={links.filter((link) => link.url.trim() !== '').length}
+            expanded={expanded.links}
+            onChange={toggleSection('links')}
+          >
             {links.map((link, index) => (
               <Entry key={link.id ?? `new-${index}`}>
                 <Field
@@ -481,7 +810,7 @@ const UpsertPayloadItemDialog = ({
             >
               Add link
             </Button>
-          </Section>
+          </SectionAccordion>
         </Fields>
         {error && <ErrorText>{error}</ErrorText>}
       </Content>
