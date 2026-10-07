@@ -43,3 +43,11 @@ export const outagePath = (outage: {
 }) => `/${outage.component_name}/${outage.sub_component_name}/outages/${outage.ID}`
 
 export const openedLabel = (start: string) => `Opened ${relativeTime(new Date(start), new Date())}`
+
+export const finishedLabel = (iso: string) => {
+  const finished = new Date(iso)
+  if (Number.isNaN(finished.getTime())) {
+    return ''
+  }
+  return `Finished ${relativeTime(finished, new Date())}`
+}

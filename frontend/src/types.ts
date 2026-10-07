@@ -183,17 +183,38 @@ export interface SLOEvaluation {
   result?: unknown
 }
 
+export interface SLOSharedCauseLink {
+  label: string
+  url: string
+}
+
+export interface SLOSharedCause {
+  id: string
+  text: string
+  url?: string
+  links?: SLOSharedCauseLink[]
+}
+
+export interface SLOLaterPass {
+  tag: string
+  url: string
+}
+
 export interface SLOJob {
   name: string
   url: string
   state: string
   notes?: string
+  note_ids?: string[]
+  later_pass?: SLOLaterPass
   recurring_count?: number
 }
 
 export interface SLOPayloadDetails {
   payload_url?: string
   analysis_url?: string
+  finished_at?: string
+  shared_causes?: SLOSharedCause[]
   jobs: SLOJob[]
 }
 

@@ -25,6 +25,10 @@ const (
 	upgradeJob = "e2e-aws-ovn-upgrade"
 	metalJob   = "e2e-metal-ipi-ovn-serial"
 
+	// noteDisruptionID is the shared cause on the two newest rejected payloads
+	// of the first stream. The newest of those records a later pass on the upgrade job.
+	noteDisruptionID = "trt-4120"
+
 	// PruneCandidateItemKey is one rejected payload on the first stream.
 	// PruneCandidateAgo sits a full day past the 24h retention window, so a long
 	// e2e run cannot move the row back into the window or into the last-N set
@@ -49,6 +53,8 @@ type payloadSpec struct {
 	ago      time.Duration
 	outcome  string
 	jobs     []payloadv1.PayloadJob
+	notes    []payloadv1.SharedCause
+	itemNote string
 	analysis bool
 }
 
@@ -155,16 +161,51 @@ func MissIndex(n int) int {
 }
 
 func recentRejectSpecs(n int) []payloadSpec {
-	upgrade := failedJob(upgradeJob, "Same disruption as TRT-4120. Not infra.")
-	metal := failedJob(metalJob, "Likely flake. Watching next payload.")
+	sharedUpgrade := failedJob(upgradeJob, "7/7 children disrupted.", noteDisruptionID)
+	// itemFor fills tag and URL from the next payload in the stream.
+	sharedUpgrade.LaterPass = &payloadv1.LaterPass{}
+	sharedMetal := failedJob(metalJob, "Serial suite timed out.", noteDisruptionID)
+	singleUpgrade := failedJob(upgradeJob, "7/7 children disrupted.", noteDisruptionID)
+	withPass := specWithJobs(2*time.Hour, "Rejected", true, sharedUpgrade, sharedMetal)
+	withPass.itemNote = "OVN disruption is blocking this payload. The metal failure looks related."
 	specs := []payloadSpec{
-		{ago: 2 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade, metal}, analysis: true},
+		withPass,
+		{
+			ago:      4 * time.Hour,
+			outcome:  "Rejected",
+			analysis: true,
+			jobs: []payloadv1.PayloadJob{
+				failedJob(upgradeJob, "7/7 children disrupted."),
+				failedJob(metalJob, "Serial suite timed out."),
+				failedJob("e2e-gcp-ovn", "Install timed out."),
+				failedJob("e2e-aws-ovn-serial", "Disruption above the allowed budget."),
+			},
+		},
 		{ago: 6 * time.Hour, outcome: "Accepted"},
-		{ago: 12 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
-		{ago: 16 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{metal}, analysis: true},
+		specWithJobs(12*time.Hour, "Rejected", true, singleUpgrade),
 		{ago: 20 * time.Hour, outcome: "Accepted"},
 	}
-	return applyStreaks(fitSpecs(specs, n, 2))
+	// The leading rows are the demo rejects. recent_payloads is often 2, which
+	// would drop the accept that keeps this stream met. Keep that accept.
+	fitted := fitSpecs(specs, n, 2)
+	if !specsIncludeAccept(fitted) {
+		for _, spec := range specs {
+			if spec.outcome == "Accepted" {
+				fitted = append(fitted, spec)
+				break
+			}
+		}
+	}
+	return applyStreaks(fitted)
+}
+
+func specsIncludeAccept(specs []payloadSpec) bool {
+	for _, spec := range specs {
+		if spec.outcome == "Accepted" {
+			return true
+		}
+	}
+	return false
 }
 
 func metSpecs(n int, acceptAgo time.Duration) []payloadSpec {
@@ -225,13 +266,16 @@ func itemFor(now time.Time, team string, stream payloadv1.Stream, spec payloadSp
 	occurred := now.Add(-spec.ago).UTC()
 	name := stream.Name
 	tag := name + "-" + occurred.Format("2006-01-02-150405")
-	jobs := spec.jobs
+	jobs := append([]payloadv1.PayloadJob(nil), spec.jobs...)
 	if jobs == nil {
 		jobs = []payloadv1.PayloadJob{}
 	}
+	fillLaterPasses(jobs, name, occurred)
 	doc := payloadv1.PayloadDetails{
-		PayloadURL: fmt.Sprintf("https://%s.ocp.releases.ci.openshift.org/releasestream/%s/release/%s", stream.ReleaseController, name, tag),
-		Jobs:       jobs,
+		PayloadURL:   fmt.Sprintf("https://%s.ocp.releases.ci.openshift.org/releasestream/%s/release/%s", stream.ReleaseController, name, tag),
+		FinishedAt:   occurred.Format(time.RFC3339),
+		SharedCauses: spec.notes,
+		Jobs:         jobs,
 	}
 	if spec.analysis {
 		doc.AnalysisURL = fmt.Sprintf("https://storage.googleapis.com/test-platform-results-public/payload-agent/%s.html", tag)
@@ -252,6 +296,7 @@ func itemFor(now time.Time, team string, stream payloadv1.Stream, spec payloadSp
 		OccurredAt:    occurred,
 		Outcome:       spec.outcome,
 		Details:       details,
+		Notes:         spec.itemNote,
 		UpdatedBy:     UpdatedBy,
 	}, nil
 }
@@ -303,6 +348,7 @@ func attachSampleLinks(seeded []seededItem, streams []payloadv1.Stream, outageUR
 				LinkType: "outage",
 				OutageID: &id,
 			})
+			addIncidentLink(&seeded[row].item, outageURL)
 		}
 	}
 }
@@ -458,11 +504,90 @@ func jobFailed(spec payloadSpec, name string) bool {
 	return false
 }
 
-func failedJob(name, notes string) payloadv1.PayloadJob {
+func specWithJobs(ago time.Duration, outcome string, analysis bool, jobs ...payloadv1.PayloadJob) payloadSpec {
+	return payloadSpec{
+		ago:      ago,
+		outcome:  outcome,
+		jobs:     jobs,
+		notes:    notesForJobs(jobs),
+		analysis: analysis,
+	}
+}
+
+func notesForJobs(jobs []payloadv1.PayloadJob) []payloadv1.SharedCause {
+	var notes []payloadv1.SharedCause
+	seen := map[string]bool{}
+	for _, job := range jobs {
+		for _, id := range job.NoteIDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			notes = append(notes, payloadNote(id))
+		}
+	}
+	return notes
+}
+
+func payloadNote(id string) payloadv1.SharedCause {
+	switch id {
+	case noteDisruptionID:
+		return payloadv1.SharedCause{
+			ID:   id,
+			Text: "Same disruption as TRT-4120. Not infra.",
+			Links: []payloadv1.SharedCauseLink{{
+				Label: "Jira",
+				URL:   JiraURL,
+			}},
+		}
+	default:
+		return payloadv1.SharedCause{ID: id}
+	}
+}
+
+// fillLaterPasses stamps a sample later_pass onto jobs that opted in.
+// The tag is the next payload in the same stream, one hour after this failure.
+func fillLaterPasses(jobs []payloadv1.PayloadJob, stream string, occurred time.Time) {
+	laterAt := occurred.Add(time.Hour).UTC()
+	tag := stream + "-" + laterAt.Format("2006-01-02-150405")
+	for i := range jobs {
+		if jobs[i].LaterPass == nil {
+			continue
+		}
+		jobs[i].LaterPass = &payloadv1.LaterPass{
+			Tag: tag,
+			URL: "https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs/" + jobs[i].Name + "/" + tag,
+		}
+	}
+}
+
+func addIncidentLink(item *types.SLOWorkspaceItem, outageURL string) {
+	var doc payloadv1.PayloadDetails
+	if err := json.Unmarshal(item.Details, &doc); err != nil {
+		return
+	}
+	for i := range doc.SharedCauses {
+		if doc.SharedCauses[i].ID != noteDisruptionID {
+			continue
+		}
+		doc.SharedCauses[i].Links = append(doc.SharedCauses[i].Links, payloadv1.SharedCauseLink{
+			Label: "incident",
+			URL:   outageURL,
+		})
+	}
+	details, err := json.Marshal(doc)
+	if err != nil {
+		return
+	}
+	item.Details = details
+}
+
+func failedJob(name, notes string, noteIDs ...string) payloadv1.PayloadJob {
 	return payloadv1.PayloadJob{
-		Name:  name,
-		URL:   "https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs/" + name,
-		State: "failure",
-		Notes: notes,
+		Name:    name,
+		URL:     "https://prow.ci.openshift.org/view/gs/test-platform-results-public/logs/" + name,
+		State:   "failure",
+		Notes:   notes,
+		NoteIDs: noteIDs,
 	}
 }

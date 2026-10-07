@@ -7,6 +7,32 @@
   "properties": {
     "payload_url": { "type": "string", "minLength": 1 },
     "analysis_url": { "type": "string" },
+    "finished_at": { "type": "string", "minLength": 1 },
+    "shared_causes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "url": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "url"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1 },
+                "url": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
     "jobs": {
       "type": "array",
       "items": {
@@ -18,6 +44,19 @@
           "url": { "type": "string", "minLength": 1 },
           "state": { "type": "string", "minLength": 1 },
           "notes": { "type": "string" },
+          "note_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "later_pass": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tag", "url"],
+            "properties": {
+              "tag": { "type": "string", "minLength": 1 },
+              "url": { "type": "string", "minLength": 1 }
+            }
+          },
           "recurring_count": { "type": "integer", "minimum": 0 }
         }
       }

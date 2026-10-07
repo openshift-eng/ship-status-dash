@@ -104,6 +104,73 @@ func TestRoleAt(t *testing.T) {
 	assert.Equal(t, []int{0, 1}, JiraStreamIndexes(2))
 }
 
+func TestRecentRejectStaysMetWhenRecentListIsShort(t *testing.T) {
+	now := time.Date(2026, 9, 29, 16, 0, 0, 0, time.UTC)
+	cases := [][]payloadv1.Stream{
+		{
+			{ReleaseController: "amd64", Name: "5.1.0-0.nightly"},
+			{ReleaseController: "amd64", Name: "5.1.0-0.ci"},
+		},
+		{
+			{ReleaseController: "amd64", Name: "5.1.0-0.nightly"},
+			{ReleaseController: "amd64", Name: "5.1.0-0.ci"},
+			{ReleaseController: "amd64", Name: "5.0.0-0.nightly"},
+			{ReleaseController: "amd64", Name: "5.0.0-0.ci"},
+		},
+	}
+	for _, streams := range cases {
+		t.Run(streams[len(streams)-1].Name, func(t *testing.T) {
+			seeded, err := buildSeed(now, "TRT", streams, 2)
+			require.NoError(t, err)
+			items := make([]types.SLOWorkspaceItem, 0, len(seeded))
+			for _, row := range seeded {
+				items = append(items, row.item)
+			}
+			assertConsistentStreaks(t, items)
+
+			spec, err := json.Marshal(payloadv1.Settings{Window: "24h", MinAccepted: 1, RecentPayloads: 2, Streams: streams})
+			require.NoError(t, err)
+			team := &types.TeamSLOConfig{
+				Team: "TRT",
+				SLOs: []types.NamedSLO{{
+					Name:   "accepted-payload-per-day",
+					Source: payloadv1.Source,
+					Workspace: &types.SLOWorkspace{
+						Kind:          payloadv1.Kind,
+						SchemaVersion: payloadv1.SchemaVersion,
+						Spec:          spec,
+					},
+				}},
+			}
+			got, err := slo.Evaluate(now, team, items)
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+			assert.False(t, got[0].Met)
+			var result payloadv1.Result
+			require.NoError(t, json.Unmarshal(got[0].Result, &result))
+
+			byStream := map[string]payloadv1.GroupEval{}
+			for _, group := range result.Groups {
+				byStream[group.Key] = group
+			}
+			recent := streams[0].Name
+			assert.True(t, byStream[recent].Met)
+			assert.GreaterOrEqual(t, byStream[recent].Accepted, 1)
+			rows := itemsForStream(items, recent)
+			require.GreaterOrEqual(t, len(rows), 3)
+			assert.Equal(t, "Rejected", rows[0].Outcome)
+			assert.Equal(t, "Rejected", rows[1].Outcome)
+			assert.Len(t, jobsOf(t, rows[1]), 4)
+			assert.Equal(t, "Accepted", rows[2].Outcome)
+
+			miss := streams[MissIndex(len(streams))].Name
+			assert.False(t, byStream[miss].Met)
+			assert.Equal(t, 0, byStream[miss].Accepted)
+			require.NotNil(t, byStream[miss].LastAcceptedAt)
+		})
+	}
+}
+
 func TestBuildSeed(t *testing.T) {
 	now := time.Date(2026, 9, 29, 16, 0, 0, 0, time.UTC)
 	streams := []payloadv1.Stream{
@@ -187,6 +254,32 @@ func TestBuildSeed(t *testing.T) {
 	assert.True(t, byStream[streams[0].Name].Met)
 	assert.Equal(t, "Rejected", newest(items, streams[0].Name).Outcome)
 	assert.Contains(t, string(newest(items, streams[0].Name).Details), "https://amd64.ocp.releases.ci.openshift.org/")
+	noted := itemsWithPayloadNotes(t, items)
+	require.Len(t, noted, 2)
+	assert.Equal(t, streams[0].Name, noted[0].GroupKey)
+	assert.Equal(t, streams[0].Name, noted[1].GroupKey)
+	assertSeededNotes(t, noted[0], []string{noteDisruptionID}, []string{noteDisruptionID})
+	assert.NotEmpty(t, noted[0].Notes)
+	assert.Empty(t, noted[1].Notes)
+	assertSeededNotes(t, noted[1], []string{noteDisruptionID})
+	assertCauseLinks(t, noted[0], "Jira", "incident")
+	assertCauseLinks(t, noted[1], "Jira")
+	assert.Equal(t, "/trt-incidents/incidents/outages/7", causeLink(t, noted[0], "incident"))
+	assertLaterPass(t, noted[0], upgradeJob, true)
+	assertLaterPass(t, noted[0], metalJob, false)
+	assertLaterPass(t, noted[1], upgradeJob, false)
+	var crowded []types.SLOWorkspaceItem
+	for _, item := range items {
+		if len(jobsOf(t, item)) > 3 {
+			crowded = append(crowded, item)
+		}
+	}
+	require.Len(t, crowded, 1)
+	assert.Equal(t, streams[0].Name, crowded[0].GroupKey)
+	assert.Len(t, jobsOf(t, crowded[0]), 4)
+	visible := itemsForStream(items, streams[0].Name)
+	require.GreaterOrEqual(t, len(visible), 2)
+	assert.Equal(t, crowded[0].ItemKey, visible[1].ItemKey)
 	assert.True(t, byStream[streams[1].Name].Met)
 	assert.True(t, byStream[streams[3].Name].Met)
 	assert.True(t, byStream[streams[4].Name].Met)
@@ -256,6 +349,103 @@ func assertConsistentStreaks(t *testing.T, items []types.SLOWorkspaceItem) {
 	}
 }
 
+func itemsWithPayloadNotes(t *testing.T, items []types.SLOWorkspaceItem) []types.SLOWorkspaceItem {
+	t.Helper()
+	var noted []types.SLOWorkspaceItem
+	for _, item := range items {
+		var doc payloadv1.PayloadDetails
+		require.NoError(t, json.Unmarshal(item.Details, &doc))
+		if len(doc.SharedCauses) > 0 {
+			noted = append(noted, item)
+		}
+	}
+	sort.Slice(noted, func(i, j int) bool {
+		return noted[i].OccurredAt.After(noted[j].OccurredAt)
+	})
+	return noted
+}
+
+func assertSeededNotes(t *testing.T, item types.SLOWorkspaceItem, jobNoteIDs ...[]string) {
+	t.Helper()
+	var doc payloadv1.PayloadDetails
+	require.NoError(t, json.Unmarshal(item.Details, &doc))
+	assert.Equal(t, item.OccurredAt.Format(time.RFC3339), doc.FinishedAt)
+	require.Len(t, doc.Jobs, len(jobNoteIDs))
+	seen := map[string]payloadv1.SharedCause{}
+	for _, note := range doc.SharedCauses {
+		seen[note.ID] = note
+		assert.NotEmpty(t, note.Text)
+	}
+	if cause, ok := seen[noteDisruptionID]; ok {
+		require.NotEmpty(t, cause.Links)
+		assert.Equal(t, "Jira", cause.Links[0].Label)
+		assert.Equal(t, JiraURL, cause.Links[0].URL)
+	}
+	for i, ids := range jobNoteIDs {
+		assert.Equal(t, ids, doc.Jobs[i].NoteIDs)
+		for _, id := range ids {
+			_, ok := seen[id]
+			assert.True(t, ok, "job %s references missing note %s", doc.Jobs[i].Name, id)
+		}
+	}
+}
+
+func assertCauseLinks(t *testing.T, item types.SLOWorkspaceItem, labels ...string) {
+	t.Helper()
+	cause := noteByID(t, item, noteDisruptionID)
+	require.Len(t, cause.Links, len(labels))
+	for i, label := range labels {
+		assert.Equal(t, label, cause.Links[i].Label)
+		assert.NotEmpty(t, cause.Links[i].URL)
+	}
+}
+
+func causeLink(t *testing.T, item types.SLOWorkspaceItem, label string) string {
+	t.Helper()
+	for _, link := range noteByID(t, item, noteDisruptionID).Links {
+		if link.Label == label {
+			return link.URL
+		}
+	}
+	t.Fatalf("cause %s has no %s link", noteDisruptionID, label)
+	return ""
+}
+
+func assertLaterPass(t *testing.T, item types.SLOWorkspaceItem, jobName string, want bool) {
+	t.Helper()
+	var doc payloadv1.PayloadDetails
+	require.NoError(t, json.Unmarshal(item.Details, &doc))
+	var job *payloadv1.PayloadJob
+	for i := range doc.Jobs {
+		if doc.Jobs[i].Name == jobName {
+			job = &doc.Jobs[i]
+		}
+	}
+	require.NotNil(t, job)
+	if !want {
+		assert.Nil(t, job.LaterPass)
+		return
+	}
+	require.NotNil(t, job.LaterPass)
+	assert.NotEmpty(t, job.LaterPass.Tag)
+	assert.Contains(t, job.LaterPass.Tag, item.GroupKey)
+	assert.NotEqual(t, item.ItemKey, job.LaterPass.Tag)
+	assert.Contains(t, job.LaterPass.URL, job.LaterPass.Tag)
+}
+
+func noteByID(t *testing.T, item types.SLOWorkspaceItem, id string) payloadv1.SharedCause {
+	t.Helper()
+	var doc payloadv1.PayloadDetails
+	require.NoError(t, json.Unmarshal(item.Details, &doc))
+	for _, note := range doc.SharedCauses {
+		if note.ID == id {
+			return note
+		}
+	}
+	t.Fatalf("payload %s has no note %s", item.ItemKey, id)
+	return payloadv1.SharedCause{}
+}
+
 func jobsOf(t *testing.T, item types.SLOWorkspaceItem) []payloadv1.PayloadJob {
 	t.Helper()
 	var doc payloadv1.PayloadDetails
@@ -270,6 +460,19 @@ func failedJobNamed(jobs []payloadv1.PayloadJob, name string) bool {
 		}
 	}
 	return false
+}
+
+func itemsForStream(items []types.SLOWorkspaceItem, stream string) []types.SLOWorkspaceItem {
+	var rows []types.SLOWorkspaceItem
+	for _, item := range items {
+		if item.GroupKey == stream && item.ItemKey != PruneCandidateItemKey {
+			rows = append(rows, item)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].OccurredAt.After(rows[j].OccurredAt)
+	})
+	return rows
 }
 
 func newest(items []types.SLOWorkspaceItem, stream string) types.SLOWorkspaceItem {

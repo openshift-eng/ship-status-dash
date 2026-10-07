@@ -28,6 +28,72 @@ func TestValidateDetails(t *testing.T) {
 		{name: "unknown field", kind: payloadv1.Kind, version: 1, details: []byte(`{"payload_url":"https://example.test","jobs":[],"extra":1}`), wantErr: "invalid payload_streams"},
 		{name: "unknown version", kind: payloadv1.Kind, version: 2, details: ok, wantErr: "unknown workspace schema"},
 		{name: "missing payload url", kind: payloadv1.Kind, version: 1, details: []byte(`{"jobs":[]}`), wantErr: "payload_url is required"},
+		{
+			name:    "shared causes and job references",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew","url":"https://prow.example/run"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1"],"notes":"7/7 children"}]}`),
+		},
+		{
+			name:    "finished at",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","finished_at":"2026-10-06T16:00:00Z","jobs":[]}`),
+		},
+		{
+			name:    "finished at not a timestamp",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","finished_at":"yesterday","jobs":[]}`),
+			wantErr: "finished_at must be RFC3339",
+		},
+		{
+			name:    "cause links",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"TRT-1","text":"OVN disruption","links":[{"label":"Jira","url":"https://issues.redhat.com/browse/TRT-1"},{"label":"incident","url":"https://example.test/incident"}]}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["TRT-1"]}]}`),
+		},
+		{
+			name:    "blank cause link",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew","links":[{"label":"","url":"https://example.test"}]}],"jobs":[]}`),
+			wantErr: "links[0].label is required",
+		},
+		{
+			name:    "later pass on a job",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","later_pass":{"tag":"5.1.0-0.nightly-2026-10-06-120000","url":"https://prow.example/pass"}}]}`),
+		},
+		{
+			name:    "later pass missing url",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","later_pass":{"tag":"later"}}]}`),
+			wantErr: "later_pass.url is required",
+		},
+		{
+			name:    "cause id with surrounding whitespace",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":" 1","text":"skew"}],"jobs":[]}`),
+			wantErr: "must not have surrounding whitespace",
+		},
+		{
+			name:    "note id with surrounding whitespace",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1 "]}]}`),
+			wantErr: "note_ids[0] must not have surrounding whitespace",
+		},
+		{
+			name:    "unknown note id",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["missing"]}]}`),
+			wantErr: "does not match a shared cause",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
