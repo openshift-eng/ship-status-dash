@@ -258,17 +258,6 @@ const PassLine = styled(Box)(({ theme }) => ({
   gap: theme.spacing(0.75),
 }))
 
-const isPassNote = (id: string) => id.startsWith('passed:')
-
-const passBelongsToJob = (note: SLOSharedCause, job: SLOJob, jobs: SLOJob[]) => {
-  const referenced = jobs.some((item) => (item.note_ids ?? []).includes(note.id))
-  if (referenced) {
-    return (job.note_ids ?? []).includes(note.id)
-  }
-  const suffix = note.id.slice('passed:'.length)
-  return suffix === job.name || suffix.startsWith(`${job.name}:`)
-}
-
 const causeDomId = (itemKey: string, noteId: string, index: number) =>
   `cause-${slugify(itemKey) || 'payload'}-${index}-${slugify(noteId) || 'cause'}`
 
@@ -297,9 +286,7 @@ const failedJobsLabel = (count: number) =>
   `${count} blocking ${count === 1 ? 'job' : 'jobs'} failed`
 
 const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: FailedJobsProps) => {
-  const causes = notes.filter((note) => !isPassNote(note.id))
-  const passes = notes.filter((note) => isPassNote(note.id))
-  const causesById = new Map(causes.map((note) => [note.id, note]))
+  const causesById = new Map(notes.map((note) => [note.id, note]))
   const [jobsOpen, setJobsOpen] = useState(jobs.length <= 3)
   return (
     <>
@@ -315,8 +302,7 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
           {jobsOpen && (
             <JobList>
               {jobs.map((job) => {
-                const noteIDs = (job.note_ids ?? []).filter((id) => !isPassNote(id))
-                const jobPasses = passes.filter((note) => passBelongsToJob(note, job, jobs))
+                const noteIDs = job.note_ids ?? []
                 return (
                   <JobRow key={job.name}>
                     <div>
@@ -337,7 +323,7 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                       )}
                     </div>
                     <div>
-                      {causes.length > 0 && <FieldLabel>Root causes</FieldLabel>}
+                      {notes.length > 0 && <FieldLabel>Root causes</FieldLabel>}
                       {noteIDs.length > 0 ? (
                         <CauseRefs>
                           {noteIDs.map((noteId) => {
@@ -355,7 +341,7 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                             const domId = causeDomId(
                               itemKey,
                               cause.id,
-                              causes.findIndex((item) => item.id === cause.id),
+                              notes.findIndex((item) => item.id === cause.id),
                             )
                             return (
                               <Chip
@@ -372,11 +358,11 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                           })}
                         </CauseRefs>
                       ) : (
-                        causes.length > 0 && <JobNote>Cause pending</JobNote>
+                        notes.length > 0 && <JobNote>Cause pending</JobNote>
                       )}
                     </div>
                     <div>{job.notes && <JobNote>{job.notes}</JobNote>}</div>
-                    {job.later_pass ? (
+                    {job.later_pass && (
                       <PassLine>
                         <Chip size="small" color="success" variant="outlined" label="Later pass" />
                         <JobNote component="span">Passed on {job.later_pass.tag}</JobNote>
@@ -384,23 +370,6 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                           Prow run
                         </Link>
                       </PassLine>
-                    ) : (
-                      jobPasses.map((note) => (
-                        <PassLine key={note.id}>
-                          <Chip
-                            size="small"
-                            color="success"
-                            variant="outlined"
-                            label="Later pass"
-                          />
-                          <JobNote component="span">{note.text}</JobNote>
-                          {note.url && (
-                            <Link href={note.url} target="_blank" rel="noopener noreferrer">
-                              Prow run
-                            </Link>
-                          )}
-                        </PassLine>
-                      ))
                     )}
                   </JobRow>
                 )
@@ -413,11 +382,11 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
           <ClearJobsIcon role="img" aria-label="No failed blocking jobs" />
         </ClearJobs>
       )}
-      {causes.length > 0 && (
+      {notes.length > 0 && (
         <Box marginTop={jobs.length > 0 ? 1.5 : 0}>
           <SectionLabel>Shared root causes</SectionLabel>
           <CauseList>
-            {causes.map((note, index) => {
+            {notes.map((note, index) => {
               const domId = causeDomId(itemKey, note.id, index)
               const count = jobsReferencing(jobs, note.id)
               const links = causeLinks(note)

@@ -415,9 +415,6 @@ func assertLaterPass(t *testing.T, item types.SLOWorkspaceItem, jobName string, 
 	t.Helper()
 	var doc payloadv1.PayloadDetails
 	require.NoError(t, json.Unmarshal(item.Details, &doc))
-	for _, note := range doc.SharedCauses {
-		assert.NotContains(t, note.ID, "passed:")
-	}
 	var job *payloadv1.PayloadJob
 	for i := range doc.Jobs {
 		if doc.Jobs[i].Name == jobName {
@@ -434,9 +431,6 @@ func assertLaterPass(t *testing.T, item types.SLOWorkspaceItem, jobName string, 
 	assert.Contains(t, job.LaterPass.Tag, item.GroupKey)
 	assert.NotEqual(t, item.ItemKey, job.LaterPass.Tag)
 	assert.Contains(t, job.LaterPass.URL, job.LaterPass.Tag)
-	for _, id := range job.NoteIDs {
-		assert.NotContains(t, id, "passed:")
-	}
 }
 
 func noteByID(t *testing.T, item types.SLOWorkspaceItem, id string) payloadv1.SharedCause {

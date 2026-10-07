@@ -183,31 +183,6 @@ const newJobDraft = (
   }
 }
 
-const migrateLegacyPasses = (notes: SLOSharedCause[], jobs: SLOJob[]) => {
-  const converted = new Set<string>()
-  const nextJobs = jobs.map((job) => {
-    if (job.later_pass) {
-      return job
-    }
-    const prefix = `passed:${job.name}:`
-    const note = notes.find(
-      (item) => !converted.has(item.id) && item.id.startsWith(prefix) && item.url,
-    )
-    if (!note?.url) {
-      return job
-    }
-    converted.add(note.id)
-    return { ...job, later_pass: { tag: note.id.slice(prefix.length), url: note.url } }
-  })
-  return {
-    notes: notes.filter((note) => !converted.has(note.id)),
-    jobs: nextJobs.map((job) => ({
-      ...job,
-      note_ids: (job.note_ids ?? []).filter((id) => !converted.has(id)),
-    })),
-  }
-}
-
 const newNoteDraft = (
   partial?: Partial<Omit<NoteDraft, 'links'>> & { links?: SLOSharedCauseLink[] },
 ): NoteDraft => {
@@ -222,9 +197,7 @@ const newNoteDraft = (
 }
 
 const causeChoices = (notes: NoteDraft[], selected: string[]) => {
-  const ids = notes
-    .map((note) => note.id.trim())
-    .filter((id) => id !== '' && !id.startsWith('passed:'))
+  const ids = notes.map((note) => note.id.trim()).filter((id) => id !== '')
   selected.forEach((id) => {
     if (id !== '' && !ids.includes(id)) {
       ids.push(id)
@@ -331,11 +304,12 @@ const UpsertPayloadItemDialog = ({
   const [payloadURL, setPayloadURL] = useState(item?.details.payload_url ?? '')
   const [analysisURL, setAnalysisURL] = useState(item?.details.analysis_url ?? '')
   const [notes, setNotes] = useState(item?.notes ?? '')
-  const migrated = migrateLegacyPasses(item?.details.shared_causes ?? [], item?.details.jobs ?? [])
   const [payloadNotes, setPayloadNotes] = useState<NoteDraft[]>(
-    migrated.notes.map((note) => newNoteDraft(note)),
+    (item?.details.shared_causes ?? []).map((note) => newNoteDraft(note)),
   )
-  const [jobs, setJobs] = useState<JobDraft[]>(migrated.jobs.map((job) => newJobDraft(job)))
+  const [jobs, setJobs] = useState<JobDraft[]>(
+    (item?.details.jobs ?? []).map((job) => newJobDraft(job)),
+  )
   const [links, setLinks] = useState<LinkDraft[]>(initialLinks(item))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -453,13 +427,10 @@ const UpsertPayloadItemDialog = ({
             ...(noteLinks.length > 0 ? { links: noteLinks } : {}),
           }
         })
-      const retainedCauseIDs = new Set(bodyNotes.map((cause) => cause.id))
       const bodyJobs: SLOJob[] = jobs
         .filter((job) => job.name.trim() !== '')
         .map((job) => {
-          const noteIDs = job.noteIds
-            .map((id) => id.trim())
-            .filter((id) => id !== '' && (retainedCauseIDs.has(id) || !id.startsWith('passed:')))
+          const noteIDs = job.noteIds.map((id) => id.trim()).filter((id) => id !== '')
           const laterTag = job.laterPassTag.trim()
           const laterURL = job.laterPassURL.trim()
           return {

@@ -32,7 +32,7 @@ func TestValidateDetails(t *testing.T) {
 			name:    "shared causes and job references",
 			kind:    payloadv1.Kind,
 			version: 1,
-			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew"},{"id":"passed:e2e:tag","text":"passed","url":"https://prow.example/run"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1"],"notes":"7/7 children"}]}`),
+			details: []byte(`{"payload_url":"https://example.test","shared_causes":[{"id":"1","text":"skew","url":"https://prow.example/run"}],"jobs":[{"name":"e2e","url":"https://prow.example/job","state":"failure","note_ids":["1"],"notes":"7/7 children"}]}`),
 		},
 		{
 			name:    "finished at",
