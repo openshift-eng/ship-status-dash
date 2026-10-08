@@ -36,6 +36,9 @@ export const linkLabel = (link: { link_type: string; url: string }): string => {
   return link.link_type
 }
 
+export const subComponentPath = (componentName: string, subComponentName: string) =>
+  `/${slugify(componentName)}/${slugify(subComponentName)}`
+
 export const outagePath = (outage: {
   component_name: string
   sub_component_name: string
