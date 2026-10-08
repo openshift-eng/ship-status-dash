@@ -58,7 +58,7 @@ const SLOComponentWell = ({ block }: SLOComponentWellProps) => {
         </Title>
         <IconButton
           size="small"
-          aria-label={`View ${block.sub_component} incident history`}
+          aria-label={`View ${block.sub_component} outage history`}
           onClick={() => navigate(subComponentPath(block.component, block.sub_component))}
         >
           <HistoryIcon fontSize="small" />

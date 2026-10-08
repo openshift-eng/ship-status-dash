@@ -132,7 +132,7 @@ const ComponentSummaryWell = ({ block }: ComponentSummaryWellProps) => {
         </ComponentTitle>
         <IconButton
           size="small"
-          aria-label={`View ${block.sub_component} incident history`}
+          aria-label={`View ${block.sub_component} outage history`}
           onClick={(event) => {
             event.stopPropagation()
             navigate(subComponentPath(block.component, block.sub_component))

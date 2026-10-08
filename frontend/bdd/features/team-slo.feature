@@ -35,15 +35,15 @@ Feature: Team SLO workspace
   Scenario: SLO component well has a history link to the sub-component page
     Given I am not logged in
     When I open the TRT team SLO page
-    Then I should see the incident history button for "Incidents"
-    When I click the incident history button for "Incidents"
+    Then I should see the outage history button for "Incidents"
+    When I click the outage history button for "Incidents"
     Then I should be on the sub-component page for "trt-incidents/incidents"
 
   Scenario: Home page SLO summary has a history link to the sub-component page
     Given the TRT SLO is available
     When I open the main dashboard
-    Then I should see the incident history button for "Incidents"
-    When I click the incident history button for "Incidents"
+    Then I should see the outage history button for "Incidents"
+    When I click the outage history button for "Incidents"
     Then I should be on the sub-component page for "trt-incidents/incidents"
 
   Scenario: Editing a payload keeps the streak and existing link
