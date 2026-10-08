@@ -1,4 +1,5 @@
-import { Box, Card, styled, Typography } from '@mui/material'
+import HistoryIcon from '@mui/icons-material/History'
+import { Box, Card, IconButton, styled, Typography } from '@mui/material'
 import type { KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -7,7 +8,7 @@ import { worstOutageStatus } from '../../../utils/helpers'
 import { getStatusTintStyles } from '../../../utils/styles'
 import { StatusChip } from '../../StatusColors'
 
-import { formatAge, streamDomId } from './format'
+import { formatAge, streamDomId, subComponentPath } from './format'
 import SLOOutageCard from './SLOOutageCard'
 import { trtPayloadResult } from './trt/v1/result'
 
@@ -39,10 +40,16 @@ const TeamTitle = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.primary,
 }))
 
-const ComponentTitle = styled(Typography)(({ theme }) => ({
+const ComponentTitleRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(0.5),
+  marginBottom: theme.spacing(1.5),
+}))
+
+const ComponentTitle = styled(Typography)(() => ({
   fontWeight: 600,
   fontSize: '1rem',
-  marginBottom: theme.spacing(1.5),
 }))
 
 const Stack = styled(Box)(({ theme }) => ({
@@ -114,21 +121,37 @@ interface ComponentSummaryWellProps {
   block: SLOComponentBlock
 }
 
-const ComponentSummaryWell = ({ block }: ComponentSummaryWellProps) => (
-  <NestedWell status={worstOutageStatus(block.outages)}>
-    <ComponentTitle>
-      {block.component} / {block.sub_component}
-    </ComponentTitle>
-    {block.outages.length === 0 && <Meta>No active outages</Meta>}
-    {block.outages.length > 0 && (
-      <IncidentGrid>
-        {block.outages.map((outage) => (
-          <SLOOutageCard key={outage.ID} outage={outage} stopPropagation />
-        ))}
-      </IncidentGrid>
-    )}
-  </NestedWell>
-)
+const ComponentSummaryWell = ({ block }: ComponentSummaryWellProps) => {
+  const navigate = useNavigate()
+
+  return (
+    <NestedWell status={worstOutageStatus(block.outages)}>
+      <ComponentTitleRow>
+        <ComponentTitle>
+          {block.component} / {block.sub_component}
+        </ComponentTitle>
+        <IconButton
+          size="small"
+          aria-label={`View ${block.sub_component} outage history`}
+          onClick={(event) => {
+            event.stopPropagation()
+            navigate(subComponentPath(block.component, block.sub_component))
+          }}
+        >
+          <HistoryIcon fontSize="small" />
+        </IconButton>
+      </ComponentTitleRow>
+      {block.outages.length === 0 && <Meta>No active outages</Meta>}
+      {block.outages.length > 0 && (
+        <IncidentGrid>
+          {block.outages.map((outage) => (
+            <SLOOutageCard key={outage.ID} outage={outage} stopPropagation />
+          ))}
+        </IncidentGrid>
+      )}
+    </NestedWell>
+  )
+}
 
 interface TeamSummaryWellProps {
   team: string

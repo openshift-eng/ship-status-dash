@@ -65,6 +65,23 @@ Then('I should see {string}', async ({ page }, text: string) => {
   await expect(page.getByText(text, { exact: true }).first()).toBeVisible()
 })
 
+Then(
+  'I should see the outage history button for {string}',
+  async ({ page }, subComponent: string) => {
+    await expect(
+      page.getByRole('button', { name: `View ${subComponent} outage history` }),
+    ).toBeVisible()
+  },
+)
+
+When('I click the outage history button for {string}', async ({ page }, subComponent: string) => {
+  await page.getByRole('button', { name: `View ${subComponent} outage history` }).click()
+})
+
+Then('I should be on the sub-component page for {string}', async ({ page }, path: string) => {
+  await page.waitForURL(`**/${path}`)
+})
+
 Then('the payload save keeps recurring_count 3', async () => {
   expect(savedBodies).toHaveLength(1)
   expect(savedBodies[0].details?.jobs?.[0]?.recurring_count).toBe(3)
