@@ -2,7 +2,11 @@ import { expect } from '@playwright/test'
 import { createBdd } from 'playwright-bdd'
 
 import { installTRTSLOMocks, json, PROTECTED, setupApiMocks } from '../fixtures/apiMocks'
-import { mockTRTPayloadItem, mockTRTSLOUser } from '../fixtures/mockData'
+import {
+  mockLongUnbrokenPayloadNote,
+  mockTRTPayloadItem,
+  mockTRTSLOUser,
+} from '../fixtures/mockData'
 import { DashboardPage } from '../pages/DashboardPage'
 import { TeamSLOPage } from '../pages/TeamSLOPage'
 
@@ -63,6 +67,12 @@ When('I edit the payload and save', async ({ page }) => {
 
 Then('I should see {string}', async ({ page }, text: string) => {
   await expect(page.getByText(text, { exact: true }).first()).toBeVisible()
+})
+
+Then('the payload note should wrap within its value column', async ({ page }) => {
+  const note = page.getByText(mockLongUnbrokenPayloadNote, { exact: true })
+  await expect(note).toBeVisible()
+  expect(await note.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 })
 
 Then(

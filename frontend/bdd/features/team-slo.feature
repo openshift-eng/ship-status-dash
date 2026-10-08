@@ -32,6 +32,11 @@ Feature: Team SLO workspace
     Then I should not see the "Add payload" button
     And I should not see the "Edit" button
 
+  Scenario: Long unbroken payload note stays within its value column
+    Given I am not logged in
+    When I open the TRT team SLO page
+    Then the payload note should wrap within its value column
+
   Scenario: SLO component well has a history link to the sub-component page
     Given I am not logged in
     When I open the TRT team SLO page

@@ -338,6 +338,8 @@ export const mockTRTSLOUser: MockAuthUser = {
 
 const trtOccurredAt = '2026-09-25T12:00:00Z'
 
+export const mockLongUnbrokenPayloadNote = 'x'.repeat(300)
+
 export const mockTRTPayloadItem: SLOItem = {
   id: 7,
   kind: 'payload_streams',
@@ -357,7 +359,7 @@ export const mockTRTPayloadItem: SLOItem = {
       },
     ],
   },
-  notes: '',
+  notes: mockLongUnbrokenPayloadNote,
   updated_by: 'developer',
   links: [{ ID: 4, url: 'https://redhat.atlassian.net/browse/TRT-1', link_type: 'jira' }],
 }
