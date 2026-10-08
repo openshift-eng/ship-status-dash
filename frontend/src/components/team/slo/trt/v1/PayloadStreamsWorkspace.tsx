@@ -148,6 +148,7 @@ const JobNote = styled(Typography)(({ theme }) => ({
 const PayloadNote = styled(Typography)({
   fontSize: '0.875rem',
   whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
 })
 
 const JobsToggle = styled(Button)(({ theme }) => ({
