@@ -1,16 +1,13 @@
-.PHONY: build e2e test test-e2e-scripts mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd
+.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd
 
 build: build-frontend build-dashboard
 
 local-e2e:
 	@./test/e2e/scripts/local-e2e.sh
 
-test: test-e2e-scripts bdd
+test: bdd
 	@echo "Running unit tests..."
 	@gotestsum -- ./pkg/... ./cmd/... -v
-
-test-e2e-scripts:
-	@./test/e2e/scripts/port-forward-diagnostics_test.sh
 
 mcp-venv:
 	@for d in mcp ship-status-dev; do \
