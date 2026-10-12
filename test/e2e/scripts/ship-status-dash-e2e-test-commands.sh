@@ -12,26 +12,44 @@ export E2E_NS="${E2E_NS:=ship-status-e2e}"
 export TEST_DASHBOARD_CONFIG_PATH="${TEST_DASHBOARD_CONFIG_PATH:=dashboard-config}"
 export TEST_COMPONENT_MONITOR_CONFIG_PATH="${TEST_COMPONENT_MONITOR_CONFIG_PATH:=component-monitor-config}"
 export OPENSHIFT_CI="${OPENSHIFT_CI:=true}"
+export ARTIFACT_DIR="${ARTIFACT_DIR:=/tmp/ship_status_artifacts}"
+mkdir -p "${ARTIFACT_DIR}"
+read -r -a KUBECTL_COMMAND <<<"${KUBECTL_CMD}"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=test/e2e/scripts/port-forward-diagnostics.sh
+source "${SCRIPT_DIR}/port-forward-diagnostics.sh"
+
+PORT_FORWARD_NAMES=()
+PORT_FORWARD_PIDS=()
+
+start_port_forward() {
+  local name="$1"
+  local service="$2"
+  local local_port="$3"
+  local remote_port="$4"
+
+  port_forward_start "${name}" "${service}" "${local_port}" "${remote_port}"
+  PORT_FORWARD_NAMES+=("${name}")
+  PORT_FORWARD_PIDS+=("${PORT_FORWARD_PID}")
+}
 
 # Get the dashboard, mock-oauth-proxy, and mock-monitored-component service ports for port forwarding
-DASHBOARD_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc dashboard -o jsonpath='{.spec.ports[0].port}')
-PROXY_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc mock-oauth-proxy -o jsonpath='{.spec.ports[0].port}')
-MOCK_MONITORED_COMPONENT_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc mock-monitored-component -o jsonpath='{.spec.ports[0].port}')
+DASHBOARD_PORT=$("${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" get svc dashboard -o jsonpath='{.spec.ports[0].port}')
+PROXY_PORT=$("${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" get svc mock-oauth-proxy -o jsonpath='{.spec.ports[0].port}')
+MOCK_MONITORED_COMPONENT_PORT=$("${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" get svc mock-monitored-component -o jsonpath='{.spec.ports[0].port}')
 
 # Set up port forwarding to the dashboard
 echo "Setting up port forwarding to dashboard service..."
-${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/dashboard ${DASHBOARD_PORT}:${DASHBOARD_PORT} &
-DASHBOARD_PORT_FORWARD_PID=$!
+start_port_forward dashboard dashboard "${DASHBOARD_PORT}" "${DASHBOARD_PORT}"
 
 # Set up port forwarding to the mock-oauth-proxy
 echo "Setting up port forwarding to mock-oauth-proxy service..."
-${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/mock-oauth-proxy ${PROXY_PORT}:${PROXY_PORT} &
-PROXY_PORT_FORWARD_PID=$!
+start_port_forward mock-oauth-proxy mock-oauth-proxy "${PROXY_PORT}" "${PROXY_PORT}"
 
 # Set up port forwarding to the mock-monitored-component
 echo "Setting up port forwarding to mock-monitored-component service..."
-${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/mock-monitored-component ${MOCK_MONITORED_COMPONENT_PORT}:${MOCK_MONITORED_COMPONENT_PORT} &
-MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID=$!
+start_port_forward mock-monitored-component mock-monitored-component "${MOCK_MONITORED_COMPONENT_PORT}" "${MOCK_MONITORED_COMPONENT_PORT}"
 
 # Wait for port forwarding to establish
 sleep 5
@@ -56,10 +74,9 @@ export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:${PROXY_PORT}"
 export TEST_MOCK_MONITORED_COMPONENT_URL="http://localhost:${MOCK_MONITORED_COMPONENT_PORT}"
 
 # Get Prometheus service port and set up port forwarding
-PROMETHEUS_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc prometheus -o jsonpath='{.spec.ports[0].port}')
+PROMETHEUS_PORT=$("${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" get svc prometheus -o jsonpath='{.spec.ports[0].port}')
 echo "Setting up port forwarding to Prometheus service..."
-${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/prometheus ${PROMETHEUS_PORT}:${PROMETHEUS_PORT} > /dev/null 2>&1 &
-PROMETHEUS_PORT_FORWARD_PID=$!
+start_port_forward prometheus prometheus "${PROMETHEUS_PORT}" "${PROMETHEUS_PORT}"
 
 # Wait for port forwarding to establish
 sleep 2
@@ -81,42 +98,31 @@ echo "E2E tests completed with exit code: ${TEST_EXIT_CODE}"
 # Save logs from all services to artifacts for debugging
 echo "Saving service logs to artifacts..."
 export ARTIFACT_DIR="${ARTIFACT_DIR:=/tmp/ship_status_artifacts}"
-mkdir -p $ARTIFACT_DIR
+mkdir -p "${ARTIFACT_DIR}"
 
 echo "Saving mock-oauth-proxy logs..."
-${KUBECTL_CMD} -n ${E2E_NS} logs mock-oauth-proxy > ${ARTIFACT_DIR}/mock-oauth-proxy-test.log || echo "Failed to get mock-oauth-proxy logs"
+"${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" logs mock-oauth-proxy >"${ARTIFACT_DIR}/mock-oauth-proxy-test.log" || echo "Failed to get mock-oauth-proxy logs"
 
 echo "Saving dashboard logs..."
-${KUBECTL_CMD} -n ${E2E_NS} logs dashboard > ${ARTIFACT_DIR}/dashboard-test.log || echo "Failed to get dashboard logs"
+"${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" logs dashboard >"${ARTIFACT_DIR}/dashboard-test.log" || echo "Failed to get dashboard logs"
 
 echo "Saving mock-monitored-component logs..."
-${KUBECTL_CMD} -n ${E2E_NS} logs mock-monitored-component > ${ARTIFACT_DIR}/mock-monitored-component-test.log || echo "Failed to get mock-monitored-component logs"
+"${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" logs mock-monitored-component >"${ARTIFACT_DIR}/mock-monitored-component-test.log" || echo "Failed to get mock-monitored-component logs"
 
 echo "Saving component-monitor logs..."
-${KUBECTL_CMD} -n ${E2E_NS} logs component-monitor > ${ARTIFACT_DIR}/component-monitor-test.log || echo "Failed to get component-monitor logs"
+"${KUBECTL_COMMAND[@]}" -n "${E2E_NS}" logs component-monitor >"${ARTIFACT_DIR}/component-monitor-test.log" || echo "Failed to get component-monitor logs"
 
 echo "Logs saved to ${ARTIFACT_DIR}/"
 
-# Clean up port forwarding
-if [ ! -z "${DASHBOARD_PORT_FORWARD_PID:-}" ]; then
-  echo "Cleaning up dashboard port forwarding..."
-  kill $DASHBOARD_PORT_FORWARD_PID 2>/dev/null || true
-fi
-if [ ! -z "${PROXY_PORT_FORWARD_PID:-}" ]; then
-  echo "Cleaning up mock-oauth-proxy port forwarding..."
-  kill $PROXY_PORT_FORWARD_PID 2>/dev/null || true
-fi
-if [ ! -z "${MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID:-}" ]; then
-  echo "Cleaning up mock-monitored-component port forwarding..."
-  kill $MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID 2>/dev/null || true
-fi
-if [ ! -z "${PROMETHEUS_PORT_FORWARD_PID:-}" ]; then
-  echo "Cleaning up Prometheus port forwarding..."
-  kill $PROMETHEUS_PORT_FORWARD_PID 2>/dev/null || true
-fi
+# Clean up port forwarding. The marker is written before signaling so the
+# supervisor does not treat normal teardown as a forwarding failure.
+for index in "${!PORT_FORWARD_PIDS[@]}"; do
+  echo "Cleaning up ${PORT_FORWARD_NAMES[$index]} port forwarding..."
+  port_forward_stop "${PORT_FORWARD_NAMES[$index]}" "${PORT_FORWARD_PIDS[$index]}"
+done
 
 # Cleanup: Delete the test namespace
 echo "Cleaning up test namespace..."
-${KUBECTL_CMD} delete namespace ${E2E_NS} --ignore-not-found=true --wait=false || echo "Failed to delete namespace, continuing..."
+"${KUBECTL_COMMAND[@]}" delete namespace "${E2E_NS}" --ignore-not-found=true --wait=false || echo "Failed to delete namespace, continuing..."
 
 exit ${TEST_EXIT_CODE}
