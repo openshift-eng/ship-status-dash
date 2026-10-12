@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -532,26 +533,10 @@ type runOnceProbeSpec struct {
 	recentlyRan bool
 	delay       time.Duration
 	err         bool
+	unhealthy   bool
 }
 
 func TestProbeOrchestrator_runOnce(t *testing.T) {
-	healthy := ProbeResult{
-		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    "comp",
-			SubComponentSlug: "sub",
-			Status:           types.StatusHealthy,
-		},
-		ProbeType: ProbeTypeHTTP,
-	}
-	errored := ProbeResult{
-		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    "comp",
-			SubComponentSlug: "slow",
-		},
-		ProbeType: ProbeTypeJira,
-		Error:     errors.New("search failed"),
-	}
-
 	tests := []struct {
 		name            string
 		tick            time.Duration
@@ -613,6 +598,30 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			wantCalls:   []int32{0},
 			wantReports: 0,
 		},
+		{
+			name: "mass failure suppresses reports during grace period",
+			tick: 100 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+			},
+			runs:        maxMassFailureGraceCycles,
+			wantCalls:   []int32{3, 3, 3},
+			wantReports: 0,
+		},
+		{
+			name: "mass failure allows report after grace period expires",
+			tick: 100 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+			},
+			runs:        maxMassFailureGraceCycles + 1,
+			wantCalls:   []int32{4, 4, 4},
+			wantReports: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -620,9 +629,20 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			counters := make([]atomic.Int32, len(tt.probes))
 			schedule := make([]scheduledProber, len(tt.probes))
 			for i, spec := range tt.probes {
-				result := healthy
+				result := ProbeResult{
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    fmt.Sprintf("comp%d", i),
+						SubComponentSlug: fmt.Sprintf("sub%d", i),
+						Status:           types.StatusHealthy,
+					},
+					ProbeType: ProbeTypeHTTP,
+				}
 				if spec.err {
-					result = errored
+					result.Error = errors.New("probe error")
+				}
+				if spec.unhealthy {
+					result.Status = types.StatusDown
+					result.Reasons = []types.Reason{{Type: types.CheckTypeHTTP, Check: "probe", Results: "unhealthy"}}
 				}
 				schedule[i].prober = &countingProber{calls: &counters[i], result: result, delay: spec.delay}
 				schedule[i].frequency = spec.frequency
@@ -656,6 +676,127 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			if got := reporter.reportCount(); got != tt.wantReports {
 				t.Errorf("reports = %d, want %d", got, tt.wantReports)
 			}
+		})
+	}
+}
+
+func TestIsMassFailure(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	tests := []struct {
+		name                     string
+		results                  []ProbeResult
+		priorConsecutiveFailures int
+		wantSuppressed           bool
+		wantConsecutiveFailures  int
+	}{
+		{
+			name: "below minimum probe count does not trigger",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "below minimum probe count preserves consecutive failure counter",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+			},
+			priorConsecutiveFailures: 3,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  3,
+		},
+		{
+			name: "below threshold does not trigger",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "errored probes are excluded from mass failure ratio",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "above threshold with unhealthy statuses suppresses report",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          true,
+			wantConsecutiveFailures: 1,
+		},
+		{
+			name: "errored-only probes do not advance grace period",
+			results: []ProbeResult{
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+			},
+			priorConsecutiveFailures: maxMassFailureGraceCycles,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  maxMassFailureGraceCycles,
+		},
+		{
+			name: "normal cycle resets counter",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			priorConsecutiveFailures: 2,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  0,
+		},
+		{
+			name: "exactly at threshold does not suppress",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "mixed errors and unhealthy statuses count together",
+			results: []ProbeResult{
+				{Error: errors.New("connection refused")},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDegraded}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          true,
+			wantConsecutiveFailures: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &ProbeOrchestrator{
+				log:                     log,
+				consecutiveMassFailures: tt.priorConsecutiveFailures,
+			}
+			got := o.isMassFailure(tt.results)
+			assert.Equal(t, tt.wantSuppressed, got)
+			assert.Equal(t, tt.wantConsecutiveFailures, o.consecutiveMassFailures)
 		})
 	}
 }
