@@ -22,6 +22,11 @@ const (
 type mockPrometheusAPI struct {
 	queryResults map[string]queryResult
 	queryErrors  map[string]error
+
+	mu        sync.Mutex
+	callCount int
+	failCount int
+	failErr   error
 }
 
 type queryResult struct {
@@ -30,6 +35,14 @@ type queryResult struct {
 }
 
 func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Time, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
+	m.mu.Lock()
+	m.callCount++
+	count := m.callCount
+	m.mu.Unlock()
+
+	if m.failErr != nil && count <= m.failCount {
+		return nil, nil, m.failErr
+	}
 	if err, ok := m.queryErrors[query]; ok {
 		return nil, nil, err
 	}
@@ -37,6 +50,12 @@ func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Tim
 		return result.value, result.warnings, nil
 	}
 	return nil, nil, nil
+}
+
+func (m *mockPrometheusAPI) getCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
 }
 
 func (m *mockPrometheusAPI) QueryRange(ctx context.Context, query string, r promclientv1.Range, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
@@ -356,36 +375,18 @@ func TestPrometheusProber_Probe(t *testing.T) {
 	}
 }
 
-type retryTrackingAPI struct {
-	mockPrometheusAPI
-	mu        sync.Mutex
-	callCount int
-	failCount int
-	failErr   error
-}
-
-func (m *retryTrackingAPI) Query(ctx context.Context, query string, ts time.Time, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
-	m.mu.Lock()
-	m.callCount++
-	count := m.callCount
-	m.mu.Unlock()
-
-	if count <= m.failCount {
-		return nil, nil, m.failErr
-	}
-	return m.mockPrometheusAPI.Query(ctx, query, ts, opts...)
-}
-
-func (m *retryTrackingAPI) getCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.callCount
-}
-
 func TestPrometheusProber_RetryOnError(t *testing.T) {
+	origDelays := prometheusRetryDelays
+	prometheusRetryDelays = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}
+	t.Cleanup(func() { prometheusRetryDelays = origDelays })
+
 	tests := []struct {
 		name            string
 		failCount       int
+		failErr         error
+		queries         []types.PrometheusQuery
+		queryResults    map[string]queryResult
+		cancelAfter     time.Duration
 		expectError     bool
 		expectCallCount int
 		expectStatus    types.Status
@@ -393,6 +394,9 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 		{
 			name:            "succeeds on first attempt",
 			failCount:       0,
+			failErr:         errors.New("connection refused"),
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
 			expectError:     false,
 			expectCallCount: 1,
 			expectStatus:    types.StatusHealthy,
@@ -400,6 +404,9 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 		{
 			name:            "succeeds after one retry",
 			failCount:       1,
+			failErr:         errors.New("connection refused"),
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
 			expectError:     false,
 			expectCallCount: 2,
 			expectStatus:    types.StatusHealthy,
@@ -407,6 +414,9 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 		{
 			name:            "succeeds after two retries",
 			failCount:       2,
+			failErr:         errors.New("connection refused"),
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
 			expectError:     false,
 			expectCallCount: 3,
 			expectStatus:    types.StatusHealthy,
@@ -414,31 +424,70 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 		{
 			name:            "fails after all retries exhausted",
 			failCount:       3,
+			failErr:         errors.New("connection refused"),
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
 			expectError:     true,
 			expectCallCount: 3,
+		},
+		{
+			name:            "does not retry for empty results",
+			queries:         []types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{}}},
+			expectError:     false,
+			expectCallCount: 1,
+			expectStatus:    types.StatusDown,
+		},
+		{
+			name:            "respects context cancellation",
+			failCount:       10,
+			failErr:         errors.New("connection refused"),
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
+			cancelAfter:     1 * time.Millisecond,
+			expectError:     true,
+			expectCallCount: len(prometheusRetryDelays) + 1,
+		},
+		{
+			name:      "does not retry permanent ErrBadData",
+			failCount: 10,
+			failErr: &promclientv1.Error{
+				Type: promclientv1.ErrBadData,
+				Msg:  "bad query syntax",
+			},
+			queries:         []types.PrometheusQuery{{Query: "up"}},
+			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
+			expectError:     true,
+			expectCallCount: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockAPI := &retryTrackingAPI{
-				mockPrometheusAPI: mockPrometheusAPI{
-					queryResults: map[string]queryResult{
-						"up": {value: model.Vector{&model.Sample{Value: 1.0}}},
-					},
-				},
-				failCount: tt.failCount,
-				failErr:   errors.New("connection refused"),
+			mockAPI := &mockPrometheusAPI{
+				queryResults: tt.queryResults,
+				failCount:    tt.failCount,
+				failErr:      tt.failErr,
 			}
 
 			prober := NewPrometheusProber(
 				testComponentSlug,
 				testSubComponentSlug,
 				mockAPI,
-				[]types.PrometheusQuery{{Query: "up"}},
+				tt.queries,
 			)
 
 			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.cancelAfter > 0 {
+				ctx, cancel = context.WithCancel(ctx)
+				go func() {
+					time.Sleep(tt.cancelAfter)
+					cancel()
+				}()
+				defer cancel()
+			}
+
 			results := make(chan ProbeResult, 1)
 			prober.Probe(ctx, results)
 
@@ -450,81 +499,18 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 					assert.Nil(t, probeResult.Error)
 					assert.Equal(t, tt.expectStatus, probeResult.Status)
 				}
-			case <-time.After(30 * time.Second):
+			case <-time.After(60 * time.Second):
 				t.Fatal("timeout waiting for result")
 			}
 
-			assert.Equal(t, tt.expectCallCount, mockAPI.getCallCount())
+			if tt.cancelAfter > 0 {
+				assert.Less(t, mockAPI.getCallCount(), tt.expectCallCount,
+					"should have stopped retrying when context was canceled")
+			} else {
+				assert.Equal(t, tt.expectCallCount, mockAPI.getCallCount())
+			}
 		})
 	}
-}
-
-func TestPrometheusProber_RetryRespectsContext(t *testing.T) {
-	mockAPI := &retryTrackingAPI{
-		mockPrometheusAPI: mockPrometheusAPI{
-			queryResults: map[string]queryResult{
-				"up": {value: model.Vector{&model.Sample{Value: 1.0}}},
-			},
-		},
-		failCount: 10,
-		failErr:   errors.New("connection refused"),
-	}
-
-	prober := NewPrometheusProber(
-		testComponentSlug,
-		testSubComponentSlug,
-		mockAPI,
-		[]types.PrometheusQuery{{Query: "up"}},
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	results := make(chan ProbeResult, 1)
-
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		cancel()
-	}()
-
-	prober.Probe(ctx, results)
-
-	select {
-	case probeResult := <-results:
-		assert.NotNil(t, probeResult.Error)
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for result")
-	}
-
-	assert.Less(t, mockAPI.getCallCount(), prometheusQueryMaxRetries+1,
-		"should have stopped retrying when context was canceled")
-}
-
-func TestPrometheusProber_NoRetryForEmptyResults(t *testing.T) {
-	var callCount int
-	mockAPI := &mockPrometheusAPI{
-		queryResults: map[string]queryResult{
-			"up": {value: model.Vector{}},
-		},
-	}
-
-	prober := NewPrometheusProber(
-		testComponentSlug,
-		testSubComponentSlug,
-		mockAPI,
-		[]types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
-	)
-
-	ctx := context.Background()
-	results := make(chan ProbeResult, 1)
-	prober.Probe(ctx, results)
-
-	select {
-	case probeResult := <-results:
-		assert.Nil(t, probeResult.Error)
-		assert.Equal(t, types.StatusDown, probeResult.Status)
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timeout waiting for result")
-	}
-	_ = callCount
 }
 
 func TestExtractValue(t *testing.T) {

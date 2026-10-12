@@ -158,10 +158,6 @@ func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
 // suppressions, reports resume so genuine outages are not hidden.
 func (o *ProbeOrchestrator) isMassFailure(results []ProbeResult) bool {
 	if len(results) < minProbesForMassFailure {
-		if o.consecutiveMassFailures > 0 {
-			o.log.Infof("Mass failure condition cleared after %d suppressed cycles", o.consecutiveMassFailures)
-			o.consecutiveMassFailures = 0
-		}
 		return false
 	}
 

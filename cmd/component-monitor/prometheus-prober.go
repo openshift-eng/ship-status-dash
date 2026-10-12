@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,11 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/types"
-)
-
-const (
-	prometheusQueryMaxRetries = 2
-	prometheusRetryBaseDelay  = 2 * time.Second
 )
 
 type PrometheusProber struct {
@@ -54,6 +50,8 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- ProbeResult
 	results <- p.createStatusFromQueryResults(ctx, successful, failed)
 }
 
+var prometheusRetryDelays = []time.Duration{10 * time.Second, 30 * time.Second}
+
 func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration string, step string) (model.Value, error) {
 	now := time.Now()
 
@@ -79,16 +77,17 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 	var result model.Value
 	var warnings promclientv1.Warnings
 	var lastErr error
+	maxAttempts := len(prometheusRetryDelays) + 1
 
-	for attempt := 0; attempt <= prometheusQueryMaxRetries; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
-			backoff := prometheusRetryBaseDelay * time.Duration(1<<uint(attempt-1))
+			backoff := prometheusRetryDelays[attempt-1]
 			logrus.WithFields(logrus.Fields{
 				"component_slug":     p.componentSlug,
 				"sub_component_slug": p.subComponentSlug,
 				"query":              query,
 				"attempt":            attempt + 1,
-				"max_attempts":       prometheusQueryMaxRetries + 1,
+				"max_attempts":       maxAttempts,
 				"backoff":            backoff,
 			}).Warn("Retrying Prometheus query after transient failure")
 			select {
@@ -110,6 +109,11 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 			break
 		}
 		lastErr = err
+
+		var promErr *promclientv1.Error
+		if errors.As(err, &promErr) && (promErr.Type == promclientv1.ErrBadData || promErr.Type == promclientv1.ErrCanceled) {
+			break
+		}
 	}
 
 	if lastErr != nil {
@@ -120,8 +124,10 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 			"duration":           duration,
 			"step":               step,
 			"error":              lastErr.Error(),
-			"attempts":           prometheusQueryMaxRetries + 1,
+			"attempts":           maxAttempts,
 		}
+
+		// Try to extract response body from Prometheus client error
 		if promErr, ok := lastErr.(*promclientv1.Error); ok {
 			logFields["error_type"] = string(promErr.Type)
 			if promErr.Detail != "" {

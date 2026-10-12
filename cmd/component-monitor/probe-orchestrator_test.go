@@ -699,6 +699,15 @@ func TestIsMassFailure(t *testing.T) {
 			wantConsecutiveFailures: 0,
 		},
 		{
+			name: "below minimum probe count preserves consecutive failure counter",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+			},
+			priorConsecutiveFailures: 3,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  3,
+		},
+		{
 			name: "below threshold does not trigger",
 			results: []ProbeResult{
 				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
