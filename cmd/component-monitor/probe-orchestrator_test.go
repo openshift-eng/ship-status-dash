@@ -533,6 +533,7 @@ type runOnceProbeSpec struct {
 	recentlyRan bool
 	delay       time.Duration
 	err         bool
+	unhealthy   bool
 }
 
 func TestProbeOrchestrator_runOnce(t *testing.T) {
@@ -601,27 +602,24 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			name: "mass failure suppresses reports during grace period",
 			tick: 100 * time.Millisecond,
 			probes: []runOnceProbeSpec{
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
 			},
 			runs:        maxMassFailureGraceCycles,
-			wantCalls:   []int32{3, 3, 3, 3},
+			wantCalls:   []int32{3, 3, 3},
 			wantReports: 0,
 		},
 		{
 			name: "mass failure allows report after grace period expires",
 			tick: 100 * time.Millisecond,
 			probes: []runOnceProbeSpec{
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: 10 * time.Millisecond, err: true},
-				{frequency: time.Nanosecond},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
+				{frequency: time.Nanosecond, unhealthy: true},
 			},
 			runs:        maxMassFailureGraceCycles + 1,
-			wantCalls:   []int32{4, 4, 4, 4, 4},
+			wantCalls:   []int32{4, 4, 4},
 			wantReports: 1,
 		},
 	}
@@ -641,6 +639,10 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 				}
 				if spec.err {
 					result.Error = errors.New("probe error")
+				}
+				if spec.unhealthy {
+					result.Status = types.StatusDown
+					result.Reasons = []types.Reason{{Type: types.CheckTypeHTTP, Check: "probe", Results: "unhealthy"}}
 				}
 				schedule[i].prober = &countingProber{calls: &counters[i], result: result, delay: spec.delay}
 				schedule[i].frequency = spec.frequency
@@ -719,15 +721,15 @@ func TestIsMassFailure(t *testing.T) {
 			wantConsecutiveFailures: 0,
 		},
 		{
-			name: "above threshold with errors suppresses report",
+			name: "errored probes are excluded from mass failure ratio",
 			results: []ProbeResult{
 				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
 				{Error: errors.New("connection refused")},
 				{Error: errors.New("connection refused")},
 				{Error: errors.New("connection refused")},
 			},
-			wantSuppressed:          true,
-			wantConsecutiveFailures: 1,
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
 		},
 		{
 			name: "above threshold with unhealthy statuses suppresses report",
@@ -741,7 +743,7 @@ func TestIsMassFailure(t *testing.T) {
 			wantConsecutiveFailures: 1,
 		},
 		{
-			name: "grace period exhausted allows report through",
+			name: "errored-only probes do not advance grace period",
 			results: []ProbeResult{
 				{Error: errors.New("connection refused")},
 				{Error: errors.New("connection refused")},
@@ -749,7 +751,7 @@ func TestIsMassFailure(t *testing.T) {
 			},
 			priorConsecutiveFailures: maxMassFailureGraceCycles,
 			wantSuppressed:           false,
-			wantConsecutiveFailures:  maxMassFailureGraceCycles + 1,
+			wantConsecutiveFailures:  maxMassFailureGraceCycles,
 		},
 		{
 			name: "normal cycle resets counter",

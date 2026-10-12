@@ -157,18 +157,26 @@ func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
 // report for the current cycle. After maxMassFailureGraceCycles consecutive
 // suppressions, reports resume so genuine outages are not hidden.
 func (o *ProbeOrchestrator) isMassFailure(results []ProbeResult) bool {
-	if len(results) < minProbesForMassFailure {
-		return false
-	}
-
-	unhealthy := 0
+	// Exclude errored probes: they indicate probe-level issues (e.g. invalid
+	// query syntax) and are already omitted by mergeStatuses via the
+	// absent-report-checker path. Only non-errored unhealthy results signal a
+	// potential monitoring infrastructure outage.
+	var nonErrored, unhealthy int
 	for _, r := range results {
-		if r.Error != nil || r.Status != types.StatusHealthy {
+		if r.Error != nil {
+			continue
+		}
+		nonErrored++
+		if r.Status != types.StatusHealthy {
 			unhealthy++
 		}
 	}
 
-	ratio := float64(unhealthy) / float64(len(results))
+	if nonErrored < minProbesForMassFailure {
+		return false
+	}
+
+	ratio := float64(unhealthy) / float64(nonErrored)
 	if ratio <= massFailureThreshold {
 		if o.consecutiveMassFailures > 0 {
 			o.log.Infof("Mass failure condition cleared after %d suppressed cycles", o.consecutiveMassFailures)
@@ -179,13 +187,13 @@ func (o *ProbeOrchestrator) isMassFailure(results []ProbeResult) bool {
 
 	o.consecutiveMassFailures++
 	if o.consecutiveMassFailures <= maxMassFailureGraceCycles {
-		o.log.Warnf("Suspected monitoring infrastructure failure: %d/%d probes unhealthy/errored (%.0f%%), suppressing report (grace cycle %d/%d)",
-			unhealthy, len(results), ratio*100, o.consecutiveMassFailures, maxMassFailureGraceCycles)
+		o.log.Warnf("Suspected monitoring infrastructure failure: %d/%d non-errored probes unhealthy (%.0f%%), suppressing report (grace cycle %d/%d)",
+			unhealthy, nonErrored, ratio*100, o.consecutiveMassFailures, maxMassFailureGraceCycles)
 		return true
 	}
 
-	o.log.Warnf("Mass failure persisted beyond grace period (%d cycles), reporting %d/%d probes as unhealthy",
-		o.consecutiveMassFailures, unhealthy, len(results))
+	o.log.Warnf("Mass failure persisted beyond grace period (%d cycles), reporting %d/%d non-errored probes as unhealthy",
+		o.consecutiveMassFailures, unhealthy, nonErrored)
 	return false
 }
 
