@@ -3,6 +3,8 @@ import { createBdd } from 'playwright-bdd'
 
 import { installTRTSLOMocks, json, PROTECTED, setupApiMocks } from '../fixtures/apiMocks'
 import {
+  mockLongUnbrokenJobFailure,
+  mockLongUnbrokenJobName,
   mockLongUnbrokenPayloadNote,
   mockTRTPayloadItem,
   mockTRTSLOUser,
@@ -23,6 +25,10 @@ Given('the TRT SLO is available', async ({ page }) => {
 Given('I am logged in as a TRT SLO owner', async ({ page }) => {
   await setupApiMocks(page, { authenticated: true })
   await page.route(`${PROTECTED}/api/user`, (route) => json(route, mockTRTSLOUser))
+})
+
+Given('the browser viewport is narrow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
 })
 
 When('I open the main dashboard', async ({ page }) => {
@@ -73,6 +79,55 @@ Then('the payload note should wrap within its value column', async ({ page }) =>
   const note = page.getByText(mockLongUnbrokenPayloadNote, { exact: true })
   await expect(note).toBeVisible()
   expect(await note.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+Then('the failed job name should be a linked heading', async ({ page }) => {
+  const heading = page.getByRole('heading', { level: 4, name: mockLongUnbrokenJobName })
+  await expect(heading).toBeVisible()
+  await expect(heading.getByRole('link')).toHaveAttribute('href', 'https://example.com/payload/job')
+})
+
+Then('the failed job details should fit within the row', async ({ page }) => {
+  const heading = page.getByRole('heading', { level: 4, name: mockLongUnbrokenJobName })
+  const row = page.getByRole('listitem').filter({ has: heading })
+  const failure = row.getByText(mockLongUnbrokenJobFailure, { exact: true })
+  await expect(failure).toBeVisible()
+
+  const fits = await row.evaluate(
+    (element) =>
+      element.scrollWidth <= element.clientWidth &&
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  )
+  expect(fits).toBe(true)
+
+  const [rowBox, failureBox] = await Promise.all([row.boundingBox(), failure.boundingBox()])
+  expect(rowBox).not.toBeNull()
+  expect(failureBox).not.toBeNull()
+  expect(failureBox!.width).toBeGreaterThan(rowBox!.width * 0.9)
+})
+
+Then('the failed job context links should be available', async ({ page }) => {
+  await expect(page.getByText('3 Payload Streak', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Prow run' })).toHaveAttribute(
+    'href',
+    'https://example.com/payload/job/later-pass',
+  )
+  await expect(page.getByRole('button', { name: /Root cause C1:/ })).toBeVisible()
+})
+
+When('I collapse and expand the failed jobs', async ({ page }) => {
+  await page.getByRole('button', { name: 'Failed blocking jobs' }).click()
+  await expect(page.getByRole('heading', { level: 4, name: mockLongUnbrokenJobName })).toBeHidden()
+  await page.getByRole('button', { name: '1 blocking job failed' }).click()
+})
+
+When('I select root cause {string}', async ({ page }, causeID: string) => {
+  await page.getByRole('button', { name: new RegExp(`Root cause ${causeID}:`) }).click()
+})
+
+Then('root cause {string} should receive focus', async ({ page }, causeID: string) => {
+  const cause = page.getByText(causeID, { exact: true }).last().locator('..').locator('..')
+  await expect(cause).toBeFocused()
 })
 
 Then(
