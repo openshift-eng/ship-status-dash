@@ -44,6 +44,8 @@ func init() {
 		[]string{"component"},
 	)
 	dataLoadFailureMetric.WithLabelValues("api").Set(0.0)
+	dataLoadFailureMetric.WithLabelValues("db").Set(0.0)
+	dataLoadFailureMetric.WithLabelValues("cache").Set(0.0)
 
 	requestCountMetric = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "request_count",
