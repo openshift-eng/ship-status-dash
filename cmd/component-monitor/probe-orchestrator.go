@@ -27,6 +27,22 @@ const (
 	ProbeTypePrometheus = "prometheus"
 	ProbeTypeSystemd    = "systemd"
 	ProbeTypeJira       = "jira"
+
+	// massFailureThreshold is the fraction of probes that must be unhealthy or
+	// errored in a single cycle to trigger mass failure suppression. When exceeded,
+	// the report is withheld for a grace period to avoid false-positive outage
+	// cascades from transient monitoring infrastructure failures.
+	massFailureThreshold = 0.5
+
+	// maxMassFailureGraceCycles is the number of consecutive mass failure cycles
+	// during which reports are suppressed. After this many cycles, the orchestrator
+	// resumes sending reports so that genuine outages are not hidden indefinitely.
+	maxMassFailureGraceCycles = 3
+
+	// minProbesForMassFailure is the minimum number of probe results required
+	// before mass failure detection activates. Small probe sets are excluded
+	// because a single unhealthy component would exceed the threshold.
+	minProbesForMassFailure = 3
 )
 
 type ProbeResult struct {
@@ -61,6 +77,8 @@ type ProbeOrchestrator struct {
 	frequency    time.Duration
 	reportClient reportSender
 	log          *logrus.Logger
+
+	consecutiveMassFailures int
 }
 
 // probeOutcome carries a probe result with the schedule entry that produced it.
@@ -116,6 +134,11 @@ func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
 
 	outcomes := o.startProbes(ctx, due, cycleStart)
 	results := o.collectProbeResults(ctx, outcomes, len(due))
+
+	if o.isMassFailure(results) {
+		return
+	}
+
 	mergedResults := mergeStatuses(results)
 	if len(mergedResults) == 0 {
 		o.log.Info("No statuses to report this cycle")
@@ -126,6 +149,48 @@ func (o *ProbeOrchestrator) runOnce(ctx context.Context) {
 	} else {
 		o.log.Infof("Report sent successfully")
 	}
+}
+
+// isMassFailure detects when a large fraction of probes fail simultaneously,
+// which strongly indicates a monitoring infrastructure issue (e.g., Prometheus/Thanos
+// unreachable) rather than genuine component failures. Returns true to suppress the
+// report for the current cycle. After maxMassFailureGraceCycles consecutive
+// suppressions, reports resume so genuine outages are not hidden.
+func (o *ProbeOrchestrator) isMassFailure(results []ProbeResult) bool {
+	if len(results) < minProbesForMassFailure {
+		if o.consecutiveMassFailures > 0 {
+			o.log.Infof("Mass failure condition cleared after %d suppressed cycles", o.consecutiveMassFailures)
+			o.consecutiveMassFailures = 0
+		}
+		return false
+	}
+
+	unhealthy := 0
+	for _, r := range results {
+		if r.Error != nil || r.Status != types.StatusHealthy {
+			unhealthy++
+		}
+	}
+
+	ratio := float64(unhealthy) / float64(len(results))
+	if ratio <= massFailureThreshold {
+		if o.consecutiveMassFailures > 0 {
+			o.log.Infof("Mass failure condition cleared after %d suppressed cycles", o.consecutiveMassFailures)
+		}
+		o.consecutiveMassFailures = 0
+		return false
+	}
+
+	o.consecutiveMassFailures++
+	if o.consecutiveMassFailures <= maxMassFailureGraceCycles {
+		o.log.Warnf("Suspected monitoring infrastructure failure: %d/%d probes unhealthy/errored (%.0f%%), suppressing report (grace cycle %d/%d)",
+			unhealthy, len(results), ratio*100, o.consecutiveMassFailures, maxMassFailureGraceCycles)
+		return true
+	}
+
+	o.log.Warnf("Mass failure persisted beyond grace period (%d cycles), reporting %d/%d probes as unhealthy",
+		o.consecutiveMassFailures, unhealthy, len(results))
+	return false
 }
 
 // DryRun runs probes once and outputs the report as JSON to stdout.

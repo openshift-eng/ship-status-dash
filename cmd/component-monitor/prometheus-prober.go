@@ -14,6 +14,11 @@ import (
 	"ship-status-dash/pkg/types"
 )
 
+const (
+	prometheusQueryMaxRetries = 2
+	prometheusRetryBaseDelay  = 2 * time.Second
+)
+
 type PrometheusProber struct {
 	componentSlug     string
 	subComponentSlug  string
@@ -51,51 +56,80 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- ProbeResult
 
 func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration string, step string) (model.Value, error) {
 	now := time.Now()
-	var result model.Value
-	var warnings promclientv1.Warnings
-	var err error
 
+	var isRange bool
+	var r promclientv1.Range
 	if duration != "" {
 		dur, parseErr := time.ParseDuration(duration)
 		if parseErr != nil {
 			return nil, parseErr
 		}
-
 		stepDuration, parseErr := time.ParseDuration(step)
 		if parseErr != nil {
 			return nil, parseErr
 		}
-
-		r := promclientv1.Range{
+		isRange = true
+		r = promclientv1.Range{
 			Start: now.Add(-dur),
 			End:   now,
 			Step:  stepDuration,
 		}
-		result, warnings, err = p.client.QueryRange(ctx, query, r)
-	} else {
-		result, warnings, err = p.client.Query(ctx, query, now)
 	}
 
-	if err != nil {
+	var result model.Value
+	var warnings promclientv1.Warnings
+	var lastErr error
+
+	for attempt := 0; attempt <= prometheusQueryMaxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := prometheusRetryBaseDelay * time.Duration(1<<uint(attempt-1))
+			logrus.WithFields(logrus.Fields{
+				"component_slug":     p.componentSlug,
+				"sub_component_slug": p.subComponentSlug,
+				"query":              query,
+				"attempt":            attempt + 1,
+				"max_attempts":       prometheusQueryMaxRetries + 1,
+				"backoff":            backoff,
+			}).Warn("Retrying Prometheus query after transient failure")
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		var err error
+		if isRange {
+			result, warnings, err = p.client.QueryRange(ctx, query, r)
+		} else {
+			result, warnings, err = p.client.Query(ctx, query, now)
+		}
+
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+	}
+
+	if lastErr != nil {
 		logFields := logrus.Fields{
 			"component_slug":     p.componentSlug,
 			"sub_component_slug": p.subComponentSlug,
 			"query":              query,
 			"duration":           duration,
 			"step":               step,
-			"error":              err.Error(),
+			"error":              lastErr.Error(),
+			"attempts":           prometheusQueryMaxRetries + 1,
 		}
-
-		// Try to extract response body from Prometheus client error
-		if promErr, ok := err.(*promclientv1.Error); ok {
+		if promErr, ok := lastErr.(*promclientv1.Error); ok {
 			logFields["error_type"] = string(promErr.Type)
 			if promErr.Detail != "" {
 				logFields["response_body"] = promErr.Detail
 			}
 		}
-
-		logrus.WithFields(logFields).Error("Prometheus query failed")
-		return nil, err
+		logrus.WithFields(logFields).Error("Prometheus query failed after retries")
+		return nil, lastErr
 	}
 
 	if len(warnings) > 0 {

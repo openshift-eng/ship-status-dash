@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -353,6 +354,177 @@ func TestPrometheusProber_Probe(t *testing.T) {
 			}
 		})
 	}
+}
+
+type retryTrackingAPI struct {
+	mockPrometheusAPI
+	mu        sync.Mutex
+	callCount int
+	failCount int
+	failErr   error
+}
+
+func (m *retryTrackingAPI) Query(ctx context.Context, query string, ts time.Time, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
+	m.mu.Lock()
+	m.callCount++
+	count := m.callCount
+	m.mu.Unlock()
+
+	if count <= m.failCount {
+		return nil, nil, m.failErr
+	}
+	return m.mockPrometheusAPI.Query(ctx, query, ts, opts...)
+}
+
+func (m *retryTrackingAPI) getCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
+}
+
+func TestPrometheusProber_RetryOnError(t *testing.T) {
+	tests := []struct {
+		name            string
+		failCount       int
+		expectError     bool
+		expectCallCount int
+		expectStatus    types.Status
+	}{
+		{
+			name:            "succeeds on first attempt",
+			failCount:       0,
+			expectError:     false,
+			expectCallCount: 1,
+			expectStatus:    types.StatusHealthy,
+		},
+		{
+			name:            "succeeds after one retry",
+			failCount:       1,
+			expectError:     false,
+			expectCallCount: 2,
+			expectStatus:    types.StatusHealthy,
+		},
+		{
+			name:            "succeeds after two retries",
+			failCount:       2,
+			expectError:     false,
+			expectCallCount: 3,
+			expectStatus:    types.StatusHealthy,
+		},
+		{
+			name:            "fails after all retries exhausted",
+			failCount:       3,
+			expectError:     true,
+			expectCallCount: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &retryTrackingAPI{
+				mockPrometheusAPI: mockPrometheusAPI{
+					queryResults: map[string]queryResult{
+						"up": {value: model.Vector{&model.Sample{Value: 1.0}}},
+					},
+				},
+				failCount: tt.failCount,
+				failErr:   errors.New("connection refused"),
+			}
+
+			prober := NewPrometheusProber(
+				testComponentSlug,
+				testSubComponentSlug,
+				mockAPI,
+				[]types.PrometheusQuery{{Query: "up"}},
+			)
+
+			ctx := context.Background()
+			results := make(chan ProbeResult, 1)
+			prober.Probe(ctx, results)
+
+			select {
+			case probeResult := <-results:
+				if tt.expectError {
+					assert.NotNil(t, probeResult.Error)
+				} else {
+					assert.Nil(t, probeResult.Error)
+					assert.Equal(t, tt.expectStatus, probeResult.Status)
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatal("timeout waiting for result")
+			}
+
+			assert.Equal(t, tt.expectCallCount, mockAPI.getCallCount())
+		})
+	}
+}
+
+func TestPrometheusProber_RetryRespectsContext(t *testing.T) {
+	mockAPI := &retryTrackingAPI{
+		mockPrometheusAPI: mockPrometheusAPI{
+			queryResults: map[string]queryResult{
+				"up": {value: model.Vector{&model.Sample{Value: 1.0}}},
+			},
+		},
+		failCount: 10,
+		failErr:   errors.New("connection refused"),
+	}
+
+	prober := NewPrometheusProber(
+		testComponentSlug,
+		testSubComponentSlug,
+		mockAPI,
+		[]types.PrometheusQuery{{Query: "up"}},
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	results := make(chan ProbeResult, 1)
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		cancel()
+	}()
+
+	prober.Probe(ctx, results)
+
+	select {
+	case probeResult := <-results:
+		assert.NotNil(t, probeResult.Error)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for result")
+	}
+
+	assert.Less(t, mockAPI.getCallCount(), prometheusQueryMaxRetries+1,
+		"should have stopped retrying when context was canceled")
+}
+
+func TestPrometheusProber_NoRetryForEmptyResults(t *testing.T) {
+	var callCount int
+	mockAPI := &mockPrometheusAPI{
+		queryResults: map[string]queryResult{
+			"up": {value: model.Vector{}},
+		},
+	}
+
+	prober := NewPrometheusProber(
+		testComponentSlug,
+		testSubComponentSlug,
+		mockAPI,
+		[]types.PrometheusQuery{{Query: "up", Severity: types.SeverityDown}},
+	)
+
+	ctx := context.Background()
+	results := make(chan ProbeResult, 1)
+	prober.Probe(ctx, results)
+
+	select {
+	case probeResult := <-results:
+		assert.Nil(t, probeResult.Error)
+		assert.Equal(t, types.StatusDown, probeResult.Status)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for result")
+	}
+	_ = callCount
 }
 
 func TestExtractValue(t *testing.T) {

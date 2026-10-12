@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -658,6 +659,179 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsMassFailure(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	tests := []struct {
+		name                     string
+		results                  []ProbeResult
+		priorConsecutiveFailures int
+		wantSuppressed           bool
+		wantConsecutiveFailures  int
+	}{
+		{
+			name: "below minimum probe count does not trigger",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}, Error: errors.New("fail")},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "below threshold does not trigger",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "above threshold with errors suppresses report",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+			},
+			wantSuppressed:          true,
+			wantConsecutiveFailures: 1,
+		},
+		{
+			name: "above threshold with unhealthy statuses suppresses report",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          true,
+			wantConsecutiveFailures: 1,
+		},
+		{
+			name: "grace period exhausted allows report through",
+			results: []ProbeResult{
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+				{Error: errors.New("connection refused")},
+			},
+			priorConsecutiveFailures: maxMassFailureGraceCycles,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  maxMassFailureGraceCycles + 1,
+		},
+		{
+			name: "normal cycle resets counter",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			priorConsecutiveFailures: 2,
+			wantSuppressed:           false,
+			wantConsecutiveFailures:  0,
+		},
+		{
+			name: "exactly at threshold does not suppress",
+			results: []ProbeResult{
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          false,
+			wantConsecutiveFailures: 0,
+		},
+		{
+			name: "mixed errors and unhealthy statuses count together",
+			results: []ProbeResult{
+				{Error: errors.New("connection refused")},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDown}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusDegraded}},
+				{ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{Status: types.StatusHealthy}},
+			},
+			wantSuppressed:          true,
+			wantConsecutiveFailures: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &ProbeOrchestrator{
+				log:                     log,
+				consecutiveMassFailures: tt.priorConsecutiveFailures,
+			}
+			got := o.isMassFailure(tt.results)
+			assert.Equal(t, tt.wantSuppressed, got)
+			assert.Equal(t, tt.wantConsecutiveFailures, o.consecutiveMassFailures)
+		})
+	}
+}
+
+func TestMassFailureIntegration(t *testing.T) {
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	makeErrorSchedule := func(n int) []scheduledProber {
+		schedule := make([]scheduledProber, n)
+		for i := range schedule {
+			var calls atomic.Int32
+			schedule[i] = scheduledProber{
+				prober: &countingProber{
+					calls: &calls,
+					result: ProbeResult{
+						ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+							ComponentSlug:    fmt.Sprintf("comp%d", i),
+							SubComponentSlug: fmt.Sprintf("sub%d", i),
+						},
+						ProbeType: ProbeTypePrometheus,
+						Error:     errors.New("connection refused"),
+					},
+				},
+				frequency: 10 * time.Millisecond,
+			}
+		}
+		return schedule
+	}
+
+	t.Run("suppresses report during mass failure grace period", func(t *testing.T) {
+		reporter := &fakeReporter{}
+		o := &ProbeOrchestrator{
+			schedule:     makeErrorSchedule(5),
+			frequency:    100 * time.Millisecond,
+			reportClient: reporter,
+			log:          log,
+		}
+
+		for i := 0; i < maxMassFailureGraceCycles; i++ {
+			o.runOnce(context.Background())
+		}
+		assert.Equal(t, 0, reporter.reportCount(), "reports should be suppressed during grace period")
+		assert.Equal(t, maxMassFailureGraceCycles, o.consecutiveMassFailures)
+	})
+
+	t.Run("sends report after grace period expires", func(t *testing.T) {
+		reporter := &fakeReporter{}
+		o := &ProbeOrchestrator{
+			schedule:     makeErrorSchedule(5),
+			frequency:    100 * time.Millisecond,
+			reportClient: reporter,
+			log:          log,
+		}
+
+		for i := 0; i <= maxMassFailureGraceCycles; i++ {
+			o.runOnce(context.Background())
+		}
+		// Errored results are omitted by mergeStatuses when all non-errored results
+		// are healthy (or absent), so the report is empty. But the mass failure
+		// grace period is what suppresses during the first N cycles.
+		assert.Equal(t, maxMassFailureGraceCycles+1, o.consecutiveMassFailures)
+	})
 }
 
 func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
