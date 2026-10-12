@@ -224,22 +224,46 @@ const ClearJobsIcon = styled(CheckCircle)(({ theme }) => ({
 const JobList = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.spacing(1),
+  listStyle: 'none',
+  margin: 0,
   overflow: 'hidden',
+  padding: 0,
 }))
 
 const JobRow = styled(Box)(({ theme }) => ({
-  display: 'grid',
-  gridTemplateColumns: 'minmax(140px, 0.85fr) minmax(120px, 0.75fr) minmax(160px, 1.2fr)',
-  gap: theme.spacing(1.5),
-  alignItems: 'start',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1),
+  minWidth: 0,
   padding: theme.spacing(1),
   '& + &': {
     borderTop: `1px solid ${theme.palette.divider}`,
   },
-  '@media (max-width: 720px)': {
-    gridTemplateColumns: '1fr',
-  },
 }))
+
+const JobHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: theme.spacing(0.5, 1),
+  minWidth: 0,
+}))
+
+const JobHeading = styled(Typography)({
+  flex: '1 1 18rem',
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+})
+
+const JobDetails = styled(Box)({
+  minWidth: 0,
+})
+
+const JobFailure = styled(Typography)({
+  fontSize: '0.8125rem',
+  overflowWrap: 'anywhere',
+  whiteSpace: 'pre-wrap',
+})
 
 const CauseRefs = styled(Box)(({ theme }) => ({
   display: 'flex',
@@ -247,12 +271,11 @@ const CauseRefs = styled(Box)(({ theme }) => ({
   gap: theme.spacing(0.5),
 }))
 
-const StreakChip = styled(Chip)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}))
+const StreakChip = styled(Chip)({
+  flexShrink: 0,
+})
 
 const PassLine = styled(Box)(({ theme }) => ({
-  gridColumn: '1 / -1',
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
@@ -301,20 +324,17 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
             {jobsOpen ? 'Failed blocking jobs' : failedJobsLabel(jobs.length)}
           </JobsToggle>
           {jobsOpen && (
-            <JobList>
+            <JobList component="ul">
               {jobs.map((job) => {
                 const noteIDs = job.note_ids ?? []
                 return (
-                  <JobRow key={job.name}>
-                    <div>
-                      <Link
-                        href={job.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        fontWeight={600}
-                      >
-                        {job.name}
-                      </Link>
+                  <JobRow component="li" key={job.name}>
+                    <JobHeader>
+                      <JobHeading component="h4" variant="subtitle2">
+                        <Link href={job.url} target="_blank" rel="noopener noreferrer">
+                          {job.name}
+                        </Link>
+                      </JobHeading>
                       {job.recurring_count !== undefined && job.recurring_count >= 2 && (
                         <StreakChip
                           size="small"
@@ -322,47 +342,54 @@ const FailedJobs = ({ itemKey, jobs, notes, highlightedCause, onFocusCause }: Fa
                           label={`${job.recurring_count} Payload Streak`}
                         />
                       )}
-                    </div>
-                    <div>
-                      {notes.length > 0 && <FieldLabel>Root causes</FieldLabel>}
-                      {noteIDs.length > 0 ? (
-                        <CauseRefs>
-                          {noteIDs.map((noteId) => {
-                            const cause = causesById.get(noteId)
-                            if (!cause) {
+                    </JobHeader>
+                    {job.notes && (
+                      <JobDetails>
+                        <FieldLabel>Failure</FieldLabel>
+                        <JobFailure>{job.notes}</JobFailure>
+                      </JobDetails>
+                    )}
+                    {(notes.length > 0 || noteIDs.length > 0) && (
+                      <JobDetails>
+                        {notes.length > 0 && <FieldLabel>Root causes</FieldLabel>}
+                        {noteIDs.length > 0 ? (
+                          <CauseRefs>
+                            {noteIDs.map((noteId) => {
+                              const cause = causesById.get(noteId)
+                              if (!cause) {
+                                return (
+                                  <Chip
+                                    key={noteId}
+                                    size="small"
+                                    label={`${noteId} unavailable`}
+                                    aria-label={`Root cause ${noteId} unavailable`}
+                                  />
+                                )
+                              }
+                              const domId = causeDomId(
+                                itemKey,
+                                cause.id,
+                                notes.findIndex((item) => item.id === cause.id),
+                              )
                               return (
                                 <Chip
                                   key={noteId}
                                   size="small"
-                                  label={`${noteId} unavailable`}
-                                  aria-label={`Root cause ${noteId} unavailable`}
+                                  component="button"
+                                  type="button"
+                                  clickable
+                                  label={noteId}
+                                  aria-label={`Root cause ${noteId}: ${cause.text}`}
+                                  onClick={() => onFocusCause(domId)}
                                 />
                               )
-                            }
-                            const domId = causeDomId(
-                              itemKey,
-                              cause.id,
-                              notes.findIndex((item) => item.id === cause.id),
-                            )
-                            return (
-                              <Chip
-                                key={noteId}
-                                size="small"
-                                component="button"
-                                type="button"
-                                clickable
-                                label={noteId}
-                                aria-label={`Root cause ${noteId}: ${cause.text}`}
-                                onClick={() => onFocusCause(domId)}
-                              />
-                            )
-                          })}
-                        </CauseRefs>
-                      ) : (
-                        notes.length > 0 && <JobNote>Cause pending</JobNote>
-                      )}
-                    </div>
-                    <div>{job.notes && <JobNote>{job.notes}</JobNote>}</div>
+                            })}
+                          </CauseRefs>
+                        ) : (
+                          notes.length > 0 && <JobNote>Cause pending</JobNote>
+                        )}
+                      </JobDetails>
+                    )}
                     {job.later_pass && (
                       <PassLine>
                         <Chip size="small" color="success" variant="outlined" label="Later pass" />

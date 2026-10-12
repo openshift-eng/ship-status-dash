@@ -339,6 +339,8 @@ export const mockTRTSLOUser: MockAuthUser = {
 const trtOccurredAt = '2026-09-25T12:00:00Z'
 
 export const mockLongUnbrokenPayloadNote = 'x'.repeat(300)
+export const mockLongUnbrokenJobName = `periodic-ci-example-${'longjobsegment'.repeat(24)}`
+export const mockLongUnbrokenJobFailure = `Synthetic failure: ${'connectiontimeout'.repeat(24)}`
 
 export const mockTRTPayloadItem: SLOItem = {
   id: 7,
@@ -350,18 +352,31 @@ export const mockTRTPayloadItem: SLOItem = {
   outcome: 'Rejected',
   details: {
     payload_url: 'https://example.com/payload',
+    shared_causes: [
+      {
+        id: 'C1',
+        text: 'Synthetic infrastructure interruption',
+        links: [{ label: 'Public runbook', url: 'https://example.com/runbook' }],
+      },
+    ],
     jobs: [
       {
-        name: 'e2e-job',
+        name: mockLongUnbrokenJobName,
         url: 'https://example.com/payload/job',
         state: 'failure',
+        notes: mockLongUnbrokenJobFailure,
+        note_ids: ['C1'],
+        later_pass: {
+          tag: 'example-later-pass',
+          url: 'https://example.com/payload/job/later-pass',
+        },
         recurring_count: 3,
       },
     ],
   },
   notes: mockLongUnbrokenPayloadNote,
   updated_by: 'developer',
-  links: [{ ID: 4, url: 'https://redhat.atlassian.net/browse/TRT-1', link_type: 'jira' }],
+  links: [{ ID: 4, url: 'https://example.com/issues/1', link_type: 'other' }],
 }
 
 const trtEvaluation: SLOEvaluation = {

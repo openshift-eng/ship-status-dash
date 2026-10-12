@@ -37,6 +37,17 @@ Feature: Team SLO workspace
     When I open the TRT team SLO page
     Then the payload note should wrap within its value column
 
+  Scenario: Failed job details use the row width without narrow-screen overflow
+    Given I am not logged in
+    And the browser viewport is narrow
+    When I open the TRT team SLO page
+    Then the failed job name should be a linked heading
+    And the failed job details should fit within the row
+    And the failed job context links should be available
+    When I collapse and expand the failed jobs
+    And I select root cause "C1"
+    Then root cause "C1" should receive focus
+
   Scenario: SLO component well has a history link to the sub-component page
     Given I am not logged in
     When I open the TRT team SLO page
