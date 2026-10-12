@@ -37,6 +37,19 @@ Feature: Team SLO workspace
     When I open the TRT team SLO page
     Then the payload note should wrap within its value column
 
+  Scenario: Payload notes render Markdown safely
+    Given I am not logged in
+    When I open the TRT team SLO page with Markdown note examples
+    Then the "nightly-markdown" payload note should render a link and list
+    And the "nightly-markdown" payload note should render inline and fenced code
+    And the "nightly-markdown" payload note should suppress unsafe URLs and raw HTML
+
+  Scenario: Plain and blank payload notes keep their existing behavior
+    Given I am not logged in
+    When I open the TRT team SLO page with Markdown note examples
+    Then the "nightly-plain" payload should show its plain note
+    And the "nightly-blank" payload should not show a note
+
   Scenario: Failed job details use the row width without narrow-screen overflow
     Given I am not logged in
     And the browser viewport is narrow

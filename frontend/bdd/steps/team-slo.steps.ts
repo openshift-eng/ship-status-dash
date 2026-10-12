@@ -1,11 +1,18 @@
-import { expect } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import { createBdd } from 'playwright-bdd'
 
-import { installTRTSLOMocks, json, PROTECTED, setupApiMocks } from '../fixtures/apiMocks'
+import {
+  installTRTMarkdownSLOMocks,
+  installTRTSLOMocks,
+  json,
+  PROTECTED,
+  setupApiMocks,
+} from '../fixtures/apiMocks'
 import {
   mockLongUnbrokenJobFailure,
   mockLongUnbrokenJobName,
   mockLongUnbrokenPayloadNote,
+  mockPlainPayloadNote,
   mockTRTPayloadItem,
   mockTRTSLOUser,
 } from '../fixtures/mockData'
@@ -50,6 +57,13 @@ When('I open the TRT team SLO page', async ({ page }) => {
   await teamPage.heading('TRT').waitFor()
 })
 
+When('I open the TRT team SLO page with Markdown note examples', async ({ page }) => {
+  await installTRTMarkdownSLOMocks(page)
+  const teamPage = new TeamSLOPage(page)
+  await teamPage.goto('TRT')
+  await teamPage.heading('TRT').waitFor()
+})
+
 When('I edit the payload and save', async ({ page }) => {
   savedBodies = []
   linkCalls = []
@@ -79,6 +93,52 @@ Then('the payload note should wrap within its value column', async ({ page }) =>
   const note = page.getByText(mockLongUnbrokenPayloadNote, { exact: true })
   await expect(note).toBeVisible()
   expect(await note.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+const payloadFacts = (page: Page, itemKey: string) =>
+  page.getByText(itemKey, { exact: true }).locator('xpath=ancestor::dl')
+
+Then(
+  'the {string} payload note should render a link and list',
+  async ({ page }, itemKey: string) => {
+    const note = payloadFacts(page, itemKey).getByTestId('markdown-content')
+    const link = note.getByRole('link', { name: 'release notes' })
+    await expect(link).toHaveAttribute('href', 'https://example.com/release-notes')
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(note.locator('ul > li')).toHaveText([
+      'review the blocking jobs',
+      'confirm the payload',
+    ])
+  },
+)
+
+Then(
+  'the {string} payload note should render inline and fenced code',
+  async ({ page }, itemKey: string) => {
+    const note = payloadFacts(page, itemKey).getByTestId('markdown-content')
+    await expect(note.locator(':not(pre) > code')).toHaveText('oc adm release info')
+    await expect(note.locator('pre > code')).toContainText('payload accepted')
+  },
+)
+
+Then(
+  'the {string} payload note should suppress unsafe URLs and raw HTML',
+  async ({ page }, itemKey: string) => {
+    const note = payloadFacts(page, itemKey).getByTestId('markdown-content')
+    await expect(note.locator('a[href^="javascript:"]')).toHaveCount(0)
+    await expect(note.locator('script, strong')).toHaveCount(0)
+    await expect(note.getByText('Safe payload text', { exact: true })).toBeVisible()
+  },
+)
+
+Then('the {string} payload should show its plain note', async ({ page }, itemKey: string) => {
+  const facts = payloadFacts(page, itemKey)
+  await expect(facts.getByText('Note', { exact: true })).toBeVisible()
+  await expect(facts.getByText(mockPlainPayloadNote, { exact: true })).toBeVisible()
+})
+
+Then('the {string} payload should not show a note', async ({ page }, itemKey: string) => {
+  await expect(payloadFacts(page, itemKey).getByText('Note', { exact: true })).toHaveCount(0)
 })
 
 Then('the failed job name should be a linked heading', async ({ page }) => {

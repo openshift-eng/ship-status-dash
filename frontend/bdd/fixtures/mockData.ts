@@ -339,6 +339,23 @@ export const mockTRTSLOUser: MockAuthUser = {
 const trtOccurredAt = '2026-09-25T12:00:00Z'
 
 export const mockLongUnbrokenPayloadNote = 'x'.repeat(300)
+export const mockMarkdownPayloadNote = `Payload [release notes](https://example.com/release-notes):
+
+- review the blocking jobs
+- confirm the payload
+
+Run \`oc adm release info\` before reporting:
+
+\`\`\`text
+payload accepted
+\`\`\`
+
+[unsafe payload link](javascript:alert('unsafe'))
+
+<script>alert('unsafe')</script><strong>unsafe raw HTML</strong>
+
+Safe payload text`
+export const mockPlainPayloadNote = 'Plain payload note without Markdown'
 export const mockLongUnbrokenJobName = `periodic-ci-example-${'longjobsegment'.repeat(24)}`
 export const mockLongUnbrokenJobFailure = `Synthetic failure: ${'connectiontimeout'.repeat(24)}`
 
@@ -378,6 +395,15 @@ export const mockTRTPayloadItem: SLOItem = {
   updated_by: 'developer',
   links: [{ ID: 4, url: 'https://example.com/issues/1', link_type: 'other' }],
 }
+
+const payloadNoteItem = (id: number, itemKey: string, notes: string): SLOItem => ({
+  ...mockTRTPayloadItem,
+  id,
+  item_key: itemKey,
+  details: { jobs: [] },
+  notes,
+  links: [],
+})
 
 const trtEvaluation: SLOEvaluation = {
   name: 'accepted-payload-per-day',
@@ -429,6 +455,15 @@ export const mockTRTTeamSLO: TeamSLO = {
   evaluations: [trtEvaluation],
   slo_components: trtSLOComponents,
   items: [mockTRTPayloadItem],
+}
+
+export const mockTRTMarkdownTeamSLO: TeamSLO = {
+  ...mockTRTTeamSLO,
+  items: [
+    payloadNoteItem(8, 'nightly-markdown', mockMarkdownPayloadNote),
+    payloadNoteItem(9, 'nightly-plain', mockPlainPayloadNote),
+    payloadNoteItem(10, 'nightly-blank', '  \n  '),
+  ],
 }
 
 export const mockTRTSummary: TeamSLOSummary = {
