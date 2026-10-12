@@ -105,6 +105,7 @@ Then(
     const link = note.getByRole('link', { name: 'release notes' })
     await expect(link).toHaveAttribute('href', 'https://example.com/release-notes')
     await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     await expect(note.locator('ul > li')).toHaveText([
       'review the blocking jobs',
       'confirm the payload',
@@ -125,7 +126,13 @@ Then(
   'the {string} payload note should suppress unsafe URLs and raw HTML',
   async ({ page }, itemKey: string) => {
     const note = payloadFacts(page, itemKey).getByTestId('markdown-content')
-    await expect(note.locator('a[href^="javascript:"]')).toHaveCount(0)
+    const unsafeLinkText = note.getByText('unsafe payload link', { exact: true })
+    await expect(unsafeLinkText).toBeVisible()
+    expect(
+      await unsafeLinkText.evaluate(
+        (element) => element.closest('a')?.hasAttribute('href') ?? false,
+      ),
+    ).toBe(false)
     await expect(note.locator('script, strong')).toHaveCount(0)
     await expect(note.getByText('Safe payload text', { exact: true })).toBeVisible()
   },
