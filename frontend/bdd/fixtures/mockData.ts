@@ -339,6 +339,22 @@ export const mockTRTSLOUser: MockAuthUser = {
 const trtOccurredAt = '2026-09-25T12:00:00Z'
 
 export const mockLongUnbrokenPayloadNote = 'x'.repeat(300)
+export const mockMarkdownPayloadNote = `Payload [release notes](https://example.com/release-notes):
+
+- review the blocking jobs
+- confirm the payload
+
+Run \`oc adm release info\` before reporting:
+
+\`\`\`text
+payload accepted
+\`\`\`
+
+[unsafe payload link](javascript:alert('unsafe'))
+
+<script>alert('unsafe')</script><strong>unsafe raw HTML</strong>
+
+Safe payload text`
 export const mockLongUnbrokenJobName = `periodic-ci-example-${'longjobsegment'.repeat(24)}`
 export const mockLongUnbrokenJobFailure = `Synthetic failure: ${'connectiontimeout'.repeat(24)}`
 
@@ -429,6 +445,20 @@ export const mockTRTTeamSLO: TeamSLO = {
   evaluations: [trtEvaluation],
   slo_components: trtSLOComponents,
   items: [mockTRTPayloadItem],
+}
+
+export const mockTRTMarkdownTeamSLO: TeamSLO = {
+  ...mockTRTTeamSLO,
+  items: [
+    {
+      ...mockTRTPayloadItem,
+      id: 8,
+      item_key: 'nightly-markdown',
+      details: { jobs: [] },
+      notes: mockMarkdownPayloadNote,
+      links: [],
+    },
+  ],
 }
 
 export const mockTRTSummary: TeamSLOSummary = {

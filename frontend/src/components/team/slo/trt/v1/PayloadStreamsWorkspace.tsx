@@ -14,6 +14,7 @@ import type {
 import { getStatusChipColor } from '../../../../../utils/helpers'
 import { slugify } from '../../../../../utils/slugify'
 import { getStatusTintStyles } from '../../../../../utils/styles'
+import MarkdownRenderer from '../../../../MarkdownRenderer'
 import { finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
 
 import { trtPayloadResult, trtPayloadSettings } from './result'
@@ -145,7 +146,7 @@ const JobNote = styled(Typography)(({ theme }) => ({
   fontSize: '0.75rem',
 }))
 
-const PayloadNote = styled(Typography)({
+const PayloadNote = styled('div')({
   fontSize: '0.875rem',
   whiteSpace: 'pre-wrap',
   overflowWrap: 'anywhere',
@@ -603,7 +604,9 @@ const PayloadStreamsWorkspace = ({
                           <>
                             <FactLabel>Note</FactLabel>
                             <FactValue>
-                              <PayloadNote>{row.notes}</PayloadNote>
+                              <PayloadNote>
+                                <MarkdownRenderer content={row.notes ?? ''} />
+                              </PayloadNote>
                             </FactValue>
                           </>
                         )}
