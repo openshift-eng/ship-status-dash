@@ -110,6 +110,9 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 		}
 		lastErr = err
 
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		var promErr *promclientv1.Error
 		if errors.As(err, &promErr) && (promErr.Type == promclientv1.ErrBadData || promErr.Type == promclientv1.ErrCanceled) {
 			break
