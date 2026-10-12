@@ -23,10 +23,12 @@ type mockPrometheusAPI struct {
 	queryResults map[string]queryResult
 	queryErrors  map[string]error
 
-	mu        sync.Mutex
-	callCount int
-	failCount int
-	failErr   error
+	mu            sync.Mutex
+	callCount     int
+	failCount     int
+	failErr       error
+	cancelOnCallN int
+	cancelFunc    context.CancelFunc
 }
 
 type queryResult struct {
@@ -38,7 +40,13 @@ func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Tim
 	m.mu.Lock()
 	m.callCount++
 	count := m.callCount
+	cancelFunc := m.cancelFunc
+	cancelOnCallN := m.cancelOnCallN
 	m.mu.Unlock()
+
+	if cancelFunc != nil && cancelOnCallN > 0 && count >= cancelOnCallN {
+		cancelFunc()
+	}
 
 	if m.failErr != nil && count <= m.failCount {
 		return nil, nil, m.failErr
@@ -147,6 +155,10 @@ func (m *mockPrometheusAPI) FormatQuery(ctx context.Context, query string) (stri
 }
 
 func TestPrometheusProber_Probe(t *testing.T) {
+	origDelays := prometheusRetryDelays
+	prometheusRetryDelays = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}
+	t.Cleanup(func() { prometheusRetryDelays = origDelays })
+
 	tests := []struct {
 		name                string
 		queries             []types.PrometheusQuery
@@ -386,7 +398,7 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 		failErr         error
 		queries         []types.PrometheusQuery
 		queryResults    map[string]queryResult
-		cancelAfter     time.Duration
+		cancelOnCallN   int
 		expectError     bool
 		expectCallCount int
 		expectStatus    types.Status
@@ -444,9 +456,9 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 			failErr:         errors.New("connection refused"),
 			queries:         []types.PrometheusQuery{{Query: "up"}},
 			queryResults:    map[string]queryResult{"up": {value: model.Vector{&model.Sample{Value: 1.0}}}},
-			cancelAfter:     1 * time.Millisecond,
+			cancelOnCallN:   2,
 			expectError:     true,
-			expectCallCount: len(prometheusRetryDelays) + 1,
+			expectCallCount: 2,
 		},
 		{
 			name:      "does not retry permanent ErrBadData",
@@ -479,12 +491,10 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 
 			ctx := context.Background()
 			var cancel context.CancelFunc
-			if tt.cancelAfter > 0 {
+			if tt.cancelOnCallN > 0 {
 				ctx, cancel = context.WithCancel(ctx)
-				go func() {
-					time.Sleep(tt.cancelAfter)
-					cancel()
-				}()
+				mockAPI.cancelFunc = cancel
+				mockAPI.cancelOnCallN = tt.cancelOnCallN
 				defer cancel()
 			}
 
@@ -503,12 +513,7 @@ func TestPrometheusProber_RetryOnError(t *testing.T) {
 				t.Fatal("timeout waiting for result")
 			}
 
-			if tt.cancelAfter > 0 {
-				assert.Less(t, mockAPI.getCallCount(), tt.expectCallCount,
-					"should have stopped retrying when context was canceled")
-			} else {
-				assert.Equal(t, tt.expectCallCount, mockAPI.getCallCount())
-			}
+			assert.Equal(t, tt.expectCallCount, mockAPI.getCallCount())
 		})
 	}
 }

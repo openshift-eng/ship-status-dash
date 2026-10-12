@@ -53,25 +53,19 @@ func (p *PrometheusProber) Probe(ctx context.Context, results chan<- ProbeResult
 var prometheusRetryDelays = []time.Duration{10 * time.Second, 30 * time.Second}
 
 func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration string, step string) (model.Value, error) {
-	now := time.Now()
-
+	var dur, stepDuration time.Duration
 	var isRange bool
-	var r promclientv1.Range
 	if duration != "" {
-		dur, parseErr := time.ParseDuration(duration)
+		var parseErr error
+		dur, parseErr = time.ParseDuration(duration)
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		stepDuration, parseErr := time.ParseDuration(step)
+		stepDuration, parseErr = time.ParseDuration(step)
 		if parseErr != nil {
 			return nil, parseErr
 		}
 		isRange = true
-		r = promclientv1.Range{
-			Start: now.Add(-dur),
-			End:   now,
-			Step:  stepDuration,
-		}
 	}
 
 	var result model.Value
@@ -97,8 +91,14 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 			}
 		}
 
+		now := time.Now()
 		var err error
 		if isRange {
+			r := promclientv1.Range{
+				Start: now.Add(-dur),
+				End:   now,
+				Step:  stepDuration,
+			}
 			result, warnings, err = p.client.QueryRange(ctx, query, r)
 		} else {
 			result, warnings, err = p.client.Query(ctx, query, now)
