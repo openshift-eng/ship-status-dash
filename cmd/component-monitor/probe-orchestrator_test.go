@@ -536,23 +536,6 @@ type runOnceProbeSpec struct {
 }
 
 func TestProbeOrchestrator_runOnce(t *testing.T) {
-	healthy := ProbeResult{
-		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    "comp",
-			SubComponentSlug: "sub",
-			Status:           types.StatusHealthy,
-		},
-		ProbeType: ProbeTypeHTTP,
-	}
-	errored := ProbeResult{
-		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    "comp",
-			SubComponentSlug: "slow",
-		},
-		ProbeType: ProbeTypeJira,
-		Error:     errors.New("search failed"),
-	}
-
 	tests := []struct {
 		name            string
 		tick            time.Duration
@@ -614,6 +597,33 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			wantCalls:   []int32{0},
 			wantReports: 0,
 		},
+		{
+			name: "mass failure suppresses reports during grace period",
+			tick: 100 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+			},
+			runs:        maxMassFailureGraceCycles,
+			wantCalls:   []int32{3, 3, 3, 3},
+			wantReports: 0,
+		},
+		{
+			name: "mass failure allows report after grace period expires",
+			tick: 100 * time.Millisecond,
+			probes: []runOnceProbeSpec{
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: 10 * time.Millisecond, err: true},
+				{frequency: time.Nanosecond},
+			},
+			runs:        maxMassFailureGraceCycles + 1,
+			wantCalls:   []int32{4, 4, 4, 4, 4},
+			wantReports: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -621,9 +631,16 @@ func TestProbeOrchestrator_runOnce(t *testing.T) {
 			counters := make([]atomic.Int32, len(tt.probes))
 			schedule := make([]scheduledProber, len(tt.probes))
 			for i, spec := range tt.probes {
-				result := healthy
+				result := ProbeResult{
+					ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+						ComponentSlug:    fmt.Sprintf("comp%d", i),
+						SubComponentSlug: fmt.Sprintf("sub%d", i),
+						Status:           types.StatusHealthy,
+					},
+					ProbeType: ProbeTypeHTTP,
+				}
 				if spec.err {
-					result = errored
+					result.Error = errors.New("probe error")
 				}
 				schedule[i].prober = &countingProber{calls: &counters[i], result: result, delay: spec.delay}
 				schedule[i].frequency = spec.frequency
@@ -771,67 +788,6 @@ func TestIsMassFailure(t *testing.T) {
 			assert.Equal(t, tt.wantConsecutiveFailures, o.consecutiveMassFailures)
 		})
 	}
-}
-
-func TestMassFailureIntegration(t *testing.T) {
-	log := logrus.New()
-	log.SetLevel(logrus.ErrorLevel)
-
-	makeErrorSchedule := func(n int) []scheduledProber {
-		schedule := make([]scheduledProber, n)
-		for i := range schedule {
-			var calls atomic.Int32
-			schedule[i] = scheduledProber{
-				prober: &countingProber{
-					calls: &calls,
-					result: ProbeResult{
-						ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-							ComponentSlug:    fmt.Sprintf("comp%d", i),
-							SubComponentSlug: fmt.Sprintf("sub%d", i),
-						},
-						ProbeType: ProbeTypePrometheus,
-						Error:     errors.New("connection refused"),
-					},
-				},
-				frequency: 10 * time.Millisecond,
-			}
-		}
-		return schedule
-	}
-
-	t.Run("suppresses report during mass failure grace period", func(t *testing.T) {
-		reporter := &fakeReporter{}
-		o := &ProbeOrchestrator{
-			schedule:     makeErrorSchedule(5),
-			frequency:    100 * time.Millisecond,
-			reportClient: reporter,
-			log:          log,
-		}
-
-		for i := 0; i < maxMassFailureGraceCycles; i++ {
-			o.runOnce(context.Background())
-		}
-		assert.Equal(t, 0, reporter.reportCount(), "reports should be suppressed during grace period")
-		assert.Equal(t, maxMassFailureGraceCycles, o.consecutiveMassFailures)
-	})
-
-	t.Run("sends report after grace period expires", func(t *testing.T) {
-		reporter := &fakeReporter{}
-		o := &ProbeOrchestrator{
-			schedule:     makeErrorSchedule(5),
-			frequency:    100 * time.Millisecond,
-			reportClient: reporter,
-			log:          log,
-		}
-
-		for i := 0; i <= maxMassFailureGraceCycles; i++ {
-			o.runOnce(context.Background())
-		}
-		// Errored results are omitted by mergeStatuses when all non-errored results
-		// are healthy (or absent), so the report is empty. But the mass failure
-		// grace period is what suppresses during the first N cycles.
-		assert.Equal(t, maxMassFailureGraceCycles+1, o.consecutiveMassFailures)
-	})
 }
 
 func TestProbeOrchestrator_DryRunRunsAll(t *testing.T) {
