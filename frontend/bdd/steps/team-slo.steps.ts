@@ -12,7 +12,6 @@ import {
   mockLongUnbrokenJobFailure,
   mockLongUnbrokenJobName,
   mockLongUnbrokenPayloadNote,
-  mockPlainPayloadNote,
   mockTRTPayloadItem,
   mockTRTSLOUser,
 } from '../fixtures/mockData'
@@ -137,16 +136,6 @@ Then(
     await expect(note.getByText('Safe payload text', { exact: true })).toBeVisible()
   },
 )
-
-Then('the {string} payload should show its plain note', async ({ page }, itemKey: string) => {
-  const facts = payloadFacts(page, itemKey)
-  await expect(facts.getByText('Note', { exact: true })).toBeVisible()
-  await expect(facts.getByText(mockPlainPayloadNote, { exact: true })).toBeVisible()
-})
-
-Then('the {string} payload should not show a note', async ({ page }, itemKey: string) => {
-  await expect(payloadFacts(page, itemKey).getByText('Note', { exact: true })).toHaveCount(0)
-})
 
 Then('the failed job name should be a linked heading', async ({ page }) => {
   const heading = page.getByRole('heading', { level: 4, name: mockLongUnbrokenJobName })
