@@ -581,6 +581,44 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 	}
 }
 
+func TestJUnitProber_Probe_twoUnfinishedBeforeStaleFinished(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	const newest = "300"
+	const middle = "299"
+	const finishedID = "298"
+	bucket := defaultGCSBucket
+	maxAge := 2 * time.Hour
+	startedAt := time.Now().Add(-3 * time.Hour)
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):          {body: newest},
+		gcsListObjectURLTest(bucket, job):                             {body: gcsListBody(job, []string{newest, middle, finishedID})},
+		gcsProwObjectURL(bucket, job, newest, prowObjectStarted):      {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, newest, prowObjectFinished):     {statusCode: 404, body: "not found"},
+		gcsProwObjectURL(bucket, job, middle, prowObjectStarted):      {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, middle, prowObjectFinished):     {statusCode: 404, body: "not found"},
+		gcsProwObjectURL(bucket, job, finishedID, prowObjectStarted):  {body: startedJSON(startedAt)},
+		gcsProwObjectURL(bucket, job, finishedID, prowObjectFinished): {body: `{"timestamp":1,"result":"SUCCESS","passed":true}`},
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, maxAge, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         5,
+			FailedRunsThreshold: 3,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+			AlertOnNoRecentRun:  true,
+		},
+		&mockHTTPDoer{responses: responses})
+	res := probeJUnit(t, p)
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	if res.Status != types.StatusDegraded {
+		t.Fatalf("status = %s, want Degraded", res.Status)
+	}
+	if len(res.Reasons) != 1 || !strings.Contains(res.Reasons[0].Results, "latest build "+finishedID) {
+		t.Fatalf("reasons = %#v, want staleness for build %s", res.Reasons, finishedID)
+	}
+}
+
 func TestJUnitProber_Probe_history(t *testing.T) {
 	const job = "history-job"
 	bucket := defaultGCSBucket
@@ -1620,73 +1658,111 @@ func TestJUnitProber_ProbeJobs(t *testing.T) {
 			gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {err: fmt.Errorf("network error")},
 		}
 	}
-	probe := func(responses map[string]mockHTTPResponse) ProbeResult {
+	probe := func(t *testing.T, responses map[string]mockHTTPResponse) ProbeResult {
 		t.Helper()
 		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{jobA, jobB}, 0, types.SeverityDown, settings, &mockHTTPDoer{responses: responses})
 		return probeJUnit(t, p)
 	}
 
-	t.Run("failing job escalates past a passing job", func(t *testing.T) {
-		res := probe(merge(finishedJUnitResponses(bucket, jobA, "11", okXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
-		if res.Error != nil {
-			t.Fatalf("unexpected error: %v", res.Error)
-		}
-		if res.Status != types.StatusDown {
-			t.Fatalf("status = %s, want Down", res.Status)
-		}
-		if len(res.Reasons) != 1 || res.Reasons[0].Check != jobB {
-			t.Fatalf("reasons = %#v, want only %s", res.Reasons, jobB)
-		}
-		if !strings.Contains(res.Reasons[0].Results, "2/4 tests failed: git-clone, quay-pull") {
-			t.Fatalf("reason = %q", res.Reasons[0].Results)
-		}
-	})
+	tests := []struct {
+		name          string
+		responses     map[string]mockHTTPResponse
+		wantError     bool
+		wantStatus    types.Status
+		wantChecks    []string
+		wantSubstr    string
+		wantNoReasons bool
+	}{
+		{
+			name:       "failing job escalates past a passing job",
+			responses:  merge(finishedJUnitResponses(bucket, jobA, "11", okXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)),
+			wantStatus: types.StatusDown,
+			wantChecks: []string{jobB},
+			wantSubstr: "2/4 tests failed: git-clone, quay-pull",
+		},
+		{
+			name:       "reasons from both failing jobs",
+			responses:  merge(finishedJUnitResponses(bucket, jobA, "11", failingXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)),
+			wantStatus: types.StatusDown,
+			wantChecks: []string{jobA, jobB},
+		},
+		{
+			name:          "unreadable job does not hide an unhealthy sibling",
+			responses:     merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", failingXML)),
+			wantError:     true,
+			wantNoReasons: true,
+		},
+		{
+			name:      "unreadable job with a healthy sibling returns error",
+			responses: merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", okXML)),
+			wantError: true,
+		},
+		{
+			name:      "all jobs unreadable returns error",
+			responses: merge(unreadable(jobA), unreadable(jobB)),
+			wantError: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := probe(t, tt.responses)
+			if tt.wantError {
+				if res.Error == nil {
+					t.Fatal("expected error")
+				}
+				if res.Status == types.StatusHealthy {
+					t.Fatalf("status = %s", res.Status)
+				}
+			} else if res.Error != nil {
+				t.Fatalf("unexpected error: %v", res.Error)
+			}
+			if tt.wantStatus != "" && res.Status != tt.wantStatus {
+				t.Fatalf("status = %s, want %s", res.Status, tt.wantStatus)
+			}
+			if tt.wantNoReasons && len(res.Reasons) != 0 {
+				t.Fatalf("reasons = %#v, want none", res.Reasons)
+			}
+			if tt.wantChecks != nil {
+				got := make([]string, len(res.Reasons))
+				for i, reason := range res.Reasons {
+					got[i] = reason.Check
+				}
+				if diff := cmp.Diff(tt.wantChecks, got); diff != "" {
+					t.Fatalf("checks (-want +got):\n%s", diff)
+				}
+			}
+			if tt.wantSubstr != "" && (len(res.Reasons) != 1 || !strings.Contains(res.Reasons[0].Results, tt.wantSubstr)) {
+				t.Fatalf("reasons = %#v, want substring %q", res.Reasons, tt.wantSubstr)
+			}
+		})
+	}
+}
 
-	t.Run("reasons from both failing jobs", func(t *testing.T) {
-		res := probe(merge(finishedJUnitResponses(bucket, jobA, "11", failingXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
-		if res.Error != nil {
-			t.Fatalf("unexpected error: %v", res.Error)
-		}
-		if res.Status != types.StatusDown {
-			t.Fatalf("status = %s, want Down", res.Status)
-		}
-		if len(res.Reasons) != 2 || res.Reasons[0].Check != jobA || res.Reasons[1].Check != jobB {
-			t.Fatalf("reasons = %#v", res.Reasons)
-		}
-	})
-
-	t.Run("unreadable job does not hide an unhealthy sibling", func(t *testing.T) {
-		res := probe(merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
-		if res.Error != nil {
-			t.Fatalf("unexpected error: %v", res.Error)
-		}
-		if res.Status != types.StatusDown {
-			t.Fatalf("status = %s, want Down", res.Status)
-		}
-		if len(res.Reasons) != 1 || res.Reasons[0].Check != jobB {
-			t.Fatalf("reasons = %#v", res.Reasons)
-		}
-	})
-
-	t.Run("unreadable job with a healthy sibling returns error", func(t *testing.T) {
-		res := probe(merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", okXML)))
-		if res.Error == nil {
-			t.Fatal("expected error")
-		}
-		if res.Status == types.StatusHealthy {
-			t.Fatalf("status = %s", res.Status)
-		}
-	})
-
-	t.Run("all jobs unreadable returns error", func(t *testing.T) {
-		res := probe(merge(unreadable(jobA), unreadable(jobB)))
-		if res.Error == nil {
-			t.Fatal("expected error")
-		}
-		if res.Status == types.StatusHealthy {
-			t.Fatalf("status = %s", res.Status)
-		}
-	})
+func TestJUnitProber_ProbeByGroup_PartialRead(t *testing.T) {
+	bucket := defaultGCSBucket
+	const jobA = "job-a"
+	const jobB = "job-b"
+	const build = "22"
+	failingXML := readJUnitFixture(t, "failing.xml")
+	responses := finishedJUnitResponses(bucket, jobB, build, failingXML)
+	responses[gcsProwObjectURL(bucket, jobB, build, prowObjectStarted)] = mockHTTPResponse{body: recentStarted()}
+	responses[gcsProwObjectURL(bucket, jobB, build, prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog("aws-9--us-east-2--openshift-org-aws-quota-slice-210")}
+	responses[gcsProwObjectURL(bucket, jobA, prowObjectLatestBuild)] = mockHTTPResponse{statusCode: http.StatusServiceUnavailable, body: "unavailable"}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{jobA, jobB}, 0, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         1,
+			FailedRunsThreshold: 1,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+			GroupBy:             types.JUnitGroupByLeaseResourcePrefix,
+		},
+		&mockHTTPDoer{responses: responses})
+	res := probeJUnit(t, p)
+	if res.Error == nil {
+		t.Fatal("expected error")
+	}
+	if len(res.Reasons) != 0 {
+		t.Fatalf("reasons = %#v, want none", res.Reasons)
+	}
 }
 
 func TestJUnitProber_ProbeByGroup_AllUnreadable(t *testing.T) {

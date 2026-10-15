@@ -37,11 +37,11 @@ func (p *JUnitProber) probeJobs(ctx context.Context) ProbeResult {
 		}
 		reasons = append(reasons, result.Reasons...)
 	}
-	if len(reasons) > 0 {
-		return p.combineJobProbe(status, reasons, nil)
-	}
 	if firstErr != nil {
 		return *firstErr
+	}
+	if len(reasons) > 0 {
+		return p.combineJobProbe(status, reasons, nil)
 	}
 	return p.healthyResult()
 }
@@ -66,11 +66,17 @@ func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
 			}).Warn("junit build unreadable")
 			return p.formatErrorResult(job, err)
 		}
+		counts := junitSelectionCounts{considered: 1}
 		if !ok {
+			counts.olderThanMaxAge = 1
+			p.logMaxAgeSelection(job, counts)
 			return p.healthyResult()
 		}
+		counts.withinMaxAge = 1
 		r, perr := p.probeJunitForBuildID(ctx, job, builds[0])
 		if perr != nil {
+			counts.readErrors = 1
+			p.logMaxAgeSelection(job, counts)
 			logrus.WithError(perr).WithFields(logrus.Fields{
 				"component":     p.componentSlug,
 				"sub_component": p.subComponentSlug,
@@ -79,16 +85,19 @@ func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
 			}).Warn("junit build unreadable")
 			return p.formatErrorResult(job, perr)
 		}
+		counts.scored = 1
+		p.logMaxAgeSelection(job, counts)
 		return r
 	}
 
 	var runs []junitRunEval
 	var readErr error
-	sawUnscored := false
+	counts := junitSelectionCounts{considered: len(builds)}
 	for _, b := range builds {
 		run, included, perr := p.evaluateIncludedBuild(ctx, job, b)
 		if perr != nil {
 			logrus.WithError(perr).WithFields(logrus.Fields{"job": job, "build": b}).Warn("skipping junit build")
+			counts.readErrors++
 			if readErr == nil {
 				readErr = perr
 			}
@@ -96,20 +105,28 @@ func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
 		}
 		switch included {
 		case includeUnscored:
-			sawUnscored = true
+			counts.unscored++
+			continue
+		case includeDroppedAge:
+			counts.olderThanMaxAge++
 			continue
 		case includeScored:
+			counts.scored++
 			runs = append(runs, run)
 		}
 	}
+	counts.withinMaxAge = counts.scored + counts.unscored
+	p.logMaxAgeSelection(job, counts)
 	if len(runs) == 0 && readErr != nil {
 		return p.formatErrorResult(job, readErr)
 	}
-	if len(runs) == 0 && sawUnscored {
+	if len(runs) == 0 && counts.unscored > 0 {
 		return p.formatErrorResult(job, fmt.Errorf("no junit runs scored for %s", p.settings.ArtifactPath))
 	}
 	if p.settings.LatestRunGroupWindow > 0 {
+		before := len(runs)
 		runs = runsInLatestGroup(runs, p.settings.LatestRunGroupWindow)
+		p.logLatestWindowSelection(job, "", before, len(runs))
 	}
 	reason, unhealthy := p.failureSignatureReason(job, runs)
 	if !unhealthy {

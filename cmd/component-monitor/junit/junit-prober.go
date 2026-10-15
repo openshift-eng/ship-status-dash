@@ -319,13 +319,17 @@ func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, job, latestF
 	// An older gap is skipped the same way so a finished build further back
 	// can still be scored. Once a gap is outside max_age, older ids are too,
 	// so the scan stops.
-	logFields := logrus.Fields{
+	log := logrus.WithFields(logrus.Fields{
 		"component":     p.componentSlug,
 		"sub_component": p.subComponentSlug,
 		"job":           job,
-	}
+	})
 	var finished []string
+	unfinishedExcluded := 0
+	stoppedOutsideMaxAge := false
+	scanned := 0
 	for i, id := range all {
+		scanned++
 		done, fErr := p.isBuildFinished(ctx, job, id)
 		if fErr != nil {
 			return nil, fmt.Errorf("checking finished.json for build %s: %w", id, fErr)
@@ -337,7 +341,8 @@ func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, job, latestF
 			}
 			continue
 		}
-		entry := logrus.WithFields(logFields).WithField("build", id)
+		unfinishedExcluded++
+		entry := log.WithField("build", id)
 		if i == 0 {
 			entry.Info("Excluding unfinished latest build from finished build list")
 			continue
@@ -348,9 +353,18 @@ func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, job, latestF
 		}
 		entry.Warn("Excluding unfinished build from finished build list")
 		if !within {
+			stoppedOutsideMaxAge = true
 			break
 		}
 	}
+	log.WithFields(logrus.Fields{
+		"listed":                  len(all),
+		"scanned":                 scanned,
+		"finished":                len(finished),
+		"unfinished_excluded":     unfinishedExcluded,
+		"not_scanned":             len(all) - scanned,
+		"stopped_outside_max_age": stoppedOutsideMaxAge,
+	}).Debug("junit finished build selection")
 	return finished, nil
 }
 
@@ -373,9 +387,12 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 	}
 }
 
-// combineJobProbe reports an unhealthy reading when one exists. A read error is returned only when
-// no readable job is unhealthy, so mergeStatuses can omit the sub-component instead of reporting Healthy.
+// combineJobProbe returns a probe error when any read failed. An incomplete account or job list
+// must not publish reasons, or active outages for the missing identities auto-resolve.
 func (p *JUnitProber) combineJobProbe(status types.Status, reasons []types.Reason, readErr error) ProbeResult {
+	if readErr != nil {
+		return p.formatErrorResult(strings.Join(p.jobNames, ","), readErr)
+	}
 	if len(reasons) > 0 {
 		if status == "" || status == types.StatusHealthy {
 			status = p.severity.ToStatus()
@@ -388,9 +405,6 @@ func (p *JUnitProber) combineJobProbe(status types.Status, reasons []types.Reaso
 				Reasons:          reasons,
 			},
 		}
-	}
-	if readErr != nil {
-		return p.formatErrorResult(strings.Join(p.jobNames, ","), readErr)
 	}
 	return p.healthyResult()
 }
@@ -478,6 +492,57 @@ func (p *JUnitProber) fetchBuildStarted(ctx context.Context, job, buildID string
 	return time.Unix(started.Timestamp, 0), nil
 }
 
+type junitSelectionCounts struct {
+	considered      int
+	withinMaxAge    int
+	olderThanMaxAge int
+	unscored        int
+	scored          int
+	readErrors      int
+	skippedNoLease  int
+}
+
+func (p *JUnitProber) logMaxAgeSelection(job string, counts junitSelectionCounts) {
+	fields := logrus.Fields{
+		"component":          p.componentSlug,
+		"sub_component":      p.subComponentSlug,
+		"considered":         counts.considered,
+		"within_max_age":     counts.withinMaxAge,
+		"older_than_max_age": counts.olderThanMaxAge,
+		"unscored":           counts.unscored,
+		"scored":             counts.scored,
+		"read_errors":        counts.readErrors,
+	}
+	if job != "" {
+		fields["job"] = job
+	}
+	if p.settings.GroupBy == types.JUnitGroupByLeaseResourcePrefix {
+		fields["skipped_no_lease"] = counts.skippedNoLease
+	}
+	logrus.WithFields(fields).Debug("junit max_age selection")
+}
+
+func (p *JUnitProber) logLatestWindowSelection(job, group string, considered, kept int) {
+	if p.settings.LatestRunGroupWindow <= 0 {
+		return
+	}
+	fields := logrus.Fields{
+		"component":             p.componentSlug,
+		"sub_component":         p.subComponentSlug,
+		"considered":            considered,
+		"within_latest_window":  kept,
+		"outside_latest_window": considered - kept,
+		"window":                shortDuration(p.settings.LatestRunGroupWindow),
+	}
+	if job != "" {
+		fields["job"] = job
+	}
+	if group != "" {
+		fields["group"] = group
+	}
+	logrus.WithFields(fields).Debug("junit latest window selection")
+}
+
 func (p *JUnitProber) countMissingArtifact() bool {
 	if p.settings.MissingArtifactUnhealthy == nil {
 		return true
@@ -499,39 +564,36 @@ func (p *JUnitProber) jobBuilds(ctx context.Context, job string) ([]string, *Pro
 	if finErr != nil {
 		return nil, nil, fmt.Errorf("checking finished.json for build %s: %w", latest, finErr)
 	}
-
-	unfinishedBuild := ""
 	if !finished {
 		logrus.WithFields(logrus.Fields{
 			"component":     p.componentSlug,
 			"sub_component": p.subComponentSlug,
 			"job":           job,
 			"build":         latest,
-		}).Info("Latest build not finished, falling back to previous build")
-		unfinishedBuild = latest
-		prevID, findErr := p.findPreviousBuildID(ctx, job, latest)
-		if findErr != nil {
-			return nil, nil, fmt.Errorf("latest build %s not finished and %w", latest, findErr)
+		}).Info("Latest build not finished, falling back to newest finished build")
+		limit := p.settings.HistoryRuns
+		if limit < 1 {
+			limit = 1
 		}
-		latest = prevID
+		builds, err := p.listFinishedBuildIDsDesc(ctx, job, latest, limit)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(builds) == 0 {
+			return nil, nil, fmt.Errorf("no finished builds found")
+		}
+		if stale, staleErr := p.noteStale(ctx, job, builds[0]); staleErr != nil || stale != nil {
+			return nil, stale, staleErr
+		}
+		return builds, nil, nil
 	}
 
 	if stale, err := p.noteStale(ctx, job, latest); err != nil || stale != nil {
 		return nil, stale, err
 	}
-
 	builds, err := p.resolveBuildIDsToEvaluate(ctx, job, latest)
 	if err != nil {
 		return nil, nil, err
-	}
-	if unfinishedBuild != "" {
-		filtered := builds[:0]
-		for _, b := range builds {
-			if b != unfinishedBuild {
-				filtered = append(filtered, b)
-			}
-		}
-		builds = filtered
 	}
 	return builds, nil, nil
 }
@@ -565,23 +627,6 @@ func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, job, latest
 		return finished, nil
 	}
 	return finished[:n], nil
-}
-
-func (p *JUnitProber) findPreviousBuildID(ctx context.Context, job, currentBuildID string) (string, error) {
-	ids, err := p.listBuildIDPrefixes(ctx, job)
-	if err != nil {
-		return "", fmt.Errorf("listing builds for fallback: %w", err)
-	}
-	seen := sets.New(currentBuildID)
-	seen.Insert(ids...)
-	all := seen.UnsortedList()
-	sortBuildIDsDesc(all)
-	for i, id := range all {
-		if id == currentBuildID && i+1 < len(all) {
-			return all[i+1], nil
-		}
-	}
-	return "", fmt.Errorf("no previous build found before %s", currentBuildID)
 }
 
 func (p *JUnitProber) listBuildIDPrefixes(ctx context.Context, job string) ([]string, error) {

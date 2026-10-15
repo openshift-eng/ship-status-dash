@@ -53,13 +53,13 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 			staleReasons = append(staleReasons, stale.Reasons...)
 			continue
 		}
-		scored := 0
-		sawUnscored := false
+		counts := junitSelectionCounts{considered: len(builds)}
 		var jobReadErr error
 		for _, buildID := range builds {
 			run, included, perr := p.evaluateIncludedBuild(ctx, job, buildID)
 			if perr != nil {
 				logrus.WithError(perr).WithFields(logrus.Fields{"job": job, "build": buildID}).Warn("skipping junit build")
+				counts.readErrors++
 				if jobReadErr == nil {
 					jobReadErr = perr
 				}
@@ -67,29 +67,34 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 			}
 			switch included {
 			case includeUnscored:
-				sawUnscored = true
+				counts.unscored++
 				continue
 			case includeDroppedAge:
+				counts.olderThanMaxAge++
 				continue
 			}
 			key, keyOK, keyErr := p.leaseResourcePrefix(ctx, job, buildID)
 			if keyErr != nil {
 				logrus.WithError(keyErr).WithFields(logrus.Fields{"job": job, "build": buildID}).Warn("skipping junit build")
+				counts.readErrors++
 				if jobReadErr == nil {
 					jobReadErr = keyErr
 				}
 				continue
 			}
 			if !keyOK {
+				counts.skippedNoLease++
 				continue
 			}
-			scored++
+			counts.scored++
 			grouped[key] = append(grouped[key], run)
 		}
-		if scored == 0 && jobReadErr != nil && readErr == nil {
+		counts.withinMaxAge = counts.scored + counts.unscored + counts.skippedNoLease
+		p.logMaxAgeSelection(job, counts)
+		if counts.scored == 0 && jobReadErr != nil && readErr == nil {
 			readErr = jobReadErr
 		}
-		if scored == 0 && sawUnscored && readErr == nil {
+		if counts.scored == 0 && counts.unscored > 0 && readErr == nil {
 			readErr = fmt.Errorf("no junit runs scored for %s on job %s", p.settings.ArtifactPath, job)
 		}
 	}
@@ -145,6 +150,7 @@ func (p *JUnitProber) consecutiveStreakReason(check string, runs []junitRunEval)
 
 func (p *JUnitProber) latestGroupFailureReason(check string, runs []junitRunEval, threshold int) (types.Reason, bool) {
 	cohort := runsInLatestGroup(runs, p.settings.LatestRunGroupWindow)
+	p.logLatestWindowSelection("", check, len(runs), len(cohort))
 	var failed []junitRunEval
 	for _, run := range cohort {
 		if junitEvalUnhealthy(run.total, run.failed, run.artifactSig) {
