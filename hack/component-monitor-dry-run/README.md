@@ -18,7 +18,7 @@ The job uses the same Prometheus access path as production: it mounts the `compo
    NAMESPACE=my-namespace IMAGE=my-registry/component-monitor:tag LOG_LEVEL=debug make component-monitor-dry-run
    ```
 
-   `LOG_LEVEL` is passed to the container as `--log-level` (default `info`). `debug` prints the JUnit artifact URL and matched test names.
+   `LOG_LEVEL` is passed to the container as `--log-level` (default `debug`). `debug` prints the JUnit artifact URL and matched test names. Set `LOG_LEVEL=info` to omit those lines.
 
    The script prints the generated job name (`component-monitor-dry-run-<guid>`). Use that name for logs.
 

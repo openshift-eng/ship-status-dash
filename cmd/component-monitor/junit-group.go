@@ -54,10 +54,14 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 		}
 		scored := 0
 		sawUnscored := false
+		var jobReadErr error
 		for _, buildID := range builds {
 			run, included, perr := p.evaluateIncludedBuild(ctx, job, buildID)
 			if perr != nil {
 				logrus.WithError(perr).WithFields(logrus.Fields{"job": job, "build": buildID}).Warn("skipping junit build")
+				if jobReadErr == nil {
+					jobReadErr = perr
+				}
 				continue
 			}
 			switch included {
@@ -67,16 +71,22 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 			case includeDroppedAge:
 				continue
 			}
-			scored++
 			key, keyOK, keyErr := p.groupKey(ctx, job, buildID)
 			if keyErr != nil {
 				logrus.WithError(keyErr).WithFields(logrus.Fields{"job": job, "build": buildID}).Warn("skipping junit build")
+				if jobReadErr == nil {
+					jobReadErr = keyErr
+				}
 				continue
 			}
 			if !keyOK {
 				continue
 			}
+			scored++
 			grouped[key] = append(grouped[key], run)
+		}
+		if scored == 0 && jobReadErr != nil && readErr == nil {
+			readErr = jobReadErr
 		}
 		if scored == 0 && sawUnscored && readErr == nil {
 			readErr = fmt.Errorf("no junit runs scored for %s on job %s", p.settings.ArtifactPath, job)

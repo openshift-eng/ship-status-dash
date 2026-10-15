@@ -465,11 +465,15 @@ func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
 	}
 
 	var runs []junitRunEval
+	var readErr error
 	sawUnscored := false
 	for _, b := range builds {
 		run, included, perr := p.evaluateIncludedBuild(ctx, job, b)
 		if perr != nil {
 			logrus.WithError(perr).WithFields(logrus.Fields{"job": job, "build": b}).Warn("skipping junit build")
+			if readErr == nil {
+				readErr = perr
+			}
 			continue
 		}
 		switch included {
@@ -479,6 +483,9 @@ func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
 		case includeScored:
 			runs = append(runs, run)
 		}
+	}
+	if len(runs) == 0 && readErr != nil {
+		return p.formatErrorResult(job, readErr)
 	}
 	if len(runs) == 0 && sawUnscored {
 		return p.formatErrorResult(job, fmt.Errorf("no junit runs scored for %s", p.settings.ArtifactPath))
@@ -537,7 +544,7 @@ const (
 
 func (p *JUnitProber) evaluateIncludedBuild(ctx context.Context, job, buildID string) (junitRunEval, includeResult, error) {
 	var started time.Time
-	if p.maxAge > 0 || p.settings.GroupBy == types.JUnitGroupByLeaseResourcePrefix {
+	if p.maxAge > 0 || p.settings.LatestRunGroupWindow > 0 || p.settings.GroupBy == types.JUnitGroupByLeaseResourcePrefix {
 		var err error
 		started, err = p.fetchBuildStarted(ctx, job, buildID)
 		if isHTTP404(err) {
