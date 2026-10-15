@@ -62,28 +62,32 @@ The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `
 
 Other devcontainers can build this Dockerfile directly and call `post-create.sh`
 from the dashboard checkout to share tool versions without copying them. Rebuild
-those containers after changes to this Dockerfile or the setup script.
+those containers after Dockerfile changes. Recreate them after setup script or
+environment changes to rerun `post-create.sh`.
 
-Claude Code is installed by default. Set the build argument
-`INSTALL_CLAUDE_CODE=false` to skip it. Set `INSTALL_OPENCODE=true` to install
-OpenCode V2 instead (or alongside Claude Code). `OPENCODE_VERSION` defaults to
-`latest` and can be set to an exact `@opencode/cli` package version.
+Claude Code is installed by `post-create.sh` by default, matching Sippy's setup.
+Set `SKIP_CLAUDE_INSTALL=true` in `.devcontainer/.env` to skip it. Set
+`INSTALL_OPENCODE=true` to install OpenCode V2 instead (or alongside Claude Code).
+`OPENCODE_VERSION` defaults to `latest` and can be set to an exact `@opencode/cli`
+package version.
+Neither coding agent is installed during the image build.
 
 For example, a devcontainer that covers several related checkouts can build this
-Dockerfile and install OpenCode alongside Claude Code:
+Dockerfile and install OpenCode alongside Claude Code during post-create setup:
 
 ```json
 "build": {
   "dockerfile": "../ship-status-dash/.devcontainer/Dockerfile",
-  "context": "../ship-status-dash/.devcontainer",
-  "args": {
-    "INSTALL_OPENCODE": "true"
-  }
+  "context": "../ship-status-dash/.devcontainer"
+},
+"containerEnv": {
+  "INSTALL_OPENCODE": "true"
 }
 ```
 
-Set `INSTALL_CLAUDE_CODE` to `"false"` in `args` to install OpenCode instead of
-Claude Code. Point `dockerfile` and `context` at this directory from the other
+Set `SKIP_CLAUDE_INSTALL` to `"true"` in `containerEnv` to install OpenCode instead
+of Claude Code. These are runtime environment variables, not build arguments.
+Point `dockerfile` and `context` at this directory from the other
 environment, and call this checkout's `post-create.sh` from `postCreateCommand`.
 
 ## GitHub CLI Authentication

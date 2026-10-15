@@ -12,6 +12,19 @@ go mod download
 echo "==> Installing frontend dependencies..."
 make npm
 
+if [[ "${SKIP_CLAUDE_INSTALL:-}" != "true" ]]; then
+  echo "==> Installing Claude Code..."
+  curl -fsSL https://claude.ai/install.sh | sh
+else
+  echo "==> Skipping Claude Code install (SKIP_CLAUDE_INSTALL=true)."
+fi
+
+if [[ "${INSTALL_OPENCODE:-}" == "true" ]]; then
+  echo "==> Installing OpenCode..."
+  sudo npm install -g "@opencode/cli@${OPENCODE_VERSION:-latest}"
+  opencode --version
+fi
+
 echo "==> Removing legacy Vite cache (host/container use separate node_modules/.vite-* dirs)..."
 rm -rf frontend/node_modules/.vite
 

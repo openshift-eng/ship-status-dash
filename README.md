@@ -16,6 +16,9 @@ This project consists of multiple components:
   - Supports HTTP, Prometheus, JUnit (Prow GCS canary), systemd, and Jira monitoring; see [`cmd/component-monitor/README.md`](cmd/component-monitor/README.md)
 
 For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
+The devcontainer installs Claude Code during post-create setup by default and
+supports an optional OpenCode install. See the [devcontainer environment guide](.devcontainer/README.md#reusing-the-toolchain)
+for `SKIP_CLAUDE_INSTALL`, `INSTALL_OPENCODE`, and `OPENCODE_VERSION`.
 
 ## Dashboard Component
 
