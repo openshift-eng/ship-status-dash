@@ -69,9 +69,22 @@ Claude Code is installed by default. Set the build argument
 OpenCode V2 instead (or alongside Claude Code). `OPENCODE_VERSION` defaults to
 `latest` and can be set to an exact `@opencode/cli` package version.
 
-The sibling `dev-environments/ship-status-chai-release` environment uses this
-toolchain for `ship-status-dash`, `ship-help-bot`, and `release`, with OpenCode
-alongside the default Claude Code installation.
+For example, a devcontainer that covers several related checkouts can build this
+Dockerfile and install OpenCode alongside Claude Code:
+
+```json
+"build": {
+  "dockerfile": "../ship-status-dash/.devcontainer/Dockerfile",
+  "context": "../ship-status-dash/.devcontainer",
+  "args": {
+    "INSTALL_OPENCODE": "true"
+  }
+}
+```
+
+Set `INSTALL_CLAUDE_CODE` to `"false"` in `args` to install OpenCode instead of
+Claude Code. Point `dockerfile` and `context` at this directory from the other
+environment, and call this checkout's `post-create.sh` from `postCreateCommand`.
 
 ## GitHub CLI Authentication
 
