@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -9,13 +11,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/types"
 )
+
+// newJUnitProber fills the canary artifact path when a test omits it. Production NewJUnitProber does not default the path.
+func newJUnitProber(componentSlug, subComponentSlug, bucket string, jobNames []string, maxAge time.Duration, severity types.Severity, settings JUnitProberSettings, client junitHTTPClient) *JUnitProber {
+	if strings.TrimSpace(settings.ArtifactPath) == "" {
+		settings.ArtifactPath = "artifacts/junit_canary.xml"
+	}
+	return NewJUnitProber(componentSlug, subComponentSlug, bucket, jobNames, maxAge, severity, settings, client)
+}
 
 // gcsListObjectURLTest must match the query string built by fetchGCSListPage so the mock can key URLs.
 func gcsListObjectURLTest(bucket, job string) string {
@@ -48,6 +60,9 @@ type mockHTTPResponse struct {
 }
 
 func (m *mockHTTPDoer) Do(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Range") != "" {
+		return nil, fmt.Errorf("unexpected Range header on %s", req.URL)
+	}
 	r, ok := m.responses[req.URL.String()]
 	if !ok {
 		return nil, fmt.Errorf("unexpected URL: %s", req.URL.String())
@@ -105,20 +120,20 @@ func TestProwLogObjectURL(t *testing.T) {
 	}{
 		{
 			name:  "gcs",
-			p:     NewJUnitProber("c", "s", bucket, job, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCS, HistoryRuns: 1}, &http.Client{}),
+			p:     newJUnitProber("c", "s", bucket, []string{job}, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCS, HistoryRuns: 1}, &http.Client{}),
 			extra: []string{"1", "started.json"},
 			want:  "https://storage.googleapis.com/test-platform-results-public/logs/periodic-ci-foo/1/started.json",
 		},
 		{
 			name:  "gcsweb",
-			p:     NewJUnitProber("c", "s", bucket, job, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCSWeb, GCSWebBaseURL: "https://example-gcsweb.test", HistoryRuns: 1}, &http.Client{}),
+			p:     newJUnitProber("c", "s", bucket, []string{job}, time.Hour, types.SeverityDegraded, JUnitProberSettings{ArtifactURLStyle: types.JUnitArtifactStyleGCSWeb, GCSWebBaseURL: "https://example-gcsweb.test", HistoryRuns: 1}, &http.Client{}),
 			extra: []string{"1", "artifacts", "junit.xml"},
 			want:  "https://example-gcsweb.test/gcs/test-platform-results-public/logs/periodic-ci-foo/1/artifacts/junit.xml",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.p.prowLogObjectURL(tc.extra...)
+			got := tc.p.prowLogObjectURL(job, tc.extra...)
 			if got != tc.want {
 				t.Fatalf("prowLogObjectURL() = %q, want %q", got, tc.want)
 			}
@@ -162,7 +177,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "all tests pass",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -179,7 +194,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "some tests fail",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -200,26 +215,24 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "stale build",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:                         {body: build},
 				startedURL:                        {body: staleStarted()},
-				finishedURL:                       {statusCode: 404, body: "not found"},
+				finishedURL:                       {body: finishedBody},
 				gcsListObjectURLTest(bucket, job): {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, build)},
 			},
 			expectedStatus: types.StatusDegraded,
 		},
 		{
-			name:     "latest-build.txt fetch error",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
-			responses: map[string]mockHTTPResponse{
-				latestURL: {err: fmt.Errorf("network error")},
-			},
+			name:          "latest-build.txt fetch error",
+			settings:      JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
+			responses:     map[string]mockHTTPResponse{latestURL: {err: fmt.Errorf("network error")}},
 			expectedError: true,
 		},
 		{
 			name:     "started.json returns 404",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:                         {body: build},
 				startedURL:                        {statusCode: 404, body: "not found"},
@@ -231,7 +244,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "finished build missing junit with started.json is canary failure",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -252,7 +265,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "finished build missing junit without started.json",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {statusCode: 404, body: "not found"},
@@ -274,7 +287,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 			name:     "custom gcs bucket",
 			bucket:   "my-bucket",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				customLatestURL:   {body: "456"},
 				customStartedURL:  {body: recentStarted()},
@@ -290,7 +303,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		},
 		{
 			name:     "default severity is degraded when unset",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -311,7 +324,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "testsuites wrapper root all pass",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -328,11 +341,11 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "invalid timestamp in started.json",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:                         {body: build},
 				startedURL:                        {body: `{"timestamp": 0}`},
-				finishedURL:                       {statusCode: 404, body: "not found"},
+				finishedURL:                       {body: finishedBody},
 				gcsListObjectURLTest(bucket, job): {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, build)},
 			},
 			expectedError: true,
@@ -340,7 +353,7 @@ func TestJUnitProber_Probe(t *testing.T) {
 		{
 			name:     "zero tests in junit xml",
 			severity: types.SeverityDegraded,
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: build},
 				startedURL:  {body: recentStarted()},
@@ -365,11 +378,11 @@ func TestJUnitProber_Probe(t *testing.T) {
 			if tt.bucket != "" {
 				b = tt.bucket
 			}
-			prober := NewJUnitProber(
+			prober := newJUnitProber(
 				testComponentSlug,
 				testSubComponentSlug,
 				b,
-				job,
+				[]string{job},
 				2*time.Hour,
 				tt.severity,
 				tt.settings,
@@ -501,6 +514,19 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 			expectedStatus: types.StatusDegraded,
 		},
 		{
+			name: "unfinished stale latest falls back to recent healthy build",
+			responses: map[string]mockHTTPResponse{
+				latestURL:      {body: latestBuild},
+				startedLatest:  {body: staleStarted()},
+				finishedLatest: {statusCode: 404, body: "not found"},
+				listURL:        {body: listBody},
+				startedPrev:    {body: recentStarted()},
+				finishedPrev:   {body: finishedBody},
+				xmlPrev:        {body: okXML},
+			},
+			expectedStatus: types.StatusHealthy,
+		},
+		{
 			name: "no previous build returns error",
 			responses: map[string]mockHTTPResponse{
 				latestURL:      {body: latestBuild},
@@ -511,7 +537,7 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 			expectedError: true,
 		},
 		{
-			name: "finished.json 500 propagates error instead of falling back",
+			name: "finished.json 500 returns error",
 			responses: map[string]mockHTTPResponse{
 				latestURL:      {body: latestBuild},
 				startedLatest:  {body: recentStarted()},
@@ -523,8 +549,8 @@ func TestJUnitProber_Probe_fallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewJUnitProber(testComponentSlug, testSubComponentSlug, bucket, job, 2*time.Hour, types.SeverityDegraded,
-				JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 2*time.Hour, types.SeverityDegraded,
+				JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 				&mockHTTPDoer{responses: tt.responses})
 			results := make(chan ProbeResult, 1)
 			p.Probe(context.Background(), results)
@@ -597,6 +623,7 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				finishedURL: {body: finishedBody},
 				finished199: {body: finishedBody},
 				listURL:     {body: listBody},
+				startedPrev: {body: recentStarted()},
 				xml200:      {body: failing},
 				xml199:      {body: failing},
 			},
@@ -612,6 +639,7 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				finishedURL: {body: finishedBody},
 				finished199: {body: finishedBody},
 				listURL:     {body: listBody},
+				startedPrev: {body: recentStarted()},
 				xml200:      {body: ok},
 				xml199:      {body: failing},
 			},
@@ -625,6 +653,7 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 				finishedURL: {body: finishedBody},
 				finished199: {body: finishedBody},
 				listURL:     {body: listBody},
+				startedPrev: {body: recentStarted()},
 				xml200:      {body: onlyA},
 				xml199:      {body: onlyB},
 			},
@@ -644,18 +673,36 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 			expectedStatus: types.StatusHealthy,
 		},
 		{
-			name: "errors when older build is unfinished",
+			name: "older unfinished build in window is skipped",
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: latest},
 				startedURL:  {body: recentStarted()},
 				finishedURL: {body: finishedBody},
 				finished199: {statusCode: 404, body: "not found"},
-				listURL:     {body: listBody},
+				gcsProwObjectURL(bucket, job, "199", prowObjectStarted):  {body: recentStarted()},
+				gcsProwObjectURL(bucket, job, "198", prowObjectFinished): {body: finishedBody},
+				gcsProwObjectURL(bucket, job, "198", prowObjectStarted):  {body: recentStarted()},
+				listURL: {body: fmt.Sprintf(`{"prefixes":["logs/%s/200/","logs/%s/199/","logs/%s/198/"]}`, job, job, job)},
+				xml200:  {body: ok},
+				gcsProwObjectURL(bucket, job, "198", "artifacts", "junit_canary.xml"): {body: ok},
 			},
-			expectedError: true,
+			expectedStatus: types.StatusHealthy,
 		},
 		{
-			name: "errors when no finished builds exist",
+			name: "unfinished build outside max age stops the scan",
+			responses: map[string]mockHTTPResponse{
+				latestURL:   {body: latest},
+				startedURL:  {body: recentStarted()},
+				finishedURL: {body: finishedBody},
+				finished199: {statusCode: 404, body: "not found"},
+				gcsProwObjectURL(bucket, job, "199", prowObjectStarted): {body: staleStarted()},
+				listURL: {body: fmt.Sprintf(`{"prefixes":["logs/%s/200/","logs/%s/199/","logs/%s/198/"]}`, job, job, job)},
+				xml200:  {body: ok},
+			},
+			expectedStatus: types.StatusHealthy,
+		},
+		{
+			name: "no finished builds returns error",
 			responses: map[string]mockHTTPResponse{
 				latestURL:   {body: latest},
 				startedURL:  {body: recentStarted()},
@@ -686,9 +733,9 @@ func TestJUnitProber_Probe_history(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewJUnitProber(
-				testComponentSlug, testSubComponentSlug, bucket, job, 2*time.Hour, types.SeverityDegraded,
-				JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			p := newJUnitProber(
+				testComponentSlug, testSubComponentSlug, bucket, []string{job}, 2*time.Hour, types.SeverityDegraded,
+				JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 				&mockHTTPDoer{responses: tt.responses},
 			)
 			results := make(chan ProbeResult, 1)
@@ -762,8 +809,9 @@ func TestJUnitProber_Probe_history_early_exit(t *testing.T) {
 				finishedURL: {body: finishedBody},
 				finished199: {body: finishedBody},
 				listURL:     {body: listBody},
-				xml200:      {body: ok},
-				xml199:      {body: ok},
+				gcsProwObjectURL(bucket, job, "199", prowObjectStarted): {body: recentStarted()},
+				xml200: {body: ok},
+				xml199: {body: ok},
 			},
 			expectedStatus: types.StatusHealthy,
 		},
@@ -787,9 +835,9 @@ func TestJUnitProber_Probe_history_early_exit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewJUnitProber(
-				testComponentSlug, testSubComponentSlug, bucket, job, 2*time.Hour, types.SeverityDegraded,
-				JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			p := newJUnitProber(
+				testComponentSlug, testSubComponentSlug, bucket, []string{job}, 2*time.Hour, types.SeverityDegraded,
+				JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 				&mockHTTPDoer{responses: tt.responses},
 			)
 			results := make(chan ProbeResult, 1)
@@ -837,12 +885,12 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 	}{
 		{
 			name:     "stale with prior success includes last success link",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:       {body: staleBuild},
 					startedStale:    {body: startedJSON(startedAt)},
-					finishedStale:   {statusCode: 404, body: "not found"},
+					finishedStale:   {body: finishedBody},
 					listURL:         {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/","logs/%s/%s/"]}`, job, staleBuild, job, successBuild)},
 					finishedSuccess: {body: finishedBody},
 					xmlSuccess:      {body: okXML},
@@ -852,12 +900,12 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 		},
 		{
 			name:     "stale with no prior success notes none found",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
 					startedStale:  {body: startedJSON(startedAt)},
-					finishedStale: {statusCode: 404, body: "not found"},
+					finishedStale: {body: finishedBody},
 					listURL:       {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/"]}`, job, staleBuild)},
 				}
 			},
@@ -865,12 +913,12 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 		},
 		{
 			name:     "stale skips failing prior runs until success",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
 					startedStale:  {body: startedJSON(startedAt)},
-					finishedStale: {statusCode: 404, body: "not found"},
+					finishedStale: {body: finishedBody},
 					listURL: {body: fmt.Sprintf(`{"prefixes":["logs/%s/%s/","logs/%s/199/","logs/%s/198/"]}`,
 						job, staleBuild, job, job)},
 					gcsProwObjectURL(bucket, job, "199", prowObjectFinished):              {body: finishedBody},
@@ -884,12 +932,12 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 		{
 			name: "stale history scan limit does not reach older healthy build",
 			// HistoryRuns 2 → scan at most two finished priors; 197 is healthy but beyond the limit.
-			settings: JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 2, FailedRunsThreshold: 2, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
 					startedStale:  {body: startedJSON(startedAt)},
-					finishedStale: {statusCode: 404, body: "not found"},
+					finishedStale: {body: finishedBody},
 					listURL: {body: fmt.Sprintf(
 						`{"prefixes":["logs/%s/%s/","logs/%s/199/","logs/%s/198/","logs/%s/197/"]}`,
 						job, staleBuild, job, job, job)},
@@ -905,12 +953,12 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 		},
 		{
 			name:     "stale still degraded when enrichment list fails",
-			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+			settings: JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, AlertOnNoRecentRun: true},
 			responses: func(startedAt time.Time) map[string]mockHTTPResponse {
 				return map[string]mockHTTPResponse{
 					latestURL:     {body: staleBuild},
 					startedStale:  {body: startedJSON(startedAt)},
-					finishedStale: {statusCode: 404, body: "not found"},
+					finishedStale: {body: finishedBody},
 					listURL:       {err: fmt.Errorf("gcs list unavailable")},
 				}
 			},
@@ -921,8 +969,8 @@ func TestJUnitProber_Probe_staleEnrichment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			startedAt := time.Now().Add(-3 * time.Hour)
-			p := NewJUnitProber(
-				testComponentSlug, testSubComponentSlug, bucket, job, maxAge, types.SeverityDegraded,
+			p := newJUnitProber(
+				testComponentSlug, testSubComponentSlug, bucket, []string{job}, maxAge, types.SeverityDegraded,
 				tt.settings,
 				&mockHTTPDoer{responses: tt.responses(startedAt)},
 			)
@@ -975,4 +1023,746 @@ func formatStaleReason(buildID string, startedAt time.Time, maxAge time.Duration
 		return base
 	}
 	return base + "; " + suffix
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func gzipText(t *testing.T, body string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(body)); err != nil {
+		t.Fatalf("gzip: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.String()
+}
+
+func leaseLog(name string) string {
+	return "\x1b[36mINFO\x1b[0m[2024-01-01T00:00:00Z] Acquired 1 lease(s) for aws-quota-slice: [" + name + "]\n"
+}
+
+func TestJUnitProber_StaleIgnoredWithoutFlag(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	const build = "123"
+	bucket := defaultGCSBucket
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                  {body: build},
+		gcsProwObjectURL(bucket, job, build, prowObjectStarted):               {body: staleStarted()},
+		gcsProwObjectURL(bucket, job, build, prowObjectFinished):              {body: `{"timestamp":1,"result":"SUCCESS","passed":true}`},
+		gcsProwObjectURL(bucket, job, build, "artifacts", "junit_canary.xml"): {body: readJUnitFixture(t, "ok_single.xml")},
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 0, types.SeverityDegraded,
+		JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	if res.Status != types.StatusHealthy {
+		t.Fatalf("status = %s, want healthy", res.Status)
+	}
+}
+
+func TestJUnitProber_MissingArtifactIgnored(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	bucket := defaultGCSBucket
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                  {body: "200"},
+		gcsProwObjectURL(bucket, job, "200", prowObjectStarted):               {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, "200", prowObjectFinished):              {body: finishedBody},
+		gcsProwObjectURL(bucket, job, "199", prowObjectStarted):               {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, "199", prowObjectFinished):              {body: finishedBody},
+		gcsProwObjectURL(bucket, job, "200", "artifacts", "junit_canary.xml"): {statusCode: 404, body: "missing"},
+		gcsProwObjectURL(bucket, job, "199", "artifacts", "junit_canary.xml"): {statusCode: 404, body: "missing"},
+		gcsListObjectURLTest(bucket, job):                                     {body: gcsListBody(job, []string{"200", "199"})},
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:              2,
+			FailedRunsThreshold:      2,
+			ArtifactURLStyle:         types.JUnitArtifactStyleGCS,
+			MissingArtifactUnhealthy: boolPtr(false),
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error == nil || res.Status == types.StatusHealthy {
+		t.Fatalf("status = %s err = %v, want error", res.Status, res.Error)
+	}
+}
+
+func TestJUnitProber_MissingArtifactMixedStaysHealthy(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	bucket := defaultGCSBucket
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	okXML := readJUnitFixture(t, "ok_single.xml")
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                  {body: "200"},
+		gcsProwObjectURL(bucket, job, "200", prowObjectStarted):               {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, "200", prowObjectFinished):              {body: finishedBody},
+		gcsProwObjectURL(bucket, job, "199", prowObjectStarted):               {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, "199", prowObjectFinished):              {body: finishedBody},
+		gcsProwObjectURL(bucket, job, "200", "artifacts", "junit_canary.xml"): {body: okXML},
+		gcsProwObjectURL(bucket, job, "199", "artifacts", "junit_canary.xml"): {statusCode: 404, body: "missing"},
+		gcsListObjectURLTest(bucket, job):                                     {body: gcsListBody(job, []string{"200", "199"})},
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:              2,
+			FailedRunsThreshold:      2,
+			ArtifactURLStyle:         types.JUnitArtifactStyleGCS,
+			MissingArtifactUnhealthy: boolPtr(false),
+		},
+		&mockHTTPDoer{responses: responses})
+	res := probeJUnit(t, p)
+	if res.Error != nil || res.Status != types.StatusHealthy {
+		t.Fatalf("status = %s err = %v, want healthy", res.Status, res.Error)
+	}
+}
+
+func TestJUnitProber_UnscoredGroup(t *testing.T) {
+	bucket := defaultGCSBucket
+	const jobA = "job-a"
+	const jobB = "job-b"
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	okXML := readJUnitFixture(t, "ok_single.xml")
+	settings := JUnitProberSettings{
+		HistoryRuns:              1,
+		ArtifactURLStyle:         types.JUnitArtifactStyleGCS,
+		GroupBy:                  types.JUnitGroupByLeaseResourcePrefix,
+		MissingArtifactUnhealthy: boolPtr(false),
+	}
+	missing := func(job, build string) map[string]mockHTTPResponse {
+		return map[string]mockHTTPResponse{
+			gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                  {body: build},
+			gcsProwObjectURL(bucket, job, build, prowObjectStarted):               {body: recentStarted()},
+			gcsProwObjectURL(bucket, job, build, prowObjectFinished):              {body: finishedBody},
+			gcsProwObjectURL(bucket, job, build, "artifacts", "junit_canary.xml"): {statusCode: 404, body: "missing"},
+		}
+	}
+	passing := func(job, build string) map[string]mockHTTPResponse {
+		out := finishedJUnitResponses(bucket, job, build, okXML)
+		out[gcsProwObjectURL(bucket, job, build, prowObjectStarted)] = mockHTTPResponse{body: recentStarted()}
+		out[gcsProwObjectURL(bucket, job, build, prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog("aws-2--us-east-2--openshift-org-aws-quota-slice-210")}
+		return out
+	}
+	probe := func(responses map[string]mockHTTPResponse, jobs ...string) ProbeResult {
+		t.Helper()
+		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, jobs, 0, types.SeverityDegraded, settings, &mockHTTPDoer{responses: responses})
+		return probeJUnit(t, p)
+	}
+
+	t.Run("every build missing returns error", func(t *testing.T) {
+		res := probe(missing(jobA, "1"), jobA)
+		if res.Error == nil || res.Status == types.StatusHealthy {
+			t.Fatalf("status = %s err = %v, want error", res.Status, res.Error)
+		}
+	})
+
+	t.Run("missing job is not hidden by a passing job", func(t *testing.T) {
+		responses := missing(jobA, "1")
+		for k, v := range passing(jobB, "2") {
+			responses[k] = v
+		}
+		res := probe(responses, jobA, jobB)
+		if res.Error == nil || res.Status == types.StatusHealthy {
+			t.Fatalf("status = %s err = %v, want error", res.Status, res.Error)
+		}
+	})
+}
+
+func TestAccountFromLeaseLine(t *testing.T) {
+	const resource = "aws-2--us-east-2--openshift-org-aws-quota-slice-210"
+	ansi := leaseLog(resource)
+	account, matched := accountFromLeaseLine(ansi)
+	if !matched || account != "aws-2" {
+		t.Fatalf("account = %q matched = %v", account, matched)
+	}
+	account, matched = accountFromLeaseLine("Acquired 1 lease(s) for hypershift-aws-quota-slice: [55e4e678-4873-4a6e-add7-eb4ddbcb89ee]")
+	if !matched || account != "" {
+		t.Fatalf("uuid account = %q matched = %v", account, matched)
+	}
+}
+
+func TestJUnitProber_GroupByLeaseResourcePrefix(t *testing.T) {
+	const (
+		jobA    = "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+		jobB    = "periodic-ci-openshift-release-main-ci-5.0-e2e-aws-ovn"
+		account = "aws-2"
+	)
+	resource := account + "--us-east-2--openshift-org-aws-quota-slice-210"
+	bucket := defaultGCSBucket
+	failing := readJUnitFixture(t, "failing.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	started := recentStarted()
+	responses := map[string]mockHTTPResponse{}
+	add := func(job, id, logBody string, ids []string) {
+		responses[gcsProwObjectURL(bucket, job, prowObjectLatestBuild)] = mockHTTPResponse{body: id}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: started}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+		responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: failing}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectBuildLog)] = mockHTTPResponse{body: logBody}
+		responses[gcsListObjectURLTest(bucket, job)] = mockHTTPResponse{body: gcsListBody(job, ids)}
+	}
+	add(jobA, "2", leaseLog(resource), []string{"2", "1"})
+	responses[gcsProwObjectURL(bucket, jobA, "1", prowObjectStarted)] = mockHTTPResponse{body: started}
+	responses[gcsProwObjectURL(bucket, jobA, "1", prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+	responses[gcsProwObjectURL(bucket, jobA, "1", "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: failing}
+	responses[gcsProwObjectURL(bucket, jobA, "1", prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog(resource)}
+	add(jobB, "8", gzipText(t, leaseLog(resource)), []string{"8"})
+
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{jobA, jobB}, time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         15,
+			FailedRunsThreshold: 3,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+			GroupBy:             types.JUnitGroupByLeaseResourcePrefix,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	part := func(job, id string) string {
+		return fmt.Sprintf("%s/%s (git-clone, quay-pull) %s", job, id, prowSpyglassViewURL(bucket, job, id))
+	}
+	want := []types.Reason{{
+		Type:  types.CheckTypeJUnit,
+		Check: account,
+		Results: fmt.Sprintf("cloud-account: %s: 3 consecutive failure(s) (threshold 3): %s", account,
+			strings.Join([]string{part(jobB, "8"), part(jobA, "2"), part(jobA, "1")}, "; ")),
+	}}
+	if diff := cmp.Diff(want, res.Reasons); diff != "" {
+		t.Fatalf("reasons (-want +got):\n%s", diff)
+	}
+}
+
+func TestJUnitProber_UUIDLeaseSkipped(t *testing.T) {
+	const job = "periodic-ci-openshift-hypershift-release-5.1-periodics-e2e-aws-ovn-conformance"
+	bucket := defaultGCSBucket
+	failing := readJUnitFixture(t, "failing.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	started := recentStarted()
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {body: "2"},
+		gcsListObjectURLTest(bucket, job):                    {body: gcsListBody(job, []string{"2", "1"})},
+	}
+	for _, id := range []string{"2", "1"} {
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: started}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+		responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: failing}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog("55e4e678-4873-4a6e-add7-eb4ddbcb89ee")}
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         15,
+			FailedRunsThreshold: 2,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+			GroupBy:             types.JUnitGroupByLeaseResourcePrefix,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	if res.Status != types.StatusHealthy || len(res.Reasons) != 0 {
+		t.Fatalf("status = %s reasons = %#v, want healthy", res.Status, res.Reasons)
+	}
+}
+
+func TestAggregatePrefixedJunit(t *testing.T) {
+	passWithOtherFailure := []junitSuite{{TestCases: []junitCase{
+		{Name: "install should succeed: cluster"},
+		{Name: "unrelated", Failure: &struct{}{}},
+	}}}
+	total, failed := aggregatePrefixedJunit(passWithOtherFailure, "install should succeed:")
+	if total != 1 || len(failed) != 0 {
+		t.Fatalf("pass total=%d failed=%v", total, failed)
+	}
+	infra := []junitSuite{{TestCases: []junitCase{
+		{Name: "install should succeed: cluster"},
+		{Name: "install should succeed: infrastructure", Failure: &struct{}{}},
+	}}}
+	total, failed = aggregatePrefixedJunit(infra, "install should succeed:")
+	if total != 2 || len(failed) != 1 || failed[0] != "install should succeed: infrastructure" {
+		t.Fatalf("infra total=%d failed=%v", total, failed)
+	}
+	total, failed = aggregatePrefixedJunit(passWithOtherFailure, "Run multi-stage step create-hostedcluster")
+	if total != 0 || len(failed) != 0 {
+		t.Fatalf("no match total=%d failed=%v", total, failed)
+	}
+}
+
+func TestJUnitProber_TestcasePrefix(t *testing.T) {
+	const job = "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+	bucket := defaultGCSBucket
+	const build = "10"
+	unrelated := `<?xml version="1.0"?><testsuite tests="1"><testcase name="git-clone"><failure/></testcase></testsuite>`
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                                                                     {body: build},
+		gcsProwObjectURL(bucket, job, build, prowObjectStarted):                                                                  {body: recentStarted()},
+		gcsProwObjectURL(bucket, job, build, prowObjectFinished):                                                                 {body: `{"timestamp":1}`},
+		gcsProwObjectURL(bucket, job, build, "artifacts", "e2e-aws-ovn", "gather-must-gather", "artifacts", "junit_install.xml"): {body: unrelated},
+	}
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 48*time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:      1,
+			ArtifactPath:     "artifacts/e2e-aws-ovn/gather-must-gather/artifacts/junit_install.xml",
+			TestcasePrefix:   "install should succeed:",
+			ArtifactURLStyle: types.JUnitArtifactStyleGCS,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error == nil || res.Status == types.StatusHealthy {
+		t.Fatalf("status=%s err=%v, want error", res.Status, res.Error)
+	}
+}
+
+func TestJUnitProber_ConsecutiveStreak(t *testing.T) {
+	const job = "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+	bucket := defaultGCSBucket
+	resource := "aws-2--us-east-2--openshift-org-aws-quota-slice-210"
+	failing := readJUnitFixture(t, "failing.xml")
+	ok := readJUnitFixture(t, "ok_single.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	now := time.Now()
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {body: "3"},
+		gcsListObjectURLTest(bucket, job):                    {body: gcsListBody(job, []string{"3", "2", "1"})},
+	}
+	add := func(id, xml string, started time.Time) {
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: fmt.Sprintf(`{"timestamp":%d}`, started.Unix())}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+		responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: xml}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog(resource)}
+	}
+	add("1", failing, now.Add(-10*time.Minute))
+	add("2", failing, now.Add(-time.Hour))
+	add("3", ok, now.Add(-2*time.Hour))
+
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 48*time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         15,
+			FailedRunsThreshold: 2,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+			GroupBy:             types.JUnitGroupByLeaseResourcePrefix,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	if res.Status != types.StatusDegraded || len(res.Reasons) != 1 || !strings.Contains(res.Reasons[0].Results, "2 consecutive failure(s)") {
+		t.Fatalf("status=%s reasons=%#v", res.Status, res.Reasons)
+	}
+	if !strings.Contains(res.Reasons[0].Results, job+"/1") || strings.Index(res.Reasons[0].Results, job+"/1") > strings.Index(res.Reasons[0].Results, job+"/2") {
+		t.Fatalf("streak order = %s", res.Reasons[0].Results)
+	}
+}
+
+func TestJUnitProber_LatestRunGroupWindowLease(t *testing.T) {
+	const job = "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+	bucket := defaultGCSBucket
+	resource := "aws-2--us-east-2--openshift-org-aws-quota-slice-210"
+	failing := readJUnitFixture(t, "failing.xml")
+	ok := readJUnitFixture(t, "ok_single.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	now := time.Now()
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {body: "4"},
+		gcsListObjectURLTest(bucket, job):                    {body: gcsListBody(job, []string{"4", "3", "2", "1"})},
+	}
+	add := func(id, xml string, started time.Time) {
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: fmt.Sprintf(`{"timestamp":%d}`, started.Unix())}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+		responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: xml}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectBuildLog)] = mockHTTPResponse{body: leaseLog(resource)}
+	}
+	add("4", ok, now)
+	add("3", failing, now.Add(-17*time.Minute))
+	add("2", failing, now.Add(-20*time.Minute))
+	add("1", failing, now.Add(-40*time.Minute))
+
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 48*time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:          15,
+			FailedRunsThreshold:  2,
+			ArtifactURLStyle:     types.JUnitArtifactStyleGCS,
+			GroupBy:              types.JUnitGroupByLeaseResourcePrefix,
+			LatestRunGroupWindow: 30 * time.Minute,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil {
+		t.Fatalf("unexpected error: %v", res.Error)
+	}
+	if res.Status != types.StatusDegraded || len(res.Reasons) != 1 || !strings.Contains(res.Reasons[0].Results, "cloud-account: aws-2: 2 failure(s) in the latest 30m") {
+		t.Fatalf("status=%s reasons=%#v", res.Status, res.Reasons)
+	}
+	if !strings.Contains(res.Reasons[0].Results, job+"/3") || !strings.Contains(res.Reasons[0].Results, job+"/2") || strings.Contains(res.Reasons[0].Results, job+"/1") {
+		t.Fatalf("cohort = %s", res.Reasons[0].Results)
+	}
+	if strings.Index(res.Reasons[0].Results, job+"/3") > strings.Index(res.Reasons[0].Results, job+"/2") {
+		t.Fatalf("cohort order = %s", res.Reasons[0].Results)
+	}
+}
+
+func TestJUnitProber_LatestRunGroupWindowJob(t *testing.T) {
+	const job = "periodic-ci-openshift-hypershift-release-5.1-periodics-e2e-aws-ovn-conformance"
+	bucket := defaultGCSBucket
+	failing := readJUnitFixture(t, "failing.xml")
+	ok := readJUnitFixture(t, "ok_single.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	now := time.Now()
+
+	probe := func(window time.Duration) ProbeResult {
+		responses := map[string]mockHTTPResponse{
+			gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {body: "3"},
+			gcsListObjectURLTest(bucket, job):                    {body: gcsListBody(job, []string{"3", "2", "1"})},
+		}
+		add := func(id, xml string, started time.Time) {
+			responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: fmt.Sprintf(`{"timestamp":%d}`, started.Unix())}
+			responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+			responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: xml}
+		}
+		add("3", ok, now)
+		add("2", failing, now.Add(-17*time.Minute))
+		add("1", failing, now.Add(-40*time.Minute))
+		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 48*time.Hour, types.SeverityDegraded,
+			JUnitProberSettings{
+				HistoryRuns:          15,
+				FailedRunsThreshold:  1,
+				ArtifactURLStyle:     types.JUnitArtifactStyleGCS,
+				LatestRunGroupWindow: window,
+			},
+			&mockHTTPDoer{responses: responses})
+		results := make(chan ProbeResult, 1)
+		p.Probe(context.Background(), results)
+		return <-results
+	}
+
+	t.Run("window keeps the nearby failure", func(t *testing.T) {
+		res := probe(30 * time.Minute)
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		if res.Status != types.StatusDegraded || len(res.Reasons) != 1 {
+			t.Fatalf("status=%s reasons=%#v", res.Status, res.Reasons)
+		}
+		if !strings.Contains(res.Reasons[0].Results, "build 2") || strings.Contains(res.Reasons[0].Results, "build 1") {
+			t.Fatalf("cohort = %s", res.Reasons[0].Results)
+		}
+	})
+	t.Run("unset window keeps the full history", func(t *testing.T) {
+		res := probe(0)
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		if res.Status != types.StatusDegraded || len(res.Reasons) != 1 || !strings.Contains(res.Reasons[0].Results, "build 1") {
+			t.Fatalf("status=%s reasons=%#v", res.Status, res.Reasons)
+		}
+	})
+}
+
+func TestJUnitProber_MaxAgeDropsAfterHistory(t *testing.T) {
+	const job = "periodic-build-farm-canary-build01"
+	bucket := defaultGCSBucket
+	failing := readJUnitFixture(t, "failing.xml")
+	finishedBody := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	now := time.Now()
+	responses := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {body: "3"},
+		gcsListObjectURLTest(bucket, job):                    {body: gcsListBody(job, []string{"3", "2", "1"})},
+	}
+	add := func(id string, started time.Time) {
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectStarted)] = mockHTTPResponse{body: fmt.Sprintf(`{"timestamp":%d}`, started.Unix())}
+		responses[gcsProwObjectURL(bucket, job, id, prowObjectFinished)] = mockHTTPResponse{body: finishedBody}
+		responses[gcsProwObjectURL(bucket, job, id, "artifacts", "junit_canary.xml")] = mockHTTPResponse{body: failing}
+	}
+	add("3", now.Add(-5*time.Hour))
+	add("2", now.Add(-6*time.Hour))
+	add("1", now.Add(-10*time.Minute))
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, time.Hour, types.SeverityDegraded,
+		JUnitProberSettings{
+			HistoryRuns:         2,
+			FailedRunsThreshold: 1,
+			ArtifactURLStyle:    types.JUnitArtifactStyleGCS,
+		},
+		&mockHTTPDoer{responses: responses})
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	res := <-results
+	if res.Error != nil || res.Status != types.StatusHealthy {
+		t.Fatalf("status=%s err=%v reasons=%#v, want healthy", res.Status, res.Error, res.Reasons)
+	}
+}
+
+func gcsListBody(job string, ids []string) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = fmt.Sprintf(`"logs/%s/%s/"`, job, id)
+	}
+	return `{"prefixes":[` + strings.Join(parts, ",") + `]}`
+}
+
+func probeJUnit(t *testing.T, p *JUnitProber) ProbeResult {
+	t.Helper()
+	results := make(chan ProbeResult, 1)
+	p.Probe(context.Background(), results)
+	select {
+	case res := <-results:
+		return res
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for result")
+	}
+	return ProbeResult{}
+}
+
+func finishedJUnitResponses(bucket, job, build, xml string) map[string]mockHTTPResponse {
+	return map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):                  {body: build},
+		gcsProwObjectURL(bucket, job, build, prowObjectFinished):              {body: `{"timestamp":1,"result":"SUCCESS","passed":true}`},
+		gcsProwObjectURL(bucket, job, build, "artifacts", "junit_canary.xml"): {body: xml},
+	}
+}
+
+func TestJUnitProber_ProbeJobs(t *testing.T) {
+	const jobA = "job-a"
+	const jobB = "job-b"
+	bucket := defaultGCSBucket
+	okXML := readJUnitFixture(t, "ok_single.xml")
+	failingXML := readJUnitFixture(t, "failing.xml")
+	settings := JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS}
+
+	merge := func(parts ...map[string]mockHTTPResponse) map[string]mockHTTPResponse {
+		out := map[string]mockHTTPResponse{}
+		for _, part := range parts {
+			for k, v := range part {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	unreadable := func(job string) map[string]mockHTTPResponse {
+		return map[string]mockHTTPResponse{
+			gcsProwObjectURL(bucket, job, prowObjectLatestBuild): {err: fmt.Errorf("network error")},
+		}
+	}
+	probe := func(responses map[string]mockHTTPResponse) ProbeResult {
+		t.Helper()
+		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{jobA, jobB}, 0, types.SeverityDown, settings, &mockHTTPDoer{responses: responses})
+		return probeJUnit(t, p)
+	}
+
+	t.Run("failing job escalates past a passing job", func(t *testing.T) {
+		res := probe(merge(finishedJUnitResponses(bucket, jobA, "11", okXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		if res.Status != types.StatusDown {
+			t.Fatalf("status = %s, want Down", res.Status)
+		}
+		if len(res.Reasons) != 1 || res.Reasons[0].Check != jobB {
+			t.Fatalf("reasons = %#v, want only %s", res.Reasons, jobB)
+		}
+		if !strings.Contains(res.Reasons[0].Results, "2/4 tests failed: git-clone, quay-pull") {
+			t.Fatalf("reason = %q", res.Reasons[0].Results)
+		}
+	})
+
+	t.Run("reasons from both failing jobs", func(t *testing.T) {
+		res := probe(merge(finishedJUnitResponses(bucket, jobA, "11", failingXML), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		if res.Status != types.StatusDown {
+			t.Fatalf("status = %s, want Down", res.Status)
+		}
+		if len(res.Reasons) != 2 || res.Reasons[0].Check != jobA || res.Reasons[1].Check != jobB {
+			t.Fatalf("reasons = %#v", res.Reasons)
+		}
+	})
+
+	t.Run("unreadable job does not hide an unhealthy sibling", func(t *testing.T) {
+		res := probe(merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", failingXML)))
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		if res.Status != types.StatusDown {
+			t.Fatalf("status = %s, want Down", res.Status)
+		}
+		if len(res.Reasons) != 1 || res.Reasons[0].Check != jobB {
+			t.Fatalf("reasons = %#v", res.Reasons)
+		}
+	})
+
+	t.Run("unreadable job with a healthy sibling returns error", func(t *testing.T) {
+		res := probe(merge(unreadable(jobA), finishedJUnitResponses(bucket, jobB, "22", okXML)))
+		if res.Error == nil {
+			t.Fatal("expected error")
+		}
+		if res.Status == types.StatusHealthy {
+			t.Fatalf("status = %s", res.Status)
+		}
+	})
+
+	t.Run("all jobs unreadable returns error", func(t *testing.T) {
+		res := probe(merge(unreadable(jobA), unreadable(jobB)))
+		if res.Error == nil {
+			t.Fatal("expected error")
+		}
+		if res.Status == types.StatusHealthy {
+			t.Fatalf("status = %s", res.Status)
+		}
+	})
+}
+
+func TestJUnitProber_ProbeByGroup_AllUnreadable(t *testing.T) {
+	bucket := defaultGCSBucket
+	const jobA = "job-a"
+	const jobB = "job-b"
+	p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{jobA, jobB}, 0, types.SeverityDegraded,
+		JUnitProberSettings{HistoryRuns: 1, ArtifactURLStyle: types.JUnitArtifactStyleGCS, GroupBy: types.JUnitGroupByLeaseResourcePrefix},
+		&mockHTTPDoer{responses: map[string]mockHTTPResponse{
+			gcsProwObjectURL(bucket, jobA, prowObjectLatestBuild): {err: fmt.Errorf("network error")},
+			gcsProwObjectURL(bucket, jobB, prowObjectLatestBuild): {err: fmt.Errorf("network error")},
+		}})
+	res := probeJUnit(t, p)
+	if res.Error == nil {
+		t.Fatal("expected error")
+	}
+	if res.Status == types.StatusHealthy {
+		t.Fatalf("status = %s", res.Status)
+	}
+}
+
+type logCapture struct {
+	mu      sync.Mutex
+	entries []logrus.Fields
+}
+
+func (l *logCapture) Levels() []logrus.Level { return logrus.AllLevels }
+
+func (l *logCapture) Fire(entry *logrus.Entry) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	copied := logrus.Fields{}
+	for k, v := range entry.Data {
+		copied[k] = v
+	}
+	copied["msg"] = entry.Message
+	l.entries = append(l.entries, copied)
+	return nil
+}
+
+func (l *logCapture) find(outcome string) logrus.Fields {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.entries {
+		if e["msg"] == "junit artifact evaluation" && e["outcome"] == outcome {
+			return e
+		}
+	}
+	return nil
+}
+
+func TestJUnitProber_DebugLogsArtifact(t *testing.T) {
+	oldLevel := logrus.GetLevel()
+	oldHooks := logrus.StandardLogger().ReplaceHooks(make(logrus.LevelHooks))
+	logrus.SetLevel(logrus.DebugLevel)
+	hook := &logCapture{}
+	logrus.AddHook(hook)
+	t.Cleanup(func() {
+		logrus.SetLevel(oldLevel)
+		logrus.StandardLogger().ReplaceHooks(oldHooks)
+	})
+
+	const job = "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+	const build = "10"
+	bucket := defaultGCSBucket
+	artifact := "artifacts/e2e-aws-ovn/gather-must-gather/artifacts/junit_install.xml"
+	body := `<?xml version="1.0"?><testsuite tests="3">
+  <testcase name="install should succeed: infrastructure"/>
+  <testcase name="install should succeed: overall"><failure/></testcase>
+  <testcase name="unrelated"><failure/></testcase>
+</testsuite>`
+	finished := `{"timestamp":1,"result":"SUCCESS","passed":true}`
+	xmlURL := gcsProwObjectURL(bucket, job, build, "artifacts", "e2e-aws-ovn", "gather-must-gather", "artifacts", "junit_install.xml")
+	base := map[string]mockHTTPResponse{
+		gcsProwObjectURL(bucket, job, prowObjectLatestBuild):     {body: build},
+		gcsProwObjectURL(bucket, job, build, prowObjectFinished): {body: finished},
+	}
+	settings := JUnitProberSettings{
+		HistoryRuns:      1,
+		ArtifactPath:     artifact,
+		TestcasePrefix:   "install should succeed:",
+		ArtifactURLStyle: types.JUnitArtifactStyleGCS,
+	}
+
+	t.Run("found", func(t *testing.T) {
+		hook.mu.Lock()
+		hook.entries = nil
+		hook.mu.Unlock()
+		responses := map[string]mockHTTPResponse{xmlURL: {body: body}}
+		for k, v := range base {
+			responses[k] = v
+		}
+		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 0, types.SeverityDegraded, settings, &mockHTTPDoer{responses: responses})
+		res := probeJUnit(t, p)
+		if res.Error != nil {
+			t.Fatalf("unexpected error: %v", res.Error)
+		}
+		entry := hook.find("found")
+		if entry == nil {
+			t.Fatalf("missing found log, entries=%v", hook.entries)
+		}
+		if entry["artifact_path"] != artifact {
+			t.Fatalf("artifact_path = %v", entry["artifact_path"])
+		}
+		url, _ := entry["url"].(string)
+		if !strings.Contains(url, artifact) {
+			t.Fatalf("url = %v", entry["url"])
+		}
+		names, _ := entry["matched_tests"].([]string)
+		if diff := cmp.Diff([]string{"install should succeed: infrastructure", "install should succeed: overall"}, names); diff != "" {
+			t.Fatalf("matched_tests mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		hook.mu.Lock()
+		hook.entries = nil
+		hook.mu.Unlock()
+		responses := map[string]mockHTTPResponse{xmlURL: {statusCode: 404, body: "not found"}}
+		for k, v := range base {
+			responses[k] = v
+		}
+		p := newJUnitProber(testComponentSlug, testSubComponentSlug, bucket, []string{job}, 0, types.SeverityDegraded, settings, &mockHTTPDoer{responses: responses})
+		_ = probeJUnit(t, p)
+		entry := hook.find("missing")
+		if entry == nil {
+			t.Fatalf("missing missing-artifact log, entries=%v", hook.entries)
+		}
+		url, _ := entry["url"].(string)
+		if !strings.Contains(url, artifact) {
+			t.Fatalf("url = %v", entry["url"])
+		}
+	})
 }

@@ -177,3 +177,93 @@ func TestLoadAndValidateConfigFrequency(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAndValidateConfigJUnit(t *testing.T) {
+	valid := func() types.JUnitMonitor {
+		return types.JUnitMonitor{
+			JobNames:            []string{"periodic-build-farm-canary-build01"},
+			ArtifactPath:        "artifacts/junit_canary.xml",
+			AlertOnNoRecentRun:  true,
+			MaxAge:              "2h",
+			HistoryRuns:         5,
+			FailedRunsThreshold: 3,
+		}
+	}
+	component := func(m types.JUnitMonitor) types.ComponentMonitorConfig {
+		return types.ComponentMonitorConfig{
+			Frequency: "5m",
+			Components: []types.MonitoringComponent{{
+				ComponentSlug:    "build-farm",
+				SubComponentSlug: "build01",
+				JUnitMonitor:     &m,
+			}},
+		}
+	}
+	patch := func(fn func(*types.JUnitMonitor)) types.JUnitMonitor {
+		m := valid()
+		fn(&m)
+		return m
+	}
+
+	tests := []struct {
+		name    string
+		cfg     types.ComponentMonitorConfig
+		wantErr string
+	}{
+		{name: "canary", cfg: component(valid())},
+		{
+			name: "multiple jobs",
+			cfg: component(types.JUnitMonitor{
+				JobNames: []string{
+					"periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn",
+					"periodic-ci-openshift-release-main-ci-5.0-e2e-aws-ovn",
+				},
+				ArtifactPath:             "artifacts/e2e-aws-ovn/gather-must-gather/artifacts/junit_install.xml",
+				MissingArtifactUnhealthy: boolPtr(false),
+				GroupBy:                  types.JUnitGroupByLeaseResourcePrefix,
+				TestcasePrefix:           "install should succeed:",
+				MaxAge:                   "48h",
+				HistoryRuns:              15,
+				FailedRunsThreshold:      3,
+				Severity:                 types.SeverityDegraded,
+			}),
+		},
+		{name: "missing job_names", cfg: component(patch(func(m *types.JUnitMonitor) { m.JobNames = nil })), wantErr: "job_names is required"},
+		{name: "blank job name", cfg: component(patch(func(m *types.JUnitMonitor) { m.JobNames = []string{"  "} })), wantErr: "job_names entries must be non-empty"},
+		{name: "missing artifact_path", cfg: component(patch(func(m *types.JUnitMonitor) { m.ArtifactPath = " " })), wantErr: "artifact_path is required"},
+		{name: "no recent run requires max_age", cfg: component(patch(func(m *types.JUnitMonitor) { m.MaxAge = "" })), wantErr: "max_age"},
+		{name: "stale alert with lease group", cfg: component(patch(func(m *types.JUnitMonitor) {
+			m.GroupBy = types.JUnitGroupByLeaseResourcePrefix
+		})), wantErr: "alert_on_no_recent_run"},
+		{name: "unknown group_by", cfg: component(patch(func(m *types.JUnitMonitor) {
+			m.AlertOnNoRecentRun = false
+			m.GroupBy = "account"
+		})), wantErr: "group_by"},
+		{name: "latest run group window", cfg: component(patch(func(m *types.JUnitMonitor) {
+			m.LatestRunGroupWindow = "30m"
+		}))},
+		{name: "latest run group window zero", cfg: component(patch(func(m *types.JUnitMonitor) {
+			m.LatestRunGroupWindow = "0s"
+		})), wantErr: "latest_run_group_window"},
+		{name: "latest run group window invalid", cfg: component(patch(func(m *types.JUnitMonitor) {
+			m.LatestRunGroupWindow = "soon"
+		})), wantErr: "latest_run_group_window"},
+	}
+
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadAndValidateConfig(log, writeMonitorConfig(t, tt.cfg), "")
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
+			}
+		})
+	}
+}

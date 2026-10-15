@@ -8,7 +8,7 @@ The component-monitor supports these types of monitoring:
 
 1. **HTTP Monitoring**: Probes HTTP endpoints and checks for expected status codes
 2. **Prometheus Monitoring**: Executes Prometheus queries (both instant and range queries) to check component health
-3. **JUnit Monitoring**: Fetches a Prow canary’s JUnit XML from GCS (or the GCSweb URL style) and derives health from that file
+3. **JUnit Monitoring**: Fetches Prow JUnit XML from GCS (or the GCSweb URL style) for named jobs and derives health from that file
 4. **Systemd Monitoring** (if enabled in config): Probes a systemd unit on a host
 5. **Jira Monitoring**: Searches Jira Cloud for matching issues and reports each as a probe reason
 
@@ -60,36 +60,91 @@ Set the dashboard sub-component `monitoring.frequency` to the same resolved cade
 
 ## JUnit monitor (`junit_monitor`)
 
-Use this for Prow jobs that write a canary JUnit file into `test-platform-results-public` (or another GCS bucket), under `logs/<job_name>/`.
+Use this for Prow jobs that write a JUnit file into `test-platform-results-public` (or another GCS bucket), under `logs/<job>/`. Every monitor names its jobs and the artifact path. There is no default job list or artifact path.
 
 If omitted, **junit_monitor.severity** defaults to **Degraded**.
 
-**What the prober reads (no build-cluster login):**
+**Fields:**
 
-1. **`latest-build.txt`** at `logs/<job_name>/` — a single line with the current Prow build id.
-2. **`started.json`** for that id — if the start time is older than `max_age`, the probe reports unhealthy (stale canary), regardless of JUnit.
-3. **`artifacts/junit_canary.xml`** for that id — parsed for total tests and failed `<testcase>` names (only `<failure/>` is treated as a failure in the current implementation).
+- `job_names` (required): Prow job names. The prober does not discover jobs. Each job contributes up to `history_runs` recent finished builds.
+- `artifact_path` (required): literal object path under the build id, shared by every `job_names` entry. The prober does not substitute a per-job test directory. For example `artifacts/junit_canary.xml`, or install JUnit at `artifacts/<test-dir>/gather-must-gather/artifacts/junit_install.xml`. Jobs whose `<test-dir>` differs need separate monitors.
+- `testcase_prefix`: when set, only testcase names with this prefix are scored. A file with no matching case is skipped. If every looked-at build in the job is skipped that way, the probe returns an error. When omitted, any failed case counts, and a file with zero tests is a failure.
+- `alert_on_no_recent_run`: when true, the newest finished build whose `started.json` is older than `max_age` opens an outage. An unfinished id in `latest-build.txt` is skipped first. `max_age` is required then. Build-farm monitors set this. It cannot be combined with `group_by: lease-resource-prefix`.
+- `missing_artifact_unhealthy`: when true (the default), a finished build with no `artifact_path` is a failure pattern and can meet `failed_runs_threshold`. When false, that build is left out of the count. If that leaves a job with no scored run, the probe returns an error instead of Healthy. A `testcase_prefix` that matches nothing in the window does the same.
+- `group_by`: group key. `Reason.Check` is that key. Omitted means `job`.
+  - `job`: one group per Prow job. `failed_runs_threshold` is a shared failure signature.
+  - `lease-resource-prefix`: read `build-log.txt` until the first `Acquired <n> lease(s) for <type>: [<names>]` line, or 8 MiB. The key is the first `--` field when the leased name has at least three fields (`aws-2--us-east-2--openshift-org-aws-quota-slice-210` is `aws-2`). A UUID or any other name that does not yield a key is skipped. Runs that share a key are one group, ordered by `started.json` (newest first). Without `latest_run_group_window`, `failed_runs_threshold` is the length of the consecutive failure streak and a pass ends the streak. With that window, failures inside the cohort are counted and a pass does not end the count.
+- `max_age`: optional. Finished builds whose `started.json` is older than this are dropped after `history_runs` is applied, and that does not open an outage. When `alert_on_no_recent_run` is true, the same duration opens an outage when the newest finished build is older than this. An unfinished latest build is not that check. This duration is measured from now.
+- `latest_run_group_window`: optional duration, for example `30m`. Empty keeps today's rules. When set, each group keeps runs whose `started.json` is within this duration of the newest run in that group. It is applied after `max_age`. A pass in the cohort does not cancel a failure. For `lease-resource-prefix`, the account is unhealthy when the failure count in the cohort is at least `failed_runs_threshold`. For `job`, the shared failure signature is computed only on the cohort. A passing run is ignored while that signature is counted, so an older failure in the cohort still counts.
+- `history_runs` / `failed_runs_threshold`: for `group_by: job`, Y runs in a group's last N must share one failure signature. For `lease-resource-prefix` without `latest_run_group_window`, the newest Y runs must be failures until a pass. With the window, Y is the number of failures in the cohort. A missing file counts only when `missing_artifact_unhealthy` is true.
 
-**Single run (`history_runs: 1`, default):** the latest build (from `latest-build.txt`) is the only JUnit read. Failing = zero total JUnit tests, or any failed testcase. `failed_runs_threshold` is ignored (internally 1).
+Finished builds are cached in memory by job and build id. If a job cannot be read and no readable job is unhealthy, the probe returns an error. The orchestrator omits that sub-component from the report, and the absent-report checker can open an outage if the errors continue. An unhealthy job is still reported when a sibling job cannot be read.
 
-**History (`history_runs` N > 1):** the prober takes up to **N** recent build ids (GCS list API, merged with `latest-build.txt`, then sorted), fetches JUnit for each, and classifies every run. It then applies **`failed_runs_threshold` (Y) with the same failure pattern** — *not* “Y arbitrary red runs in N”:
+`LOG_LEVEL=debug make component-monitor-dry-run` prints one debug line per JUnit fetch: the artifact URL, whether it was found, and, when `testcase_prefix` matches, the matched test names.
 
-- A **failure pattern** is the sorted set of failed testcase `name` values, or a shared bucket for runs with **no JUnit tests** (zero total tests in the sum of suite `tests` attributes).
-- Let **K** = the size of the **largest** group of runs in the last N that share the **identical** pattern.
-- If **K ≥ Y**, the sub-component is unhealthy for this prober. Otherwise it is healthy.
-- So **Y=1** in a window of several runs: any one red run (with its own pattern) gives **K=1** for that pattern, so 1 ≥ 1 → reported unhealthy. **Y=2** requires the **same** pattern on at least two runs (e.g. the same canary test names flaking), not one failure on run A and a different failure on run B.
+**What each job reads (no build-cluster login):**
 
-**Example:**
+1. **`latest-build.txt`** at `logs/<job>/`: a single line with the current Prow build id.
+2. **`started.json`** for the build being evaluated. An unfinished latest build is skipped, and so is a later build with no `finished.json` while it is still inside `max_age` (logged as a warning). The previous build is checked as long as it remains in that window. When `alert_on_no_recent_run` is true and that finished build's start time is older than `max_age`, the probe reports unhealthy, regardless of JUnit. When `max_age` is set without that flag, an older build is dropped.
+3. The configured `artifact_path` for that id. With `group_by: lease-resource-prefix`, also `build-log.txt`.
+
+**Single run (`history_runs: 1`, default):** the latest finished build is the only JUnit read. Failing means zero total JUnit tests, any failed testcase, or a missing file on a finished build when `missing_artifact_unhealthy` is true. `failed_runs_threshold` is ignored (internally 1).
+
+**History (`history_runs` N > 1):** the prober takes up to N recent build ids per job (GCS list API, merged with `latest-build.txt`, then sorted), drops any build older than `max_age` when that field is set, fetches JUnit for each remaining run, and classifies it. `group_by: job` then applies the signature rule. `failed_runs_threshold` (Y) requires the same failure pattern, not Y arbitrary red runs in N:
+
+- A failure pattern is the sorted set of failed testcase `name` values, a shared bucket for runs with no JUnit tests, or a missing artifact on a finished build when that counts.
+- Let K be the size of the largest set of runs in the group that share the identical pattern.
+- If K is at least Y, that group is unhealthy. Otherwise it is healthy.
+
+When `group_by` is `job`, the sub-component is unhealthy if any job is unhealthy. When `group_by` is `lease-resource-prefix`, runs in a key are ordered by `started.json`. Without `latest_run_group_window`, the streak is the newest failures until a pass, and the key is unhealthy when that streak is at least Y. With the window, the key is unhealthy when the cohort contains at least Y failures. Each such key is its own reason. Set `monitoring.outage_per_reason: true` on the dashboard sub-component so each key opens its own outage.
+
+`max_age` and `latest_run_group_window` stack. `max_age` is measured from now and runs first. `latest_run_group_window` is measured from the newest surviving run in the group and runs second.
+
+For one job the prober takes up to `history_runs` finished builds, drops any whose `started.json` is older than `max_age`, groups what remains, then applies the window inside each group.
+
+Example: `max_age: 48h`, `history_runs: 20`, `latest_run_group_window: 30m`, `failed_runs_threshold: 1`. The probe runs at 10:00.
+
+- A finished run that started at 08:00 yesterday is inside 48 hours, so `max_age` keeps it. It is 26 hours before the newest run below, so the window ignores it.
+- Account `aws-2` passed a run that started at 09:50 today. That is the newest run in the group, so it is the anchor.
+- The same account failed a run that started at 09:35. That is 15 minutes before the anchor, inside the window, so the pass does not clear it. Threshold 1 reports the account unhealthy.
+- The same account failed a run that started at 08:00 today. `max_age` keeps it, and it is inside the 20 finished builds, but it is 1 hour 50 minutes before the anchor, so the window ignores it.
+- A run that started 3 days ago never reaches the window. `max_age` already dropped it. That drop does not open an outage.
+- If every finished run is older than 48 hours, the window has nothing to anchor on. Those builds are dropped and the probe stays healthy. `alert_on_no_recent_run` still uses `max_age` on the newest finished build, separate from this window.
+
+**Example (build-farm job):**
 
 ```yaml
 junit_monitor:
-  job_name: "periodic-build-farm-canary-build11"
+  job_names:
+    - "periodic-build-farm-canary-build11"
+  artifact_path: "artifacts/junit_canary.xml"
+  alert_on_no_recent_run: true
+  missing_artifact_unhealthy: true
   gcs_bucket: "test-platform-results-public"  # default if omitted
-  max_age: "2h"                        # from started.json of latest only
+  max_age: "2h"
   severity: "Degraded"
   artifact_url_style: "gcs"            # or "gcsweb" for the app.ci GCSweb host
   history_runs: 5
   failed_runs_threshold: 3            # 3+ runs in last 5 must share one failure pattern
+```
+
+**Example (jobs that share one install artifact path, grouped by leased account):**
+
+`periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn` and `periodic-ci-openshift-release-main-ci-5.0-e2e-aws-ovn` both publish install JUnit at `artifacts/e2e-aws-ovn/gather-must-gather/artifacts/junit_install.xml`, so they can share one monitor. A job whose test directory is not `e2e-aws-ovn` needs its own `junit_monitor` and its own `artifact_path`. `artifacts/gather-must-gather/junit_install.xml` is not a real object.
+
+```yaml
+junit_monitor:
+  job_names:
+    - "periodic-ci-openshift-release-main-ci-5.1-e2e-aws-ovn"
+    - "periodic-ci-openshift-release-main-ci-5.0-e2e-aws-ovn"
+  artifact_path: "artifacts/e2e-aws-ovn/gather-must-gather/artifacts/junit_install.xml"
+  testcase_prefix: "install should succeed:"
+  missing_artifact_unhealthy: false
+  group_by: "lease-resource-prefix"
+  max_age: "48h"
+  severity: "Degraded"
+  history_runs: 15
+  failed_runs_threshold: 3
 ```
 
 ## Jira monitor (`jira_monitor`)
@@ -358,4 +413,4 @@ It loads and validates the YAML structure, frequency values, monitor configurati
 
 ### Dry-Run Mode
 
-To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md) and the `component-monitor-dry-run` make target. The job runs on app.ci in the `ship-status` namespace, mounts the production `component-monitor-kubeconfigs` secret, and prints a JSON report without sending it to the dashboard.
+To test component-monitor configuration in dry-run mode, see [`hack/component-monitor-dry-run/`](../../hack/component-monitor-dry-run/README.md) and the `component-monitor-dry-run` make target. The job runs on core-ci in the `ship-status` namespace, mounts the production `component-monitor-kubeconfigs` secret, and prints a JSON report without sending it to the dashboard.

@@ -35,6 +35,7 @@ type Options struct {
 	ValidateOnly             bool
 	ConfigUpdatePollInterval time.Duration
 	HealthPort               int
+	LogLevel                 string
 }
 
 // NewOptions parses command-line flags and returns a new Options instance.
@@ -50,13 +51,30 @@ func NewOptions() *Options {
 	flag.BoolVar(&opts.ValidateOnly, "validate-only", false, "Validate config and exit without starting the monitor")
 	flag.DurationVar(&opts.ConfigUpdatePollInterval, "config-update-poll-interval", config.DefaultPollInterval, "Interval for polling config file for changes")
 	flag.IntVar(&opts.HealthPort, "health-port", 8080, "Port for the health/readiness HTTP endpoint")
+	flag.StringVar(&opts.LogLevel, "log-level", "info", "Log level (trace, debug, info, warn, error, fatal, panic)")
 	flag.Parse()
 
 	return opts
 }
 
 // Validate checks that all required options are provided and valid.
+func (o *Options) parsedLogLevel() (logrus.Level, error) {
+	raw := strings.TrimSpace(o.LogLevel)
+	if raw == "" {
+		raw = "info"
+	}
+	level, err := logrus.ParseLevel(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid log-level %q: %w", o.LogLevel, err)
+	}
+	return level, nil
+}
+
 func (o *Options) Validate() error {
+	if _, err := o.parsedLogLevel(); err != nil {
+		return err
+	}
+
 	if o.ConfigPath == "" {
 		return errors.New("config path is required (use --config-path flag)")
 	}
@@ -140,36 +158,8 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 		}
 
 		if component.JUnitMonitor != nil {
-			if strings.TrimSpace(component.JUnitMonitor.JobName) == "" {
-				return nil, fmt.Errorf("job_name is required for junit_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
-			}
-			maxAge, err := time.ParseDuration(component.JUnitMonitor.MaxAge)
-			if err != nil {
-				return nil, fmt.Errorf("invalid max_age for junit_monitor on component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
-			}
-			if maxAge <= 0 {
-				return nil, fmt.Errorf("max_age for junit_monitor on component %s/%s must be a positive duration, got %q", component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.MaxAge)
-			}
-			switch strings.ToLower(strings.TrimSpace(component.JUnitMonitor.ArtifactURLStyle)) {
-			case "", types.JUnitArtifactStyleGCS, types.JUnitArtifactStyleGCSWeb:
-			default:
-				return nil, fmt.Errorf("artifact_url_style for junit_monitor on component %s/%s must be %q or %q, got %q", component.ComponentSlug, component.SubComponentSlug, types.JUnitArtifactStyleGCS, types.JUnitArtifactStyleGCSWeb, component.JUnitMonitor.ArtifactURLStyle)
-			}
-			hr := component.JUnitMonitor.HistoryRuns
-			if hr < 0 {
-				return nil, fmt.Errorf("history_runs for junit_monitor on component %s/%s must be non-negative", component.ComponentSlug, component.SubComponentSlug)
-			}
-			if hr <= 0 {
-				hr = 1
-			}
-			if hr > 1 {
-				ft := component.JUnitMonitor.FailedRunsThreshold
-				if ft < 1 {
-					return nil, fmt.Errorf("failed_runs_threshold is required and must be >=1 when history_runs >1 for junit_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
-				}
-				if ft > hr {
-					return nil, fmt.Errorf("failed_runs_threshold for junit_monitor on component %s/%s must be <= history_runs (%d), got %d", component.ComponentSlug, component.SubComponentSlug, hr, ft)
-				}
+			if err := validateJUnitMonitor(component); err != nil {
+				return nil, err
 			}
 		}
 
@@ -198,6 +188,81 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 
 	log.Infof("Loaded configuration with %d components", len(cfg.Components))
 	return &cfg, nil
+}
+
+func validateJUnitMonitor(component types.MonitoringComponent) error {
+	m := component.JUnitMonitor
+	label := component.ComponentSlug + "/" + component.SubComponentSlug
+	names := 0
+	for _, name := range m.JobNames {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("job_names entries must be non-empty for junit_monitor on component %s", label)
+		}
+		names++
+	}
+	if names == 0 {
+		return fmt.Errorf("job_names is required for junit_monitor on component %s", label)
+	}
+	if strings.TrimSpace(m.ArtifactPath) == "" {
+		return fmt.Errorf("artifact_path is required for junit_monitor on component %s", label)
+	}
+	groupBy := strings.TrimSpace(m.GroupBy)
+	switch groupBy {
+	case "", types.JUnitGroupByJob, types.JUnitGroupByLeaseResourcePrefix:
+	default:
+		return fmt.Errorf("group_by for junit_monitor on component %s must be %q or %q, got %q", label, types.JUnitGroupByJob, types.JUnitGroupByLeaseResourcePrefix, m.GroupBy)
+	}
+	if m.AlertOnNoRecentRun && groupBy == types.JUnitGroupByLeaseResourcePrefix {
+		return fmt.Errorf("alert_on_no_recent_run cannot be used with group_by %q for junit_monitor on component %s", types.JUnitGroupByLeaseResourcePrefix, label)
+	}
+	if m.AlertOnNoRecentRun {
+		maxAge, err := time.ParseDuration(m.MaxAge)
+		if err != nil {
+			return fmt.Errorf("invalid max_age for junit_monitor on component %s: %w", label, err)
+		}
+		if maxAge <= 0 {
+			return fmt.Errorf("max_age for junit_monitor on component %s must be a positive duration, got %q", label, m.MaxAge)
+		}
+	} else if strings.TrimSpace(m.MaxAge) != "" {
+		maxAge, err := time.ParseDuration(m.MaxAge)
+		if err != nil {
+			return fmt.Errorf("invalid max_age for junit_monitor on component %s: %w", label, err)
+		}
+		if maxAge <= 0 {
+			return fmt.Errorf("max_age for junit_monitor on component %s must be a positive duration, got %q", label, m.MaxAge)
+		}
+	}
+	if strings.TrimSpace(m.LatestRunGroupWindow) != "" {
+		window, err := time.ParseDuration(m.LatestRunGroupWindow)
+		if err != nil {
+			return fmt.Errorf("invalid latest_run_group_window for junit_monitor on component %s: %w", label, err)
+		}
+		if window <= 0 {
+			return fmt.Errorf("latest_run_group_window for junit_monitor on component %s must be a positive duration, got %q", label, m.LatestRunGroupWindow)
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(m.ArtifactURLStyle)) {
+	case "", types.JUnitArtifactStyleGCS, types.JUnitArtifactStyleGCSWeb:
+	default:
+		return fmt.Errorf("artifact_url_style for junit_monitor on component %s must be %q or %q, got %q", label, types.JUnitArtifactStyleGCS, types.JUnitArtifactStyleGCSWeb, m.ArtifactURLStyle)
+	}
+	hr := m.HistoryRuns
+	if hr < 0 {
+		return fmt.Errorf("history_runs for junit_monitor on component %s must be non-negative", label)
+	}
+	if hr <= 0 {
+		hr = 1
+	}
+	if hr > 1 {
+		ft := m.FailedRunsThreshold
+		if ft < 1 {
+			return fmt.Errorf("failed_runs_threshold is required and must be >=1 when history_runs >1 for junit_monitor on component %s", label)
+		}
+		if ft > hr {
+			return fmt.Errorf("failed_runs_threshold for junit_monitor on component %s must be <= history_runs (%d), got %d", label, hr, ft)
+		}
+	}
+	return nil
 }
 
 func resolvedComponentFrequency(component types.MonitoringComponent, instanceFrequency time.Duration) (time.Duration, error) {
@@ -253,9 +318,21 @@ func createProbers(components []types.MonitoringComponent, instanceFrequency tim
 			add(systemdProber)
 		}
 		if component.JUnitMonitor != nil {
-			maxAge, err := time.ParseDuration(component.JUnitMonitor.MaxAge)
-			if err != nil {
-				componentLogger.WithField("error", err).Fatal("Failed to parse max_age duration")
+			var maxAge time.Duration
+			if strings.TrimSpace(component.JUnitMonitor.MaxAge) != "" {
+				parsed, err := time.ParseDuration(component.JUnitMonitor.MaxAge)
+				if err != nil {
+					componentLogger.WithField("error", err).Fatal("Failed to parse max_age duration")
+				}
+				maxAge = parsed
+			}
+			var latestRunGroupWindow time.Duration
+			if strings.TrimSpace(component.JUnitMonitor.LatestRunGroupWindow) != "" {
+				parsed, err := time.ParseDuration(component.JUnitMonitor.LatestRunGroupWindow)
+				if err != nil {
+					componentLogger.WithField("error", err).Fatal("Failed to parse latest_run_group_window duration")
+				}
+				latestRunGroupWindow = parsed
 			}
 			style := strings.ToLower(strings.TrimSpace(component.JUnitMonitor.ArtifactURLStyle))
 			if style == "" {
@@ -269,14 +346,26 @@ func createProbers(components []types.MonitoringComponent, instanceFrequency tim
 			if hr == 1 {
 				failedRunsThreshold = 1
 			}
-			junitSt := JUnitProberSettings{
-				ArtifactURLStyle:    style,
-				GCSWebBaseURL:       strings.TrimSpace(component.JUnitMonitor.GCSWebBaseURL),
-				HistoryRuns:         hr,
-				FailedRunsThreshold: failedRunsThreshold,
+			jobNames := make([]string, 0, len(component.JUnitMonitor.JobNames))
+			for _, name := range component.JUnitMonitor.JobNames {
+				name = strings.TrimSpace(name)
+				if name != "" {
+					jobNames = append(jobNames, name)
+				}
 			}
-			junitJobName := strings.TrimSpace(component.JUnitMonitor.JobName)
-			junitProber := NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, junitJobName, maxAge, component.JUnitMonitor.Severity, junitSt, &http.Client{Timeout: 30 * time.Second})
+			junitSt := JUnitProberSettings{
+				ArtifactURLStyle:         style,
+				GCSWebBaseURL:            strings.TrimSpace(component.JUnitMonitor.GCSWebBaseURL),
+				HistoryRuns:              hr,
+				FailedRunsThreshold:      failedRunsThreshold,
+				ArtifactPath:             strings.TrimSpace(component.JUnitMonitor.ArtifactPath),
+				TestcasePrefix:           strings.TrimSpace(component.JUnitMonitor.TestcasePrefix),
+				AlertOnNoRecentRun:       component.JUnitMonitor.AlertOnNoRecentRun,
+				MissingArtifactUnhealthy: component.JUnitMonitor.MissingArtifactUnhealthy,
+				GroupBy:                  strings.TrimSpace(component.JUnitMonitor.GroupBy),
+				LatestRunGroupWindow:     latestRunGroupWindow,
+			}
+			junitProber := NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, jobNames, maxAge, component.JUnitMonitor.Severity, junitSt, &http.Client{Timeout: 30 * time.Second})
 			componentLogger.Info("Added JUnit prober for component")
 			add(junitProber)
 		}
@@ -331,6 +420,12 @@ func main() {
 	if err := opts.Validate(); err != nil {
 		log.WithField("error", err).Fatal("Invalid command-line options")
 	}
+	level, err := opts.parsedLogLevel()
+	if err != nil {
+		log.WithField("error", err).Fatal("Invalid command-line options")
+	}
+	log.SetLevel(level)
+	logrus.SetLevel(level)
 
 	if opts.ValidateOnly {
 		if _, err := loadAndValidateConfig(log, opts.ConfigPath, opts.KubeconfigDir); err != nil {

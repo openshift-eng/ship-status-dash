@@ -341,6 +341,12 @@ const (
 	JUnitArtifactStyleGCS = "gcs"
 	// JUnitArtifactStyleGCSWeb uses the GCSweb proxy (see JUnitDefaultGCSWebBase).
 	JUnitArtifactStyleGCSWeb = "gcsweb"
+
+	// JUnitGroupByJob scores each Prow job on its own. Reason.Check is the job name.
+	JUnitGroupByJob = "job"
+	// JUnitGroupByLeaseResourcePrefix pools runs that share the leased resource account prefix.
+	// Reason.Check is that prefix. Those groups use a consecutive failure streak.
+	JUnitGroupByLeaseResourcePrefix = "lease-resource-prefix"
 )
 
 // JUnitDefaultGCSWebBase is the default GCSweb host for artifact links (aligns with openshift/release ship-status and job report URLs).
@@ -349,32 +355,59 @@ const JUnitDefaultGCSWebBase = "https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.
 // JUnitDefaultProwSpyglassBase is the Prow spyglass view host for build log links in JUnit probe reasons.
 const JUnitDefaultProwSpyglassBase = "https://prow.ci.openshift.org"
 
-// JUnitMonitor configures reading JUnit XML that Prow uploads to GCS for a job (under logs/<job_name>/,
-// e.g. artifacts/junit_canary.xml via latest-build.txt and started.json for staleness—see component-monitor docs).
+// JUnitMonitor configures reading JUnit XML that Prow uploads to GCS for one or more jobs
+// (under logs/<job>/). See the component-monitor README.
 //
-// With history_runs 1 (default), only that latest build is evaluated for pass/fail.
-// With history_runs N > 1 and failed_runs_threshold Y, the monitor evaluates up to N recent builds and
-// reports unhealthy only when at least Y of those runs share the same failure pattern (the same set of
-// failed testcase names, or runs all bucketed as zero JUnit tests)—not merely “any Y failing runs out of N,”
-// which avoids noisy alerts from unrelated flake patterns.
+// Each run is scored inside a group chosen by group_by. The default group is the job name.
+// With history_runs 1 (default), only the latest finished build is evaluated for pass/fail.
+// With history_runs N > 1 and failed_runs_threshold Y, a group is unhealthy only when at least Y
+// of its runs share the same failure pattern (the same set of failed testcase names, or zero JUnit tests).
+// It is not "any Y failing runs out of N", which avoids noisy alerts from unrelated flake patterns.
+// A missing JUnit file counts as its own pattern unless missing_artifact_unhealthy is false.
+// alert_on_no_recent_run opens an outage when latest-build.txt is older than max_age.
 type JUnitMonitor struct {
 	// GCSBucket is the Prow GCS bucket name. If not provided, test-platform-results-public is used.
 	GCSBucket string `json:"gcs_bucket,omitempty" yaml:"gcs_bucket,omitempty"`
-	// JobName is the Prow job name (under logs/ in the bucket).
-	JobName string `json:"job_name" yaml:"job_name"`
-	// MaxAge is the maximum age of the build referenced by latest-build.txt before the probe reports unhealthy. Must be a valid Go duration.
-	MaxAge string `json:"max_age" yaml:"max_age"`
+	// JobNames is the list of Prow job names (under logs/ in the bucket). Required. The prober does not discover jobs.
+	JobNames []string `json:"job_names" yaml:"job_names"`
+	// ArtifactPath is the object path under the build id (for example artifacts/junit_canary.xml). Required.
+	ArtifactPath string `json:"artifact_path" yaml:"artifact_path"`
+	// TestcasePrefix, when set, scores only testcase names with this prefix. A file with no matching
+	// case is skipped. When empty, any failed case counts, and a file with zero tests is a failure.
+	TestcasePrefix string `json:"testcase_prefix,omitempty" yaml:"testcase_prefix,omitempty"`
+	// AlertOnNoRecentRun opens an outage when the build in latest-build.txt is older than MaxAge.
+	// MaxAge is required when this is true. It cannot be combined with group_by lease-resource-prefix.
+	AlertOnNoRecentRun bool `json:"alert_on_no_recent_run,omitempty" yaml:"alert_on_no_recent_run,omitempty"`
+	// MissingArtifactUnhealthy counts a finished build with no ArtifactPath as a failure pattern.
+	// Nil means true.
+	MissingArtifactUnhealthy *bool `json:"missing_artifact_unhealthy,omitempty" yaml:"missing_artifact_unhealthy,omitempty"`
+	// GroupBy chooses the group key. Empty means JUnitGroupByJob. Reason.Check is that key.
+	// lease-resource-prefix scores a consecutive failure streak ordered by started.json.
+	// job scores a shared failure signature.
+	// When LatestRunGroupWindow is set, both modes score only runs that started within that
+	// duration of the newest run in the group. max_age still drops older builds first.
+	GroupBy string `json:"group_by,omitempty" yaml:"group_by,omitempty"`
+	// LatestRunGroupWindow, when set, keeps runs whose started.json is within this duration of
+	// the newest run in the group. A pass in that cohort does not cancel a failure. Empty keeps
+	// the lease streak and the full-history job signature. Measured from that newest run, after max_age.
+	LatestRunGroupWindow string `json:"latest_run_group_window,omitempty" yaml:"latest_run_group_window,omitempty"`
+	// MaxAge drops finished builds whose started.json is older than this duration. It does not
+	// itself open an outage. When AlertOnNoRecentRun is true, MaxAge is required and a latest
+	// build older than it does open an outage. Empty means no age filter.
+	MaxAge string `json:"max_age,omitempty" yaml:"max_age,omitempty"`
 	// Severity is the severity to report on failure or a stale build. If not provided, the severity will default to Degraded.
 	Severity Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
 	// ArtifactURLStyle selects gcs (direct GCS URL) or gcsweb (GCSweb proxy URL). If not provided, gcs is used.
 	ArtifactURLStyle string `json:"artifact_url_style,omitempty" yaml:"artifact_url_style,omitempty"`
 	// GCSWebBaseURL is the GCSweb origin to use when ArtifactURLStyle is gcsweb. If not provided, JUnitDefaultGCSWebBase is used.
 	GCSWebBaseURL string `json:"gcsweb_base_url,omitempty" yaml:"gcsweb_base_url,omitempty"`
-	// HistoryRuns is the number of recent Prow build IDs to evaluate. If 0, 1 is used. When greater than 1, FailedRunsThreshold and GCS list responses apply; staleness (MaxAge) still uses only the latest build from latest-build.txt.
+	// HistoryRuns is the number of recent Prow build IDs to evaluate per job. If 0, 1 is used. When greater than 1, FailedRunsThreshold and GCS list responses apply. Staleness (MaxAge) still uses only the latest build from latest-build.txt, and only when AlertOnNoRecentRun is true.
 	HistoryRuns int `json:"history_runs,omitempty" yaml:"history_runs,omitempty"`
-	// FailedRunsThreshold (Y) is used when HistoryRuns (N) is greater than 1. Unhealthy if the *largest* group
-	// of runs that share the same failure pattern has size at least Y. A pattern is the sorted set of failed
-	// testcase names, or a shared bucket for zero total JUnit tests. It is not "Y arbitrary red runs in N."
+	// FailedRunsThreshold (Y) is used when HistoryRuns (N) is greater than 1. Unhealthy if the largest group
+	// of that group's runs that share the same failure pattern has size at least Y. A pattern is the sorted set of failed
+	// testcase names, a shared bucket for zero total JUnit tests, or a missing JUnit file on a finished build
+	// when MissingArtifactUnhealthy is true.
+	// It is not "Y arbitrary red runs in N."
 	// Y must be between 1 and N (inclusive). When HistoryRuns is 1, the field is ignored.
 	FailedRunsThreshold int `json:"failed_runs_threshold,omitempty" yaml:"failed_runs_threshold,omitempty"`
 }

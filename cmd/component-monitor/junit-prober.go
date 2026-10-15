@@ -10,13 +10,16 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"ship-status-dash/pkg/types"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -24,18 +27,20 @@ const (
 	prowObjectLatestBuild = "latest-build.txt"
 	prowObjectStarted     = "started.json"
 	prowObjectFinished    = "finished.json"
-	junitProwPath         = "artifacts/junit_canary.xml"
+	prowObjectBuildLog    = "build-log.txt"
 	maxTextBodyBytes      = 4 * 1024 * 1024
 	defaultGCSWebBase     = types.JUnitDefaultGCSWebBase
 
 	// History grouping: runs count toward the threshold when they share the
-	// same normalized failure (sorted unique failing test names, or a zero-test run).
-	junitSignatureZero         = "zero_tests"
-	junitSignatureFailedPfx    = "failed:" // + sorted, comma-joined test names
-	junitSignatureMissingJUnit = "missing_junit"
+	// same normalized failure (sorted unique failing test names, a zero-test run,
+	// or a missing JUnit file on a finished build).
+	junitSignatureZero          = "zero_tests"
+	junitSignatureFailedPfx     = "failed:" // + sorted, comma-joined test names
+	junitSignatureMissingJUnit  = "missing_junit"
+	junitSignatureNoPrefixMatch = "no_prefix_match"
 
 	// defaultLastSuccessScanLimit is how many recent finished builds to scan for a
-	// last-success Spyglass link when enriching a stale canary reason and HistoryRuns is 1.
+	// last-success Spyglass link when enriching a stale reason and HistoryRuns is 1.
 	defaultLastSuccessScanLimit = 5
 )
 
@@ -60,10 +65,16 @@ type junitHTTPClient interface {
 
 // JUnitProberSettings holds JUnit prober options parsed from JUnitMonitor.
 type JUnitProberSettings struct {
-	ArtifactURLStyle    string
-	GCSWebBaseURL       string
-	HistoryRuns         int
-	FailedRunsThreshold int
+	ArtifactURLStyle         string
+	GCSWebBaseURL            string
+	HistoryRuns              int
+	FailedRunsThreshold      int
+	ArtifactPath             string
+	TestcasePrefix           string
+	AlertOnNoRecentRun       bool
+	MissingArtifactUnhealthy *bool
+	GroupBy                  string
+	LatestRunGroupWindow     time.Duration
 }
 
 // JUnitProber fetches Prow JUnit XML from GCS or GCSweb and reports component health.
@@ -71,18 +82,34 @@ type JUnitProber struct {
 	componentSlug    string
 	subComponentSlug string
 	bucket           string
-	jobName          string
+	jobNames         []string
 	maxAge           time.Duration
 	severity         types.Severity
 	client           junitHTTPClient
 	settings         JUnitProberSettings
+
+	mu         sync.Mutex
+	evalCache  map[string]junitEvalCacheEntry
+	leaseCache map[string]leaseCacheEntry
+}
+
+type junitEvalCacheEntry struct {
+	total       int
+	failed      []string
+	artifactSig string
 }
 
 // NewJUnitProber returns a JUnitProber. It uses default bucket, severity, and artifact style when empty,
 // enforces a minimum history of 1, and sets FailedRunsThreshold to 1 when a single run is configured.
-// jobName is trimmed of leading and trailing whitespace before use in URLs and reasons.
-func NewJUnitProber(componentSlug, subComponentSlug, bucket, jobName string, maxAge time.Duration, severity types.Severity, settings JUnitProberSettings, client junitHTTPClient) *JUnitProber {
-	jobName = strings.TrimSpace(jobName)
+// Job names are trimmed. ArtifactPath is required; config validation rejects an empty artifact_path.
+func NewJUnitProber(componentSlug, subComponentSlug, bucket string, jobNames []string, maxAge time.Duration, severity types.Severity, settings JUnitProberSettings, client junitHTTPClient) *JUnitProber {
+	names := make([]string, 0, len(jobNames))
+	for _, name := range jobNames {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
 	if bucket == "" {
 		bucket = defaultGCSBucket
 	}
@@ -98,26 +125,34 @@ func NewJUnitProber(componentSlug, subComponentSlug, bucket, jobName string, max
 	if settings.ArtifactURLStyle == "" {
 		settings.ArtifactURLStyle = types.JUnitArtifactStyleGCS
 	}
+	settings.ArtifactPath = strings.TrimSpace(settings.ArtifactPath)
+	settings.TestcasePrefix = strings.TrimSpace(settings.TestcasePrefix)
+	settings.GroupBy = strings.TrimSpace(settings.GroupBy)
+	if settings.GroupBy == "" {
+		settings.GroupBy = types.JUnitGroupByJob
+	}
 	return &JUnitProber{
 		componentSlug:    componentSlug,
 		subComponentSlug: subComponentSlug,
 		bucket:           bucket,
-		jobName:          jobName,
+		jobNames:         names,
 		maxAge:           maxAge,
 		severity:         severity,
 		client:           client,
 		settings:         settings,
+		evalCache:        map[string]junitEvalCacheEntry{},
+		leaseCache:       map[string]leaseCacheEntry{},
 	}
 }
 
-func (p *JUnitProber) prowLogObjectURL(segments ...string) string {
+func (p *JUnitProber) prowLogObjectURL(job string, segments ...string) string {
 	tail := strings.Join(segments, "/")
 	switch p.settings.ArtifactURLStyle {
 	case types.JUnitArtifactStyleGCSWeb:
 		base := strings.TrimRight(p.gcswebBase(), "/")
-		return fmt.Sprintf("%s/gcs/%s/logs/%s/%s", base, p.bucket, p.jobName, tail)
+		return fmt.Sprintf("%s/gcs/%s/logs/%s/%s", base, p.bucket, job, tail)
 	default:
-		return fmt.Sprintf("https://storage.googleapis.com/%s/logs/%s/%s", p.bucket, p.jobName, tail)
+		return fmt.Sprintf("https://storage.googleapis.com/%s/logs/%s/%s", p.bucket, job, tail)
 	}
 }
 
@@ -128,14 +163,25 @@ func (p *JUnitProber) gcswebBase() string {
 	return defaultGCSWebBase
 }
 
-func (p *JUnitProber) formatErrorResult(err error) ProbeResult {
+func (p *JUnitProber) formatErrorResult(job string, err error) ProbeResult {
 	return ProbeResult{
 		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
 			ComponentSlug:    p.componentSlug,
 			SubComponentSlug: p.subComponentSlug,
 		},
 		ProbeType: ProbeTypeJUnit,
-		Error:     fmt.Errorf("error running JUnit probe, for component: %s sub-component %s. job: %s. error: %w", p.componentSlug, p.subComponentSlug, p.jobName, err),
+		Error:     fmt.Errorf("error running JUnit probe, for component: %s sub-component %s. job: %s. error: %w", p.componentSlug, p.subComponentSlug, job, err),
+	}
+}
+
+func (p *JUnitProber) healthyResult() ProbeResult {
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+			Status:           types.StatusHealthy,
+		},
+		ProbeType: ProbeTypeJUnit,
 	}
 }
 
@@ -143,11 +189,11 @@ func (p *JUnitProber) formatErrorResult(err error) ProbeResult {
 // whether it exceeds maxAge. Returns a non-nil *ProbeResult when the build
 // is stale; returns (nil, nil) when fresh; returns (nil, err) on fetch/parse
 // failures.
-func (p *JUnitProber) checkBuildStaleness(ctx context.Context, buildID string) (*ProbeResult, error) {
-	startedBody, err := p.fetchText(ctx, p.prowLogObjectURL(buildID, prowObjectStarted))
+func (p *JUnitProber) checkBuildStaleness(ctx context.Context, job, buildID string) (*ProbeResult, error) {
+	startedBody, err := p.fetchText(ctx, p.prowLogObjectURL(job, buildID, prowObjectStarted))
 	if err != nil {
 		if isHTTP404(err) {
-			finished, finErr := p.isBuildFinished(ctx, buildID)
+			finished, finErr := p.isBuildFinished(ctx, job, buildID)
 			if finErr != nil {
 				return nil, finErr
 			}
@@ -172,7 +218,7 @@ func (p *JUnitProber) checkBuildStaleness(ctx context.Context, buildID string) (
 				Status:           p.severity.ToStatus(),
 				Reasons: []types.Reason{{
 					Type:    types.CheckTypeJUnit,
-					Check:   p.jobName,
+					Check:   job,
 					Results: fmt.Sprintf("latest build %s started %s ago (max age %s)", buildID, age.Round(time.Minute), p.maxAge),
 				}},
 			},
@@ -182,8 +228,8 @@ func (p *JUnitProber) checkBuildStaleness(ctx context.Context, buildID string) (
 	return nil, nil
 }
 
-func (p *JUnitProber) isBuildFinished(ctx context.Context, buildID string) (bool, error) {
-	_, err := p.fetchText(ctx, p.prowLogObjectURL(buildID, prowObjectFinished))
+func (p *JUnitProber) isBuildFinished(ctx context.Context, job, buildID string) (bool, error) {
+	_, err := p.fetchText(ctx, p.prowLogObjectURL(job, buildID, prowObjectFinished))
 	if err == nil {
 		return true, nil
 	}
@@ -193,8 +239,8 @@ func (p *JUnitProber) isBuildFinished(ctx context.Context, buildID string) (bool
 	return false, err
 }
 
-func (p *JUnitProber) spyglassViewURL(buildID string) string {
-	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, p.bucket, p.jobName, buildID)
+func (p *JUnitProber) spyglassViewURL(job, buildID string) string {
+	return fmt.Sprintf("%s/view/gs/%s/logs/%s/%s", types.JUnitDefaultProwSpyglassBase, p.bucket, job, buildID)
 }
 
 func (p *JUnitProber) lastSuccessScanLimit() int {
@@ -206,21 +252,21 @@ func (p *JUnitProber) lastSuccessScanLimit() int {
 
 // enrichStaleResult appends a Spyglass link for the stale build and, when possible,
 // a link to the most recent successful finished run among recent history.
-func (p *JUnitProber) enrichStaleResult(ctx context.Context, stale *ProbeResult, staleBuildID string) {
-	parts := []string{stale.Reasons[0].Results, p.spyglassViewURL(staleBuildID)}
-	lastID, err := p.findLastSuccessfulBuild(ctx, staleBuildID)
+func (p *JUnitProber) enrichStaleResult(ctx context.Context, job string, stale *ProbeResult, staleBuildID string) {
+	parts := []string{stale.Reasons[0].Results, p.spyglassViewURL(job, staleBuildID)}
+	lastID, err := p.findLastSuccessfulBuild(ctx, job, staleBuildID)
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{
 			"component":     p.componentSlug,
 			"sub_component": p.subComponentSlug,
-			"job":           p.jobName,
+			"job":           job,
 			"stale_build":   staleBuildID,
-		}).Warn("failed to find last successful canary run for stale enrichment")
+		}).Warn("failed to find last successful junit run for stale enrichment")
 		parts = append(parts, "last success lookup failed")
 	} else if lastID == "" {
 		parts = append(parts, "no recent successful run found")
 	} else {
-		parts = append(parts, fmt.Sprintf("last success: %s %s", lastID, p.spyglassViewURL(lastID)))
+		parts = append(parts, fmt.Sprintf("last success: %s %s", lastID, p.spyglassViewURL(job, lastID)))
 	}
 	stale.Reasons[0].Results = strings.Join(parts, "; ")
 }
@@ -229,9 +275,9 @@ func (p *JUnitProber) enrichStaleResult(ctx context.Context, stale *ProbeResult,
 // whose JUnit evaluation is healthy, scanning up to lastSuccessScanLimit runs.
 // An empty string with a nil error means none were found. Per-build JUnit evaluation
 // errors are skipped so a single bad artifact does not abort the scan.
-func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID string) (string, error) {
+func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, job, staleBuildID string) (string, error) {
 	limit := p.lastSuccessScanLimit()
-	finished, err := p.listFinishedBuildIDsDesc(ctx, staleBuildID, limit+1)
+	finished, err := p.listFinishedBuildIDsDesc(ctx, job, staleBuildID, limit+1)
 	if err != nil {
 		return "", err
 	}
@@ -244,7 +290,7 @@ func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID 
 			break
 		}
 		scanned++
-		total, failed, artifactSig, evalErr := p.evaluateBuildJUnit(ctx, id)
+		total, failed, artifactSig, evalErr := p.evaluateBuildJUnit(ctx, job, id)
 		if evalErr != nil {
 			continue
 		}
@@ -255,28 +301,29 @@ func (p *JUnitProber) findLastSuccessfulBuild(ctx context.Context, staleBuildID 
 	return "", nil
 }
 
-func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFile string, maxFinished int) ([]string, error) {
-	ids, err := p.listBuildIDPrefixes(ctx)
+func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, job, latestFromFile string, maxFinished int) ([]string, error) {
+	ids, err := p.listBuildIDPrefixes(ctx, job)
 	if err != nil {
 		return nil, fmt.Errorf("listing recent builds: %w", err)
 	}
-	seen := make(map[string]struct{})
-	seen[latestFromFile] = struct{}{}
-	for _, id := range ids {
-		seen[id] = struct{}{}
-	}
-	var all []string
-	for id := range seen {
-		all = append(all, id)
-	}
+	seen := sets.New(latestFromFile)
+	seen.Insert(ids...)
+	all := seen.UnsortedList()
 	sortBuildIDsDesc(all)
 
-	// The newest build (all[0]) may legitimately be unfinished — its GCS
-	// prefix can appear before artifacts are uploaded. Any older build
-	// without finished.json is an error.
+	// A missing finished.json is a gap, not a probe failure, while the build
+	// is still inside max_age. The newest id is the common in-progress case.
+	// An older gap is skipped the same way so a finished build further back
+	// can still be scored. Once a gap is outside max_age, older ids are too,
+	// so the scan stops.
+	logFields := logrus.Fields{
+		"component":     p.componentSlug,
+		"sub_component": p.subComponentSlug,
+		"job":           job,
+	}
 	var finished []string
 	for i, id := range all {
-		done, fErr := p.isBuildFinished(ctx, id)
+		done, fErr := p.isBuildFinished(ctx, job, id)
 		if fErr != nil {
 			return nil, fmt.Errorf("checking finished.json for build %s: %w", id, fErr)
 		}
@@ -287,84 +334,302 @@ func (p *JUnitProber) listFinishedBuildIDsDesc(ctx context.Context, latestFromFi
 			}
 			continue
 		}
+		entry := logrus.WithFields(logFields).WithField("build", id)
 		if i == 0 {
-			logrus.WithFields(logrus.Fields{
-				"component":     p.componentSlug,
-				"sub_component": p.subComponentSlug,
-				"job":           p.jobName,
-				"build":         id,
-			}).Info("Excluding unfinished latest build from finished build list")
+			entry.Info("Excluding unfinished latest build from finished build list")
 			continue
 		}
-		return nil, fmt.Errorf("build %s is not the latest but has no finished.json", id)
+		within, ageErr := p.buildWithinMaxAge(ctx, job, id)
+		if ageErr != nil {
+			return nil, fmt.Errorf("checking max age for unfinished build %s: %w", id, ageErr)
+		}
+		entry.Warn("Excluding unfinished build from finished build list")
+		if !within {
+			break
+		}
 	}
 	return finished, nil
 }
 
 func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
-	latest, err := p.fetchText(ctx, p.prowLogObjectURL(prowObjectLatestBuild))
-	if err != nil {
-		results <- p.formatErrorResult(fmt.Errorf("fetching latest build ID: %w", err))
+	if len(p.jobNames) == 0 {
+		results <- p.formatErrorResult("", fmt.Errorf("no job_names configured"))
 		return
+	}
+	switch p.settings.GroupBy {
+	case types.JUnitGroupByJob:
+		if len(p.jobNames) == 1 {
+			results <- p.probeJob(ctx, p.jobNames[0])
+			return
+		}
+		results <- p.probeJobs(ctx)
+	case types.JUnitGroupByLeaseResourcePrefix:
+		results <- p.probeByGroup(ctx)
+	default:
+		results <- p.formatErrorResult(strings.Join(p.jobNames, ","), fmt.Errorf("invalid group_by %q", p.settings.GroupBy))
+	}
+}
+
+// combineJobProbe reports an unhealthy reading when one exists. A read error is returned only when
+// no readable job is unhealthy, so mergeStatuses can omit the sub-component instead of reporting Healthy.
+func (p *JUnitProber) combineJobProbe(status types.Status, reasons []types.Reason, readErr error) ProbeResult {
+	if len(reasons) > 0 {
+		if status == "" || status == types.StatusHealthy {
+			status = p.severity.ToStatus()
+		}
+		return ProbeResult{
+			ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+				ComponentSlug:    p.componentSlug,
+				SubComponentSlug: p.subComponentSlug,
+				Status:           status,
+				Reasons:          reasons,
+			},
+			ProbeType: ProbeTypeJUnit,
+		}
+	}
+	if readErr != nil {
+		return p.formatErrorResult(strings.Join(p.jobNames, ","), readErr)
+	}
+	return p.healthyResult()
+}
+
+func (p *JUnitProber) probeJobs(ctx context.Context) ProbeResult {
+	var reasons []types.Reason
+	status := types.StatusHealthy
+	var firstErr *ProbeResult
+	for _, job := range p.jobNames {
+		result := p.probeJob(ctx, job)
+		if result.Error != nil {
+			logrus.WithError(result.Error).WithFields(logrus.Fields{
+				"component":     p.componentSlug,
+				"sub_component": p.subComponentSlug,
+				"job":           job,
+			}).Warn("skipping unreadable junit job")
+			if firstErr == nil {
+				copied := result
+				firstErr = &copied
+			}
+			continue
+		}
+		if result.Status == types.StatusHealthy {
+			continue
+		}
+		if types.GetSeverityLevel(result.Status.ToSeverity()) > types.GetSeverityLevel(status.ToSeverity()) {
+			status = result.Status
+		}
+		reasons = append(reasons, result.Reasons...)
+	}
+	if len(reasons) > 0 {
+		return p.combineJobProbe(status, reasons, nil)
+	}
+	if firstErr != nil {
+		return *firstErr
+	}
+	return p.healthyResult()
+}
+
+func (p *JUnitProber) probeJob(ctx context.Context, job string) ProbeResult {
+	builds, stale, err := p.jobBuilds(ctx, job)
+	if err != nil {
+		return p.formatErrorResult(job, err)
+	}
+	if stale != nil {
+		return *stale
+	}
+
+	if p.settings.HistoryRuns == 1 {
+		ok, err := p.buildWithinMaxAge(ctx, job, builds[0])
+		if err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"component":     p.componentSlug,
+				"sub_component": p.subComponentSlug,
+				"job":           job,
+				"build":         builds[0],
+			}).Warn("junit build unreadable")
+			return p.formatErrorResult(job, err)
+		}
+		if !ok {
+			return p.healthyResult()
+		}
+		r, perr := p.probeJunitForBuildID(ctx, job, builds[0])
+		if perr != nil {
+			logrus.WithError(perr).WithFields(logrus.Fields{
+				"component":     p.componentSlug,
+				"sub_component": p.subComponentSlug,
+				"job":           job,
+				"build":         builds[0],
+			}).Warn("junit build unreadable")
+			return p.formatErrorResult(job, perr)
+		}
+		return r
+	}
+
+	var runs []junitRunEval
+	sawUnscored := false
+	for _, b := range builds {
+		run, included, perr := p.evaluateIncludedBuild(ctx, job, b)
+		if perr != nil {
+			logrus.WithError(perr).WithFields(logrus.Fields{"job": job, "build": b}).Warn("skipping junit build")
+			continue
+		}
+		switch included {
+		case includeUnscored:
+			sawUnscored = true
+			continue
+		case includeScored:
+			runs = append(runs, run)
+		}
+	}
+	if len(runs) == 0 && sawUnscored {
+		return p.formatErrorResult(job, fmt.Errorf("no junit runs scored for %s", p.settings.ArtifactPath))
+	}
+	if p.settings.LatestRunGroupWindow > 0 {
+		runs = runsInLatestGroup(runs, p.settings.LatestRunGroupWindow)
+	}
+	reason, unhealthy := p.failureSignatureReason(job, runs)
+	if !unhealthy {
+		return p.healthyResult()
+	}
+	return ProbeResult{
+		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
+			ComponentSlug:    p.componentSlug,
+			SubComponentSlug: p.subComponentSlug,
+			Status:           p.severity.ToStatus(),
+			Reasons:          []types.Reason{reason},
+		},
+		ProbeType: ProbeTypeJUnit,
+	}
+}
+
+type junitRunEval struct {
+	job         string
+	buildID     string
+	started     time.Time
+	total       int
+	failed      []string
+	artifactSig string
+}
+
+func (p *JUnitProber) buildWithinMaxAge(ctx context.Context, job, buildID string) (bool, error) {
+	if p.maxAge <= 0 {
+		return true, nil
+	}
+	started, err := p.fetchBuildStarted(ctx, job, buildID)
+	if isHTTP404(err) || (err == nil && started.IsZero()) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if time.Since(started) > p.maxAge {
+		return false, nil
+	}
+	return true, nil
+}
+
+type includeResult int
+
+const (
+	includeDroppedAge includeResult = iota
+	includeUnscored
+	includeScored
+)
+
+func (p *JUnitProber) evaluateIncludedBuild(ctx context.Context, job, buildID string) (junitRunEval, includeResult, error) {
+	var started time.Time
+	if p.maxAge > 0 || p.settings.GroupBy == types.JUnitGroupByLeaseResourcePrefix {
+		var err error
+		started, err = p.fetchBuildStarted(ctx, job, buildID)
+		if isHTTP404(err) {
+			started, err = time.Time{}, nil
+		}
+		if err != nil {
+			return junitRunEval{}, includeDroppedAge, err
+		}
+		if p.maxAge > 0 && !started.IsZero() && time.Since(started) > p.maxAge {
+			return junitRunEval{}, includeDroppedAge, nil
+		}
+	}
+	total, failed, artifactSig, perr := p.evaluateBuildJUnit(ctx, job, buildID)
+	if perr != nil {
+		return junitRunEval{}, includeDroppedAge, perr
+	}
+	if p.unscoredArtifact(artifactSig) {
+		return junitRunEval{}, includeUnscored, nil
+	}
+	return junitRunEval{
+		job: job, buildID: buildID, started: started, total: total, failed: failed, artifactSig: artifactSig,
+	}, includeScored, nil
+}
+
+func (p *JUnitProber) unscoredArtifact(artifactSig string) bool {
+	if artifactSig == junitSignatureNoPrefixMatch {
+		return true
+	}
+	return artifactSig == junitSignatureMissingJUnit && !p.countMissingArtifact()
+}
+
+func (p *JUnitProber) fetchBuildStarted(ctx context.Context, job, buildID string) (time.Time, error) {
+	body, err := p.fetchText(ctx, p.prowLogObjectURL(job, buildID, prowObjectStarted))
+	if err != nil {
+		return time.Time{}, err
+	}
+	var started prowStarted
+	if err := json.Unmarshal([]byte(body), &started); err != nil {
+		return time.Time{}, fmt.Errorf("parsing started.json for build %s: %w", buildID, err)
+	}
+	if started.Timestamp <= 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(started.Timestamp, 0), nil
+}
+
+func (p *JUnitProber) countMissingArtifact() bool {
+	if p.settings.MissingArtifactUnhealthy == nil {
+		return true
+	}
+	return *p.settings.MissingArtifactUnhealthy
+}
+
+func (p *JUnitProber) jobBuilds(ctx context.Context, job string) ([]string, *ProbeResult, error) {
+	latest, err := p.fetchText(ctx, p.prowLogObjectURL(job, prowObjectLatestBuild))
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching latest build ID: %w", err)
 	}
 	latest = strings.TrimSpace(latest)
 	if latest == "" {
-		results <- p.formatErrorResult(fmt.Errorf("empty latest build ID from %s", prowObjectLatestBuild))
-		return
+		return nil, nil, fmt.Errorf("empty latest build ID from %s", prowObjectLatestBuild)
 	}
 
-	staleResult, err := p.checkBuildStaleness(ctx, latest)
-	if err != nil {
-		results <- p.formatErrorResult(err)
-		return
-	}
-	if staleResult != nil {
-		p.enrichStaleResult(ctx, staleResult, latest)
-		results <- *staleResult
-		return
-	}
-
-	// If the latest build hasn't finished yet, fall back to the previous
-	// completed build so we don't error on missing artifacts.
-	unfinishedBuild := ""
-	finished, finErr := p.isBuildFinished(ctx, latest)
+	finished, finErr := p.isBuildFinished(ctx, job, latest)
 	if finErr != nil {
-		results <- p.formatErrorResult(fmt.Errorf("checking finished.json for build %s: %w", latest, finErr))
-		return
+		return nil, nil, fmt.Errorf("checking finished.json for build %s: %w", latest, finErr)
 	}
+
+	unfinishedBuild := ""
 	if !finished {
 		logrus.WithFields(logrus.Fields{
 			"component":     p.componentSlug,
 			"sub_component": p.subComponentSlug,
-			"job":           p.jobName,
+			"job":           job,
 			"build":         latest,
 		}).Info("Latest build not finished, falling back to previous build")
 		unfinishedBuild = latest
-		prevID, findErr := p.findPreviousBuildID(ctx, latest)
+		prevID, findErr := p.findPreviousBuildID(ctx, job, latest)
 		if findErr != nil {
-			results <- p.formatErrorResult(fmt.Errorf("latest build %s not finished and %w", latest, findErr))
-			return
-		}
-		staleResult, err = p.checkBuildStaleness(ctx, prevID)
-		if err != nil {
-			results <- p.formatErrorResult(err)
-			return
-		}
-		if staleResult != nil {
-			p.enrichStaleResult(ctx, staleResult, prevID)
-			results <- *staleResult
-			return
+			return nil, nil, fmt.Errorf("latest build %s not finished and %w", latest, findErr)
 		}
 		latest = prevID
 	}
 
-	builds, err := p.resolveBuildIDsToEvaluate(ctx, latest)
-	if err != nil {
-		results <- p.formatErrorResult(err)
-		return
+	if stale, err := p.noteStale(ctx, job, latest); err != nil || stale != nil {
+		return nil, stale, err
 	}
 
-	// Exclude the unfinished build if it appeared in the GCS listing.
+	builds, err := p.resolveBuildIDsToEvaluate(ctx, job, latest)
+	if err != nil {
+		return nil, nil, err
+	}
 	if unfinishedBuild != "" {
 		filtered := builds[:0]
 		for _, b := range builds {
@@ -374,38 +639,39 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 		}
 		builds = filtered
 	}
+	return builds, nil, nil
+}
 
-	if p.settings.HistoryRuns == 1 {
-		r, perr := p.probeJunitForBuildID(ctx, builds[0])
-		if perr != nil {
-			results <- p.formatErrorResult(perr)
-			return
-		}
-		results <- r
-		return
+func (p *JUnitProber) noteStale(ctx context.Context, job, buildID string) (*ProbeResult, error) {
+	if !p.settings.AlertOnNoRecentRun {
+		return nil, nil
 	}
+	stale, err := p.checkBuildStaleness(ctx, job, buildID)
+	if err != nil || stale == nil {
+		return stale, err
+	}
+	p.enrichStaleResult(ctx, job, stale, buildID)
+	return stale, nil
+}
 
-	threshold := p.settings.FailedRunsThreshold // validated in loadAndValidateConfig when history_runs > 1
-
-	// For each Prow run, the failure signature is the sorted set of failing
-	// test names (or a dedicated zero-tests key). A run counts toward
-	// the threshold only together with other runs that share the same key.
+func (p *JUnitProber) failureSignatureReason(check string, runs []junitRunEval) (types.Reason, bool) {
+	threshold := p.settings.FailedRunsThreshold
+	if threshold < 1 {
+		threshold = 1
+	}
 	signatureCount := make(map[string]int)
-	summaries := make([]string, 0, len(builds))
-	for _, b := range builds {
-		total, failed, artifactSig, perr := p.evaluateBuildJUnit(ctx, b)
-		if perr != nil {
-			results <- p.formatErrorResult(fmt.Errorf("build %s: %w", b, perr))
-			return
+	summaries := make([]string, 0, len(runs))
+	for _, run := range runs {
+		label := fmt.Sprintf("build %s", run.buildID)
+		if run.job != check {
+			label = fmt.Sprintf("%s/%s", run.job, run.buildID)
 		}
-		summaries = append(summaries, fmt.Sprintf("build %s: %s; %s", b, formatJunitBuildSummary(total, failed, artifactSig), p.spyglassViewURL(b)))
-		if !junitEvalUnhealthy(total, failed, artifactSig) {
+		summaries = append(summaries, fmt.Sprintf("%s: %s; %s", label, formatJunitBuildSummary(run.total, run.failed, run.artifactSig, p.settings.ArtifactPath), p.spyglassViewURL(run.job, run.buildID)))
+		if !junitEvalUnhealthy(run.total, run.failed, run.artifactSig) {
 			continue
 		}
-		sig := junitEvalSignature(total, failed, artifactSig)
-		signatureCount[sig]++
+		signatureCount[junitEvalSignature(run.total, run.failed, run.artifactSig)]++
 	}
-
 	highestSig, highestCount := "", 0
 	for sig, n := range signatureCount {
 		if n > highestCount {
@@ -415,36 +681,23 @@ func (p *JUnitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
 		}
 	}
 	if highestCount < threshold {
-		results <- ProbeResult{
-			ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-				ComponentSlug:    p.componentSlug,
-				SubComponentSlug: p.subComponentSlug,
-				Status:           types.StatusHealthy,
-			},
-			ProbeType: ProbeTypeJUnit,
-		}
-		return
+		return types.Reason{}, false
 	}
-	reason := fmt.Sprintf(
-		"junit: %d of the last %d run(s) share the same failure pattern: %s (threshold %d) — %s",
-		highestCount, len(builds), formatJunitSignatureShort(highestSig), threshold, strings.Join(summaries, " | "),
-	)
-	results <- ProbeResult{
-		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
-			ComponentSlug:    p.componentSlug,
-			SubComponentSlug: p.subComponentSlug,
-			Status:           p.severity.ToStatus(),
-			Reasons:          []types.Reason{{Type: types.CheckTypeJUnit, Check: p.jobName, Results: reason}},
-		},
-		ProbeType: ProbeTypeJUnit,
-	}
+	return types.Reason{
+		Type:  types.CheckTypeJUnit,
+		Check: check,
+		Results: fmt.Sprintf(
+			"junit: %d of the last %d run(s) share the same failure pattern: %s (threshold %d) — %s",
+			highestCount, len(runs), formatJunitSignatureShort(highestSig, p.settings.ArtifactPath), threshold, strings.Join(summaries, " | "),
+		),
+	}, true
 }
 
-func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, latestFromFile string) ([]string, error) {
+func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, job, latestFromFile string) ([]string, error) {
 	if p.settings.HistoryRuns <= 1 {
 		return []string{latestFromFile}, nil
 	}
-	finished, err := p.listFinishedBuildIDsDesc(ctx, latestFromFile, p.settings.HistoryRuns)
+	finished, err := p.listFinishedBuildIDsDesc(ctx, job, latestFromFile, p.settings.HistoryRuns)
 	if err != nil {
 		return nil, err
 	}
@@ -459,19 +712,14 @@ func (p *JUnitProber) resolveBuildIDsToEvaluate(ctx context.Context, latestFromF
 	return finished[:n], nil
 }
 
-func (p *JUnitProber) findPreviousBuildID(ctx context.Context, currentBuildID string) (string, error) {
-	ids, err := p.listBuildIDPrefixes(ctx)
+func (p *JUnitProber) findPreviousBuildID(ctx context.Context, job, currentBuildID string) (string, error) {
+	ids, err := p.listBuildIDPrefixes(ctx, job)
 	if err != nil {
 		return "", fmt.Errorf("listing builds for fallback: %w", err)
 	}
-	seen := map[string]struct{}{currentBuildID: {}}
-	for _, id := range ids {
-		seen[id] = struct{}{}
-	}
-	all := make([]string, 0, len(seen))
-	for id := range seen {
-		all = append(all, id)
-	}
+	seen := sets.New(currentBuildID)
+	seen.Insert(ids...)
+	all := seen.UnsortedList()
 	sortBuildIDsDesc(all)
 	for i, id := range all {
 		if id == currentBuildID && i+1 < len(all) {
@@ -481,9 +729,9 @@ func (p *JUnitProber) findPreviousBuildID(ctx context.Context, currentBuildID st
 	return "", fmt.Errorf("no previous build found before %s", currentBuildID)
 }
 
-func (p *JUnitProber) listBuildIDPrefixes(ctx context.Context) ([]string, error) {
-	jobPrefix := "logs/" + p.jobName + "/"
-	unique := make(map[string]struct{})
+func (p *JUnitProber) listBuildIDPrefixes(ctx context.Context, job string) ([]string, error) {
+	jobPrefix := "logs/" + job + "/"
+	unique := sets.New[string]()
 	for page, token := 0, ""; page < 50; page++ {
 		body, err := p.fetchGCSListPage(ctx, jobPrefix, token)
 		if err != nil {
@@ -494,9 +742,9 @@ func (p *JUnitProber) listBuildIDPrefixes(ctx context.Context) ([]string, error)
 			return nil, fmt.Errorf("parsing GCS list: %w", err)
 		}
 		for _, pr := range r.Prefixes {
-			id, ok := buildIDFromPrefixPath(pr, p.jobName)
+			id, ok := buildIDFromPrefixPath(pr, job)
 			if ok {
-				unique[id] = struct{}{}
+				unique.Insert(id)
 			}
 		}
 		if r.NextPageToken == "" {
@@ -504,11 +752,7 @@ func (p *JUnitProber) listBuildIDPrefixes(ctx context.Context) ([]string, error)
 		}
 		token = r.NextPageToken
 	}
-	ids := make([]string, 0, len(unique))
-	for k := range unique {
-		ids = append(ids, k)
-	}
-	return ids, nil
+	return unique.UnsortedList(), nil
 }
 
 func (p *JUnitProber) fetchGCSListPage(ctx context.Context, prefix, pageToken string) (string, error) {
@@ -561,44 +805,115 @@ func buildIDGreater(a, b string) bool {
 	return a > b
 }
 
-func (p *JUnitProber) probeJunitForBuildID(ctx context.Context, buildID string) (ProbeResult, error) {
-	total, failed, artifactSig, err := p.evaluateBuildJUnit(ctx, buildID)
+func (p *JUnitProber) probeJunitForBuildID(ctx context.Context, job, buildID string) (ProbeResult, error) {
+	total, failed, artifactSig, err := p.evaluateBuildJUnit(ctx, job, buildID)
 	if err != nil {
 		return ProbeResult{}, err
 	}
 	if artifactSig != "" {
-		return p.makeMissingJUnitResult(buildID), nil
+		if p.unscoredArtifact(artifactSig) {
+			return ProbeResult{}, fmt.Errorf("no junit runs scored for %s on build %s", p.settings.ArtifactPath, buildID)
+		}
+		if artifactSig == junitSignatureMissingJUnit {
+			return p.makeMissingJUnitResult(job, buildID), nil
+		}
 	}
-	return p.makeStatusFromAggregates(buildID, total, failed), nil
+	return p.makeStatusFromAggregates(job, buildID, total, failed), nil
 }
 
 // evaluateBuildJUnit returns JUnit stats for a build. When the build is finished but
-// junit_canary.xml is missing, artifactSig is set instead of returning an error so
-// the sub-component is reported unhealthy.
-func (p *JUnitProber) evaluateBuildJUnit(ctx context.Context, buildID string) (total int, failed []string, artifactSig string, err error) {
-	xmlBody, err := p.fetchJunitBody(ctx, buildID)
+// the configured artifact is missing, artifactSig is set instead of returning an error so
+// the sub-component is reported unhealthy. Finished builds are cached so later ticks skip them.
+func (p *JUnitProber) evaluateBuildJUnit(ctx context.Context, job, buildID string) (total int, failed []string, artifactSig string, err error) {
+	if total, failed, artifactSig, ok := p.loadEvalCache(job, buildID); ok {
+		return total, failed, artifactSig, nil
+	}
+	total, failed, artifactSig, err = p.fetchBuildJUnit(ctx, job, buildID)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	p.storeEvalCache(job, buildID, total, failed, artifactSig)
+	return total, slices.Clone(failed), artifactSig, nil
+}
+
+func junitEvalCacheKey(job, buildID string) string {
+	return job + "\x00" + buildID
+}
+
+func (p *JUnitProber) loadEvalCache(job, buildID string) (int, []string, string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	entry, ok := p.evalCache[junitEvalCacheKey(job, buildID)]
+	if !ok {
+		return 0, nil, "", false
+	}
+	return entry.total, slices.Clone(entry.failed), entry.artifactSig, true
+}
+
+func (p *JUnitProber) storeEvalCache(job, buildID string, total int, failed []string, artifactSig string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.evalCache[junitEvalCacheKey(job, buildID)] = junitEvalCacheEntry{
+		total:       total,
+		failed:      slices.Clone(failed),
+		artifactSig: artifactSig,
+	}
+}
+
+func (p *JUnitProber) fetchBuildJUnit(ctx context.Context, job, buildID string) (total int, failed []string, artifactSig string, err error) {
+	artifactURL := p.prowLogObjectURL(job, artifactObjectSegments(buildID, p.settings.ArtifactPath)...)
+	logger := logrus.WithFields(logrus.Fields{
+		"component":       p.componentSlug,
+		"sub_component":   p.subComponentSlug,
+		"job":             job,
+		"build":           buildID,
+		"artifact_path":   p.settings.ArtifactPath,
+		"url":             artifactURL,
+		"testcase_prefix": p.settings.TestcasePrefix,
+	})
+	xmlBody, err := p.fetchText(ctx, artifactURL)
 	if err == nil {
 		suites, parseErr := parseSuitesFromJunitBody(xmlBody)
 		if parseErr != nil {
+			logger.WithError(parseErr).WithField("outcome", "error").Debug("junit artifact evaluation")
 			return 0, nil, "", fmt.Errorf("parsing junit XML for build %s: %w", buildID, parseErr)
 		}
+		if p.settings.TestcasePrefix != "" {
+			t, f := aggregatePrefixedJunit(suites, p.settings.TestcasePrefix)
+			if t == 0 {
+				logger.WithFields(logrus.Fields{"outcome": "no_prefix_match", "matched": 0}).Debug("junit artifact evaluation")
+				return 0, nil, junitSignatureNoPrefixMatch, nil
+			}
+			logger.WithFields(logrus.Fields{
+				"outcome":       "found",
+				"matched":       t,
+				"failed":        f,
+				"matched_tests": prefixedTestcaseNames(suites, p.settings.TestcasePrefix),
+			}).Debug("junit artifact evaluation")
+			return t, f, "", nil
+		}
 		t, f := aggregateJunitFromSuites(suites)
+		logger.WithFields(logrus.Fields{"outcome": "found", "matched": t, "failed": f}).Debug("junit artifact evaluation")
 		return t, f, "", nil
 	}
 	if !isHTTP404(err) {
+		logger.WithError(err).WithField("outcome", "error").Debug("junit artifact evaluation")
 		return 0, nil, "", err
 	}
-	finished, finErr := p.isBuildFinished(ctx, buildID)
+	finished, finErr := p.isBuildFinished(ctx, job, buildID)
 	if finErr != nil {
+		logger.WithError(finErr).WithField("outcome", "error").Debug("junit artifact evaluation")
 		return 0, nil, "", fmt.Errorf("checking finished.json for build %s: %w", buildID, finErr)
 	}
 	if !finished {
-		return 0, nil, "", fmt.Errorf("build %s has no %s and is not finished", buildID, junitProwPath)
+		logger.WithField("outcome", "missing").Debug("junit artifact evaluation")
+		return 0, nil, "", fmt.Errorf("build %s has no %s and is not finished", buildID, p.settings.ArtifactPath)
 	}
+	logger.WithField("outcome", "missing").Debug("junit artifact evaluation")
 	return 0, nil, junitSignatureMissingJUnit, nil
 }
 
-func (p *JUnitProber) makeMissingJUnitResult(buildID string) ProbeResult {
+func (p *JUnitProber) makeMissingJUnitResult(job, buildID string) ProbeResult {
 	return ProbeResult{
 		ComponentMonitorReportComponentStatus: types.ComponentMonitorReportComponentStatus{
 			ComponentSlug:    p.componentSlug,
@@ -606,18 +921,32 @@ func (p *JUnitProber) makeMissingJUnitResult(buildID string) ProbeResult {
 			Status:           p.severity.ToStatus(),
 			Reasons: []types.Reason{{
 				Type:    types.CheckTypeJUnit,
-				Check:   p.jobName,
-				Results: fmt.Sprintf("build %s: missing %s; %s", buildID, junitProwPath, p.spyglassViewURL(buildID)),
+				Check:   job,
+				Results: fmt.Sprintf("build %s: missing %s; %s", buildID, p.settings.ArtifactPath, p.spyglassViewURL(job, buildID)),
 			}},
 		},
 		ProbeType: ProbeTypeJUnit,
 	}
 }
 
-func (p *JUnitProber) fetchJunitBody(ctx context.Context, buildID string) (string, error) {
-	segs := append([]string{buildID}, strings.Split(junitProwPath, "/")...)
-	u := p.prowLogObjectURL(segs...)
-	return p.fetchText(ctx, u)
+func prefixedTestcaseNames(suites []junitSuite, prefix string) []string {
+	seen := sets.New[string]()
+	for _, s := range suites {
+		for _, tc := range s.TestCases {
+			if !strings.HasPrefix(tc.Name, prefix) {
+				continue
+			}
+			name := tc.Name
+			if name == "" {
+				name = "(unnamed)"
+			}
+			seen.Insert(name)
+		}
+	}
+	if seen.Len() == 0 {
+		return nil
+	}
+	return sets.List(seen)
 }
 
 // parseSuitesFromJunitBody decodes a JUnit XML body into one or more suites
@@ -637,8 +966,44 @@ func parseSuitesFromJunitBody(xmlBody string) ([]junitSuite, error) {
 	return suites, nil
 }
 
+func artifactObjectSegments(buildID, artifactPath string) []string {
+	parts := strings.Split(artifactPath, "/")
+	segs := make([]string, 0, 1+len(parts))
+	segs = append(segs, buildID)
+	for _, part := range parts {
+		if part != "" {
+			segs = append(segs, part)
+		}
+	}
+	return segs
+}
+
+func aggregatePrefixedJunit(suites []junitSuite, prefix string) (total int, failedSorted []string) {
+	seen := sets.New[string]()
+	for _, s := range suites {
+		for _, tc := range s.TestCases {
+			if !strings.HasPrefix(tc.Name, prefix) {
+				continue
+			}
+			total++
+			if tc.Failure == nil && tc.Error == nil {
+				continue
+			}
+			name := tc.Name
+			if name == "" {
+				name = "(unnamed)"
+			}
+			seen.Insert(name)
+		}
+	}
+	if seen.Len() == 0 {
+		return total, nil
+	}
+	return total, sets.List(seen)
+}
+
 func aggregateJunitFromSuites(suites []junitSuite) (total int, failedSorted []string) {
-	seen := make(map[string]struct{}, 4)
+	seen := sets.New[string]()
 	for _, s := range suites {
 		total += s.Tests
 		for _, tc := range s.TestCases {
@@ -646,19 +1011,14 @@ func aggregateJunitFromSuites(suites []junitSuite) (total int, failedSorted []st
 				continue
 			}
 			if tc.Name != "" {
-				seen[tc.Name] = struct{}{}
+				seen.Insert(tc.Name)
 			}
 		}
 	}
-	if len(seen) == 0 {
+	if seen.Len() == 0 {
 		return total, nil
 	}
-	failedSorted = make([]string, 0, len(seen))
-	for n := range seen {
-		failedSorted = append(failedSorted, n)
-	}
-	sort.Strings(failedSorted)
-	return total, failedSorted
+	return total, sets.List(seen)
 }
 
 // junitUnhealthy is true for zero total tests (no coverage) or any failed testcase.
@@ -693,12 +1053,12 @@ func junitEvalSignature(total int, failed []string, artifactSig string) string {
 	return junitFailureSignature(total, failed)
 }
 
-func formatJunitSignatureShort(sig string) string {
+func formatJunitSignatureShort(sig, artifactPath string) string {
 	switch sig {
 	case junitSignatureZero:
 		return "zero tests (no JUnit test cases, or total tests=0)"
 	case junitSignatureMissingJUnit:
-		return fmt.Sprintf("missing %s", junitProwPath)
+		return fmt.Sprintf("missing %s", artifactPath)
 	}
 	if !strings.HasPrefix(sig, junitSignatureFailedPfx) {
 		return sig
@@ -710,9 +1070,9 @@ func formatJunitSignatureShort(sig string) string {
 	return "failed: " + strings.Join(names, ", ")
 }
 
-func formatJunitBuildSummary(total int, failed []string, artifactSig string) string {
+func formatJunitBuildSummary(total int, failed []string, artifactSig, artifactPath string) string {
 	if artifactSig == junitSignatureMissingJUnit {
-		return fmt.Sprintf("missing %s", junitProwPath)
+		return fmt.Sprintf("missing %s", artifactPath)
 	}
 	switch {
 	case total == 0:
@@ -724,16 +1084,16 @@ func formatJunitBuildSummary(total int, failed []string, artifactSig string) str
 	}
 }
 
-func (p *JUnitProber) makeStatusFromAggregates(buildID string, total int, failed []string) ProbeResult {
+func (p *JUnitProber) makeStatusFromAggregates(job, buildID string, total int, failed []string) ProbeResult {
 	var status types.Status
 	var reasons []types.Reason
-	spyglass := p.spyglassViewURL(buildID)
+	spyglass := p.spyglassViewURL(job, buildID)
 	switch {
 	case total == 0:
 		status = p.severity.ToStatus()
 		reasons = []types.Reason{{
 			Type:    types.CheckTypeJUnit,
-			Check:   p.jobName,
+			Check:   job,
 			Results: fmt.Sprintf("build %s: zero tests found; %s", buildID, spyglass),
 		}}
 	case len(failed) == 0:
@@ -744,7 +1104,7 @@ func (p *JUnitProber) makeStatusFromAggregates(buildID string, total int, failed
 		status = p.severity.ToStatus()
 		reasons = []types.Reason{{
 			Type:    types.CheckTypeJUnit,
-			Check:   p.jobName,
+			Check:   job,
 			Results: fmt.Sprintf("build %s: %d/%d tests failed: %s; %s", buildID, len(failed), total, strings.Join(failed, ", "), spyglass),
 		}}
 	}
