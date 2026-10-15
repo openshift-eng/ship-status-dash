@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
+	"ship-status-dash/cmd/component-monitor/junit"
 	"ship-status-dash/pkg/config"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
@@ -282,6 +283,22 @@ func resolvedComponentFrequency(component types.MonitoringComponent, instanceFre
 	return freq, nil
 }
 
+// junitProber reports a junit package reading on the orchestrator channel.
+type junitProber struct {
+	prober *junit.JUnitProber
+}
+
+func (p junitProber) Probe(ctx context.Context, results chan<- ProbeResult) {
+	inner := make(chan junit.ProbeResult, 1)
+	p.prober.Probe(ctx, inner)
+	result := <-inner
+	results <- ProbeResult{
+		ComponentMonitorReportComponentStatus: result.ComponentMonitorReportComponentStatus,
+		ProbeType:                             ProbeTypeJUnit,
+		Error:                                 result.Error,
+	}
+}
+
 func createProbers(components []types.MonitoringComponent, instanceFrequency time.Duration, prometheusClients map[string]promclientv1.API, log *logrus.Logger) []scheduledProber {
 	var schedule []scheduledProber
 	for _, component := range components {
@@ -353,7 +370,7 @@ func createProbers(components []types.MonitoringComponent, instanceFrequency tim
 					jobNames = append(jobNames, name)
 				}
 			}
-			junitSt := JUnitProberSettings{
+			junitSt := junit.JUnitProberSettings{
 				ArtifactURLStyle:         style,
 				GCSWebBaseURL:            strings.TrimSpace(component.JUnitMonitor.GCSWebBaseURL),
 				HistoryRuns:              hr,
@@ -365,9 +382,9 @@ func createProbers(components []types.MonitoringComponent, instanceFrequency tim
 				GroupBy:                  strings.TrimSpace(component.JUnitMonitor.GroupBy),
 				LatestRunGroupWindow:     latestRunGroupWindow,
 			}
-			junitProber := NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, jobNames, maxAge, component.JUnitMonitor.Severity, junitSt, &http.Client{Timeout: 30 * time.Second})
+			prober := junit.NewJUnitProber(component.ComponentSlug, component.SubComponentSlug, component.JUnitMonitor.GCSBucket, jobNames, maxAge, component.JUnitMonitor.Severity, junitSt, &http.Client{Timeout: 30 * time.Second})
 			componentLogger.Info("Added JUnit prober for component")
-			add(junitProber)
+			add(junitProber{prober: prober})
 		}
 		if component.JiraMonitor != nil {
 			jiraProber := NewJiraProber(

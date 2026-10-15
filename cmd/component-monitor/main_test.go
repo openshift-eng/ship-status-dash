@@ -267,3 +267,5 @@ func TestLoadAndValidateConfigJUnit(t *testing.T) {
 		})
 	}
 }
+
+func boolPtr(v bool) *bool { return &v }

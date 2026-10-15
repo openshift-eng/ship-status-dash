@@ -1,4 +1,4 @@
-package main
+package junit
 
 import (
 	"bufio"
@@ -31,6 +31,7 @@ type leaseCacheEntry struct {
 	ok      bool
 }
 
+// probeByGroup pools runs that share a leased cloud account. Reason.Check is the account id.
 func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 	grouped := map[string][]junitRunEval{}
 	var staleReasons []types.Reason
@@ -71,7 +72,7 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 			case includeDroppedAge:
 				continue
 			}
-			key, keyOK, keyErr := p.groupKey(ctx, job, buildID)
+			key, keyOK, keyErr := p.leaseResourcePrefix(ctx, job, buildID)
 			if keyErr != nil {
 				logrus.WithError(keyErr).WithFields(logrus.Fields{"job": job, "build": buildID}).Warn("skipping junit build")
 				if jobReadErr == nil {
@@ -107,40 +108,6 @@ func (p *JUnitProber) probeByGroup(ctx context.Context) ProbeResult {
 		}
 	}
 	return p.combineJobProbe(p.severity.ToStatus(), reasons, readErr)
-}
-
-func sortRunsNewestFirst(runs []junitRunEval) {
-	sort.SliceStable(runs, func(i, j int) bool {
-		if !runs[i].started.Equal(runs[j].started) {
-			return runs[i].started.After(runs[j].started)
-		}
-		if runs[i].job != runs[j].job {
-			return runs[i].job < runs[j].job
-		}
-		return runs[i].buildID > runs[j].buildID
-	})
-}
-
-// runsInLatestGroup keeps runs that started within window of the newest run.
-// The newest run is ordered by started.json, then job name, then build id.
-func runsInLatestGroup(runs []junitRunEval, window time.Duration) []junitRunEval {
-	if len(runs) == 0 {
-		return runs
-	}
-	sorted := append([]junitRunEval(nil), runs...)
-	sortRunsNewestFirst(sorted)
-	if window <= 0 {
-		return sorted
-	}
-	newest := sorted[0].started
-	kept := make([]junitRunEval, 0, len(sorted))
-	for _, run := range sorted {
-		if !newest.IsZero() && !run.started.IsZero() && newest.Sub(run.started) > window {
-			break
-		}
-		kept = append(kept, run)
-	}
-	return kept
 }
 
 func shortDuration(d time.Duration) string {
@@ -202,17 +169,6 @@ func (p *JUnitProber) leaseFailureReason(check string, runs []junitRunEval, form
 		Type:    types.CheckTypeJUnit,
 		Check:   check,
 		Results: fmt.Sprintf(format, strings.Join(parts, "; ")),
-	}
-}
-
-func (p *JUnitProber) groupKey(ctx context.Context, job, buildID string) (string, bool, error) {
-	switch p.settings.GroupBy {
-	case types.JUnitGroupByJob:
-		return job, true, nil
-	case types.JUnitGroupByLeaseResourcePrefix:
-		return p.leaseResourcePrefix(ctx, job, buildID)
-	default:
-		return "", false, fmt.Errorf("invalid group_by %q", p.settings.GroupBy)
 	}
 }
 

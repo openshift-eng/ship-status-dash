@@ -1,4 +1,4 @@
-package main
+package junit
 
 import (
 	"bytes"
@@ -19,6 +19,11 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"ship-status-dash/pkg/types"
+)
+
+const (
+	testComponentSlug    = "test-component"
+	testSubComponentSlug = "test-subcomponent"
 )
 
 // newJUnitProber fills the canary artifact path when a test omits it. Production NewJUnitProber does not default the path.
@@ -82,7 +87,7 @@ func (m *mockHTTPDoer) Do(req *http.Request) (*http.Response, error) {
 
 func readJUnitFixture(t *testing.T, name string) string {
 	t.Helper()
-	p := filepath.Join("testdata", "junit", name)
+	p := filepath.Join("testdata", name)
 	b, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read %s: %v", p, err)
