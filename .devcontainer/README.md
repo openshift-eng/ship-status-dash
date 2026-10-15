@@ -58,6 +58,21 @@ Copy `.devcontainer/.env.example` to `.devcontainer/.env` and fill in any blank 
 
 The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `make verify-apm` work without extra setup. MCP Python venvs for `mcp/` and `ship-status-dev/` are created in `post-create.sh`.
 
+### Reusing the toolchain
+
+Other devcontainers can build this Dockerfile directly and call `post-create.sh`
+from the dashboard checkout to share tool versions without copying them. Rebuild
+those containers after changes to this Dockerfile or the setup script.
+
+Claude Code is installed by default. Set the build argument
+`INSTALL_CLAUDE_CODE=false` to skip it. Set `INSTALL_OPENCODE=true` to install
+OpenCode V2 instead (or alongside Claude Code). `OPENCODE_VERSION` defaults to
+`latest` and can be set to an exact `@opencode/cli` package version.
+
+The sibling `dev-environments/ship-status-chai-release` environment uses this
+toolchain for `ship-status-dash`, `ship-help-bot`, and `release`, with OpenCode
+alongside the default Claude Code installation.
+
 ## GitHub CLI Authentication
 
 The GitHub CLI (`gh`) is included in the image. Its configuration is mounted read-only from the host's `~/.config/gh`. By default, `gh auth login` may store tokens in the host's secure credential store, such as macOS Keychain or a Linux keyring. The devcontainer cannot access credentials stored there. To make the token available through the mounted configuration, authenticate on the host using file-based storage:

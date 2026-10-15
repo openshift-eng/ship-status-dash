@@ -92,6 +92,16 @@ RUN sudo cp /usr/bin/base64 /usr/bin/base64.gnu && \
     sudo chmod +x /usr/bin/base64
 
 ARG CLAUDE_INSTALLER_VERSION=latest
-RUN curl -fsSL https://claude.ai/install.sh | sh
+ARG INSTALL_CLAUDE_CODE=true
+RUN if [ "$INSTALL_CLAUDE_CODE" = "true" ]; then \
+      curl -fsSL https://claude.ai/install.sh | sh; \
+    fi
+
+ARG INSTALL_OPENCODE=false
+ARG OPENCODE_VERSION=latest
+RUN if [ "$INSTALL_OPENCODE" = "true" ]; then \
+      sudo npm install -g "@opencode/cli@${OPENCODE_VERSION}" && \
+      opencode --version; \
+    fi
 
 WORKDIR /workspace
