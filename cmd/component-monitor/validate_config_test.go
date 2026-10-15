@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -89,6 +90,50 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadAndValidateConfigReportsAllErrors(t *testing.T) {
+	cfg := &types.ComponentMonitorConfig{
+		Frequency: "20s",
+		Components: []types.MonitoringComponent{
+			{
+				ComponentSlug:    "comp-a",
+				SubComponentSlug: "sub-a",
+				JUnitMonitor: &types.JUnitMonitor{
+					MaxAge: "1h",
+				},
+			},
+			{
+				ComponentSlug:    "comp-b",
+				SubComponentSlug: "sub-b",
+				SystemdMonitor:   &types.SystemdMonitor{Unit: ""},
+			},
+		},
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	_, err = loadAndValidateConfig(log, path, "")
+	if err == nil {
+		t.Fatal("expected error but got nil")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "job_name is required") {
+		t.Errorf("expected error about job_name, got: %s", msg)
+	}
+	if !strings.Contains(msg, "systemd unit is required") {
+		t.Errorf("expected error about systemd unit, got: %s", msg)
 	}
 }
 

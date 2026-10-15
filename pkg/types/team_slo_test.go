@@ -122,6 +122,30 @@ func TestValidateTeamSLOs(t *testing.T) {
 	}
 }
 
+func TestValidateTeamSLOsReportsAllErrors(t *testing.T) {
+	cfg := &DashboardConfig{
+		TeamSLOs: []TeamSLOConfig{
+			{
+				Team: "Alpha",
+			},
+			{
+				Team:          "Beta",
+				Owners:        []Owner{{User: "user"}},
+				SLOComponents: []string{"missing-slug"},
+				SLOs: []NamedSLO{
+					{Name: "slo-a", Source: ""},
+				},
+			},
+		},
+	}
+	err := cfg.ValidateTeamSLOs(nil, nil)
+	require.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, `"Alpha": owners is required`)
+	assert.Contains(t, msg, `"missing-slug" does not exist`)
+	assert.Contains(t, msg, "source is required")
+}
+
 func TestValidateTeamSLOsSpecCallback(t *testing.T) {
 	cfg := &DashboardConfig{TeamSLOs: []TeamSLOConfig{{
 		Team:   "TRT",

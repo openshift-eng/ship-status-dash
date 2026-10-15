@@ -131,9 +131,11 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.Dashbo
 		return nil, err
 	}
 
+	var errs []error
+
 	for _, component := range cfg.Components {
 		if len(component.Owners) == 0 {
-			return nil, fmt.Errorf("component must have at least one owner: %s", component.Name)
+			errs = append(errs, fmt.Errorf("component must have at least one owner: %s", component.Name))
 		}
 	}
 
@@ -147,10 +149,9 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.Dashbo
 	}
 
 	if err := cfg.ValidateTeamSLOs(slo.KnownWorkspace, slo.ValidateSettings); err != nil {
-		return nil, err
+		errs = append(errs, err)
 	}
 
-	// Validate tags: check that all used tags exist in cfg.Tags
 	for _, component := range cfg.Components {
 		for _, sub := range component.Subcomponents {
 			for _, tagName := range sub.Tags {
@@ -163,12 +164,17 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string) (*types.Dashbo
 				}
 				if !found {
 					if len(cfg.Tags) == 0 {
-						return nil, fmt.Errorf("tag %q used on sub-component %s/%s but no tags are defined in config", tagName, component.Name, sub.Name)
+						errs = append(errs, fmt.Errorf("tag %q used on sub-component %s/%s but no tags are defined in config", tagName, component.Name, sub.Name))
+					} else {
+						errs = append(errs, fmt.Errorf("tag %q used on sub-component %s/%s but not defined in config tags", tagName, component.Name, sub.Name))
 					}
-					return nil, fmt.Errorf("tag %q used on sub-component %s/%s but not defined in config tags", tagName, component.Name, sub.Name)
 				}
 			}
 		}
+	}
+
+	if err := apimachineryerrors.NewAggregate(errs); err != nil {
+		return nil, err
 	}
 
 	log.Infof("Loaded configuration with %d components", len(cfg.Components))

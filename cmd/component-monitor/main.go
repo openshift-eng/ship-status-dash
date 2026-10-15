@@ -15,6 +15,7 @@ import (
 	promclientv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
+	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"ship-status-dash/cmd/component-monitor/junit"
 	"ship-status-dash/pkg/config"
@@ -122,60 +123,61 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 		return nil, err
 	}
 
+	var errs []error
+
 	frequency, err := time.ParseDuration(cfg.Frequency)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse frequency: %w", err)
+		errs = append(errs, fmt.Errorf("failed to parse frequency: %w", err))
+	} else if frequency <= 0 {
+		errs = append(errs, fmt.Errorf("frequency must be a positive duration, got %q", cfg.Frequency))
+	} else {
+		log.Infof("Probing Frequency configured to: %s", frequency)
 	}
-	if frequency <= 0 {
-		return nil, fmt.Errorf("frequency must be a positive duration, got %q", cfg.Frequency)
-	}
-	log.Infof("Probing Frequency configured to: %s", frequency)
 
 	resolvedBySub := make(map[types.SubComponentRef]time.Duration)
 
 	for _, component := range cfg.Components {
-		resolved, err := resolvedComponentFrequency(component, frequency)
-		if err != nil {
-			return nil, err
+		resolved, freqErr := resolvedComponentFrequency(component, frequency)
+		if freqErr != nil {
+			errs = append(errs, freqErr)
+		} else if frequency > 0 {
+			key := types.SubComponentRef{ComponentSlug: component.ComponentSlug, SubSlug: component.SubComponentSlug}
+			if prev, ok := resolvedBySub[key]; ok && prev != resolved {
+				errs = append(errs, fmt.Errorf("frequency mismatch for component %s/%s: %s vs %s", component.ComponentSlug, component.SubComponentSlug, prev, resolved))
+			}
+			resolvedBySub[key] = resolved
+
+			if component.HTTPMonitor != nil {
+				retryAfter, retryErr := time.ParseDuration(component.HTTPMonitor.RetryAfter)
+				if retryErr != nil {
+					errs = append(errs, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, retryErr))
+				} else if retryAfter > resolved {
+					errs = append(errs, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, resolved))
+				}
+			}
 		}
-		key := types.SubComponentRef{ComponentSlug: component.ComponentSlug, SubSlug: component.SubComponentSlug}
-		if prev, ok := resolvedBySub[key]; ok && prev != resolved {
-			return nil, fmt.Errorf("frequency mismatch for component %s/%s: %s vs %s", component.ComponentSlug, component.SubComponentSlug, prev, resolved)
-		}
-		resolvedBySub[key] = resolved
 
 		if component.SystemdMonitor != nil && strings.TrimSpace(component.SystemdMonitor.Unit) == "" {
-			return nil, fmt.Errorf("systemd unit is required for component %s/%s", component.ComponentSlug, component.SubComponentSlug)
-		}
-
-		if component.HTTPMonitor != nil {
-			retryAfter, err := time.ParseDuration(component.HTTPMonitor.RetryAfter)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, err)
-			}
-			if retryAfter > resolved {
-				return nil, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, resolved)
-			}
+			errs = append(errs, fmt.Errorf("systemd unit is required for component %s/%s", component.ComponentSlug, component.SubComponentSlug))
 		}
 
 		if component.JUnitMonitor != nil {
 			if err := validateJUnitMonitor(component); err != nil {
-				return nil, err
+				errs = append(errs, err)
 			}
 		}
 
 		if component.JiraMonitor != nil {
 			if strings.TrimSpace(component.JiraMonitor.URL) == "" {
-				return nil, fmt.Errorf("url is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
-			}
-			if _, ok := utils.ParseHTTPURL(component.JiraMonitor.URL); !ok {
-				return nil, fmt.Errorf("url must be a valid URL for jira_monitor on component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, component.JiraMonitor.URL)
+				errs = append(errs, fmt.Errorf("url is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug))
+			} else if _, ok := utils.ParseHTTPURL(component.JiraMonitor.URL); !ok {
+				errs = append(errs, fmt.Errorf("url must be a valid URL for jira_monitor on component %s/%s, got: %s", component.ComponentSlug, component.SubComponentSlug, component.JiraMonitor.URL))
 			}
 			if strings.TrimSpace(component.JiraMonitor.JQL) == "" {
-				return nil, fmt.Errorf("jql is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug)
+				errs = append(errs, fmt.Errorf("jql is required for jira_monitor on component %s/%s", component.ComponentSlug, component.SubComponentSlug))
 			}
 			if severity := string(component.JiraMonitor.Severity); severity != "" && !types.IsValidSeverity(severity) {
-				return nil, fmt.Errorf("invalid severity %q for jira_monitor on component %s/%s", severity, component.ComponentSlug, component.SubComponentSlug)
+				errs = append(errs, fmt.Errorf("invalid severity %q for jira_monitor on component %s/%s", severity, component.ComponentSlug, component.SubComponentSlug))
 			}
 		}
 	}
@@ -184,7 +186,11 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 	setDefaultSeverityValues(&cfg)
 
 	if err := validatePrometheusConfiguration(cfg.Components, kubeconfigDir); err != nil {
-		return nil, fmt.Errorf("invalid prometheus location configuration: %w", err)
+		errs = append(errs, fmt.Errorf("invalid prometheus location configuration: %w", err))
+	}
+
+	if err := apimachineryerrors.NewAggregate(errs); err != nil {
+		return nil, err
 	}
 
 	log.Infof("Loaded configuration with %d components", len(cfg.Components))

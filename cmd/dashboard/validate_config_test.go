@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -92,6 +93,54 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadAndValidateConfigReportsAllErrors(t *testing.T) {
+	cfg := &types.DashboardConfig{
+		Components: []*types.Component{
+			{
+				Name:        "Missing Owner A",
+				Description: "No owner",
+				Subcomponents: []types.SubComponent{
+					{Name: "Sub1", Tags: []string{"nonexistent-tag"}},
+				},
+			},
+			{
+				Name:        "Missing Owner B",
+				Description: "Also no owner",
+				Subcomponents: []types.SubComponent{
+					{Name: "Sub2"},
+				},
+			},
+		},
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	log := logrus.New()
+	log.SetLevel(logrus.ErrorLevel)
+
+	_, err = loadAndValidateConfig(log, path)
+	if err == nil {
+		t.Fatal("expected error but got nil")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "Missing Owner A") {
+		t.Errorf("expected error about Missing Owner A, got: %s", msg)
+	}
+	if !strings.Contains(msg, "Missing Owner B") {
+		t.Errorf("expected error about Missing Owner B, got: %s", msg)
+	}
+	if !strings.Contains(msg, "nonexistent-tag") {
+		t.Errorf("expected error about nonexistent-tag, got: %s", msg)
 	}
 }
 

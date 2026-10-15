@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	apimachineryerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -19,43 +20,49 @@ type SLOComponentView struct {
 // validateSpec checks schema-specific settings and may be nil.
 // Unknown evaluator sources are allowed and ignored at read time.
 func (c *DashboardConfig) ValidateTeamSLOs(known func(kind string, version int) bool, validateSpec func(*SLOWorkspace) error) error {
+	var errs []error
 	seenTeams := sets.New[string]()
 	listedSLOComponents := map[string]string{}
 	for i := range c.TeamSLOs {
 		team := &c.TeamSLOs[i]
 		name := strings.TrimSpace(team.Team)
 		if name == "" {
-			return fmt.Errorf("team_slos[%d]: team is required", i)
+			errs = append(errs, fmt.Errorf("team_slos[%d]: team is required", i))
+			continue
 		}
 		if seenTeams.Has(name) {
-			return fmt.Errorf("team_slos: duplicate team %q", name)
+			errs = append(errs, fmt.Errorf("team_slos: duplicate team %q", name))
+			continue
 		}
 		seenTeams.Insert(name)
 		if len(team.Owners) == 0 {
-			return fmt.Errorf("team_slos %q: owners is required", name)
-		}
-		if !ownersPresent(team.Owners) {
-			return fmt.Errorf("team_slos %q: owners must include a user, service account, or rover group", name)
+			errs = append(errs, fmt.Errorf("team_slos %q: owners is required", name))
+		} else if !ownersPresent(team.Owners) {
+			errs = append(errs, fmt.Errorf("team_slos %q: owners must include a user, service account, or rover group", name))
 		}
 		seenSLOComponent := sets.New[string]()
 		for _, slug := range team.SLOComponents {
 			if strings.TrimSpace(slug) == "" {
-				return fmt.Errorf("team_slos %q: slo_component slug is required", name)
+				errs = append(errs, fmt.Errorf("team_slos %q: slo_component slug is required", name))
+				continue
 			}
 			if seenSLOComponent.Has(slug) {
-				return fmt.Errorf("team_slos %q: duplicate slo_component %q", name, slug)
+				errs = append(errs, fmt.Errorf("team_slos %q: duplicate slo_component %q", name, slug))
+				continue
 			}
 			seenSLOComponent.Insert(slug)
 			if listedOn, ok := listedSLOComponents[slug]; ok {
-				return fmt.Errorf("slo_component %q is listed on both %q and %q", slug, listedOn, name)
+				errs = append(errs, fmt.Errorf("slo_component %q is listed on both %q and %q", slug, listedOn, name))
+				continue
 			}
 			listedSLOComponents[slug] = name
 			component := c.GetComponentBySlug(slug)
 			if component == nil {
-				return fmt.Errorf("team_slos %q: slo_component %q does not exist", name, slug)
+				errs = append(errs, fmt.Errorf("team_slos %q: slo_component %q does not exist", name, slug))
+				continue
 			}
 			if !component.SLOComponent {
-				return fmt.Errorf("team_slos %q: component %q is not marked slo_component", name, slug)
+				errs = append(errs, fmt.Errorf("team_slos %q: component %q is not marked slo_component", name, slug))
 			}
 		}
 		seenSLO := sets.New[string]()
@@ -63,24 +70,27 @@ func (c *DashboardConfig) ValidateTeamSLOs(known func(kind string, version int) 
 		for j := range team.SLOs {
 			slo := &team.SLOs[j]
 			if strings.TrimSpace(slo.Name) == "" {
-				return fmt.Errorf("team_slos %q: slo name is required", name)
+				errs = append(errs, fmt.Errorf("team_slos %q: slo name is required", name))
+				continue
 			}
 			if seenSLO.Has(slo.Name) {
-				return fmt.Errorf("team_slos %q: duplicate slo %q", name, slo.Name)
+				errs = append(errs, fmt.Errorf("team_slos %q: duplicate slo %q", name, slo.Name))
+				continue
 			}
 			seenSLO.Insert(slo.Name)
 			if strings.TrimSpace(slo.Source) == "" {
-				return fmt.Errorf("team_slos %q slo %q: source is required", name, slo.Name)
+				errs = append(errs, fmt.Errorf("team_slos %q slo %q: source is required", name, slo.Name))
 			}
 			if slo.Workspace == nil {
 				continue
 			}
 			if workspace != nil {
-				return fmt.Errorf("team_slos %q: only one workspace is allowed", name)
+				errs = append(errs, fmt.Errorf("team_slos %q: only one workspace is allowed", name))
+				continue
 			}
 			workspace = slo.Workspace
 			if err := validateWorkspaceIdentity(name, workspace, known, validateSpec); err != nil {
-				return err
+				errs = append(errs, err)
 			}
 		}
 	}
@@ -90,10 +100,10 @@ func (c *DashboardConfig) ValidateTeamSLOs(known func(kind string, version int) 
 		}
 		slug := component.Slug
 		if _, ok := listedSLOComponents[slug]; !ok {
-			return fmt.Errorf("component %q is marked slo_component but is not listed in team_slos", slug)
+			errs = append(errs, fmt.Errorf("component %q is marked slo_component but is not listed in team_slos", slug))
 		}
 	}
-	return nil
+	return apimachineryerrors.NewAggregate(errs)
 }
 
 func validateWorkspaceIdentity(team string, ws *SLOWorkspace, known func(kind string, version int) bool, validateSpec func(*SLOWorkspace) error) error {
