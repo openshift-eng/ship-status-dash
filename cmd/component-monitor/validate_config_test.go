@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"ship-status-dash/pkg/types"
@@ -13,9 +16,9 @@ import (
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  *types.ComponentMonitorConfig
-		wantErr bool
+		name     string
+		config   *types.ComponentMonitorConfig
+		wantErrs []error
 	}{
 		{
 			name: "valid config",
@@ -50,12 +53,57 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErrs: []error{errors.New("failed to parse frequency")},
 		},
 		{
-			name:    "invalid YAML",
-			config:  nil,
-			wantErr: true,
+			name:     "invalid YAML",
+			config:   nil,
+			wantErrs: []error{errors.New("yaml:")},
+		},
+		{
+			name: "invalid frequency and retry_after both reported",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "not-a-duration",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "test",
+						SubComponentSlug: "frontend",
+						HTTPMonitor: &types.HTTPMonitor{
+							URL:        "http://localhost:8080/health",
+							Code:       200,
+							RetryAfter: "also-invalid",
+						},
+					},
+				},
+			},
+			wantErrs: []error{
+				errors.New("failed to parse frequency"),
+				errors.New("failed to parse retry after duration"),
+			},
+		},
+		{
+			name: "reports all errors",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "20s",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "comp-a",
+						SubComponentSlug: "sub-a",
+						JUnitMonitor: &types.JUnitMonitor{
+							MaxAge: "1h",
+						},
+					},
+					{
+						ComponentSlug:    "comp-b",
+						SubComponentSlug: "sub-b",
+						SystemdMonitor:   &types.SystemdMonitor{Unit: ""},
+					},
+				},
+			},
+			wantErrs: []error{
+				errors.New("job_names is required"),
+				errors.New("systemd unit is required"),
+			},
 		},
 	}
 
@@ -82,11 +130,13 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			}
 
 			_, err := loadAndValidateConfig(log, path, "")
-			if tt.wantErr && err == nil {
-				t.Error("expected error but got nil")
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, err)
+				return
 			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
+			require.Error(t, err)
+			for _, want := range tt.wantErrs {
+				assert.ErrorContains(t, err, want.Error())
 			}
 		})
 	}

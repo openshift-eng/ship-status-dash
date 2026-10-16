@@ -43,10 +43,10 @@ func TestValidateTeamSLOs(t *testing.T) {
 	second.Team = "Widget"
 
 	tests := []struct {
-		name    string
-		cfg     *DashboardConfig
-		known   func(string, int) bool
-		wantErr string
+		name     string
+		cfg      *DashboardConfig
+		known    func(string, int) bool
+		wantErrs []error
 	}{
 		{
 			name: "one workspace",
@@ -61,13 +61,13 @@ func TestValidateTeamSLOs(t *testing.T) {
 				NamedSLO{Name: "a", Source: "payload_acceptance", Workspace: ws()},
 				NamedSLO{Name: "b", Source: "payload_acceptance", Workspace: ws()},
 			),
-			known:   known,
-			wantErr: "only one workspace is allowed",
+			known:    known,
+			wantErrs: []error{errors.New("only one workspace is allowed")},
 		},
 		{
-			name:    "missing owners",
-			cfg:     &DashboardConfig{TeamSLOs: []TeamSLOConfig{{Team: "TRT", SLOs: []NamedSLO{{Name: "a", Source: "payload_acceptance"}}}}},
-			wantErr: "owners is required",
+			name:     "missing owners",
+			cfg:      &DashboardConfig{TeamSLOs: []TeamSLOConfig{{Team: "TRT", SLOs: []NamedSLO{{Name: "a", Source: "payload_acceptance"}}}}},
+			wantErrs: []error{errors.New("owners is required")},
 		},
 		{
 			name: "unknown schema",
@@ -75,49 +75,74 @@ func TestValidateTeamSLOs(t *testing.T) {
 				Name: "a", Source: "payload_acceptance",
 				Workspace: &SLOWorkspace{Kind: "payload_streams", SchemaVersion: 9},
 			}),
-			known:   known,
-			wantErr: "unknown workspace schema",
+			known:    known,
+			wantErrs: []error{errors.New("unknown workspace schema")},
 		},
 		{
 			name: "listed flagged component",
 			cfg:  &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents")}},
 		},
 		{
-			name:    "missing component",
-			cfg:     &DashboardConfig{TeamSLOs: []TeamSLOConfig{team("trt-incidents")}},
-			wantErr: `slo_component "trt-incidents" does not exist`,
+			name:     "missing component",
+			cfg:      &DashboardConfig{TeamSLOs: []TeamSLOConfig{team("trt-incidents")}},
+			wantErrs: []error{errors.New(`slo_component "trt-incidents" does not exist`)},
 		},
 		{
-			name:    "not marked",
-			cfg:     &DashboardConfig{Components: []*Component{incident(false)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents")}},
-			wantErr: `component "trt-incidents" is not marked slo_component`,
+			name:     "not marked",
+			cfg:      &DashboardConfig{Components: []*Component{incident(false)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents")}},
+			wantErrs: []error{errors.New(`component "trt-incidents" is not marked slo_component`)},
 		},
 		{
-			name:    "flagged but not listed",
-			cfg:     &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team()}},
-			wantErr: `component "trt-incidents" is marked slo_component but is not listed`,
+			name:     "flagged but not listed",
+			cfg:      &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team()}},
+			wantErrs: []error{errors.New(`component "trt-incidents" is marked slo_component but is not listed`)},
 		},
 		{
-			name:    "duplicate on one team",
-			cfg:     &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents", "trt-incidents")}},
-			wantErr: `duplicate slo_component "trt-incidents"`,
+			name:     "duplicate on one team",
+			cfg:      &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents", "trt-incidents")}},
+			wantErrs: []error{errors.New(`duplicate slo_component "trt-incidents"`)},
 		},
 		{
-			name:    "listed on two teams",
-			cfg:     &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents"), second}},
-			wantErr: `listed on both "TRT" and "Widget"`,
+			name:     "listed on two teams",
+			cfg:      &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents"), second}},
+			wantErrs: []error{errors.New(`listed on both "TRT" and "Widget"`)},
+		},
+		{
+			name: "reports all errors",
+			cfg: &DashboardConfig{
+				TeamSLOs: []TeamSLOConfig{
+					{
+						Team: "Alpha",
+					},
+					{
+						Team:          "Beta",
+						Owners:        []Owner{{User: "user"}},
+						SLOComponents: []string{"missing-slug"},
+						SLOs: []NamedSLO{
+							{Name: "slo-a", Source: ""},
+						},
+					},
+				},
+			},
+			wantErrs: []error{
+				errors.New(`"Alpha": owners is required`),
+				errors.New(`"missing-slug" does not exist`),
+				errors.New("source is required"),
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cfg.ValidateTeamSLOs(tt.known, nil)
-			if tt.wantErr == "" {
+			if len(tt.wantErrs) == 0 {
 				require.NoError(t, err)
 				return
 			}
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			for _, want := range tt.wantErrs {
+				assert.ErrorContains(t, err, want.Error())
+			}
 		})
 	}
 }
