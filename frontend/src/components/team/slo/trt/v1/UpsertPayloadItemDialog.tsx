@@ -20,6 +20,7 @@ import type {
   SLOItem,
   SLOItemLink,
   SLOJob,
+  SLOPayloadQualifier,
   SLOSharedCause,
   SLOSharedCauseLink,
 } from '../../../../../types'
@@ -32,6 +33,7 @@ import { formatDateForDateTimeLocal } from '../../../../../utils/helpers'
 
 const PAYLOAD_STREAMS_KIND = 'payload_streams'
 const SCHEMA_VERSION = 1
+const QUALIFIER_STATES = ['Passed', 'Failed', 'Pending', 'Accepted', 'Rejected'] as const
 
 const Content = styled(DialogContent)(({ theme }) => ({
   paddingTop: theme.spacing(1),
@@ -144,6 +146,14 @@ interface LinkDraft {
   link_type: SLOItemLink['link_type']
 }
 
+interface QualifierDraft {
+  draftId: string
+  id: string
+  name: string
+  state: string
+  url: string
+}
+
 interface UpsertPayloadItemDialogProps {
   open: boolean
   team: string
@@ -157,6 +167,18 @@ interface UpsertPayloadItemDialogProps {
 let jobDraftSeq = 0
 let noteDraftSeq = 0
 let causeLinkSeq = 0
+let qualifierDraftSeq = 0
+
+const newQualifierDraft = (partial?: Partial<SLOPayloadQualifier>): QualifierDraft => {
+  qualifierDraftSeq += 1
+  return {
+    draftId: `qualifier-${qualifierDraftSeq}`,
+    id: partial?.id ?? '',
+    name: partial?.name ?? '',
+    state: partial?.state ?? 'Pending',
+    url: partial?.url ?? '',
+  }
+}
 
 const newCauseLink = (partial?: Partial<SLOSharedCauseLink>): CauseLinkDraft => {
   causeLinkSeq += 1
@@ -250,7 +272,7 @@ const pairDesiredLinks = (drafts: LinkDraft[], baseline: SLOItemLink[]): LinkPai
   return pairs
 }
 
-type SectionKey = 'payload' | 'causes' | 'jobs' | 'links'
+type SectionKey = 'payload' | 'qualifiers' | 'causes' | 'jobs' | 'links'
 
 const SectionAccordion = ({
   title,
@@ -312,11 +334,15 @@ const UpsertPayloadItemDialog = ({
   const [jobs, setJobs] = useState<JobDraft[]>(
     (item?.details.jobs ?? []).map((job) => newJobDraft(job)),
   )
+  const [qualifiers, setQualifiers] = useState<QualifierDraft[]>(
+    (item?.details.qualifiers ?? []).map((qualifier) => newQualifierDraft(qualifier)),
+  )
   const [links, setLinks] = useState<LinkDraft[]>(initialLinks(item))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
     payload: true,
+    qualifiers: false,
     causes: false,
     jobs: false,
     links: false,
@@ -324,6 +350,12 @@ const UpsertPayloadItemDialog = ({
 
   const toggleSection = (key: SectionKey) => (_event: SyntheticEvent, isExpanded: boolean) => {
     setExpanded((current) => ({ ...current, [key]: isExpanded }))
+  }
+
+  const updateQualifier = (index: number, patch: Partial<QualifierDraft>) => {
+    setQualifiers((current) =>
+      current.map((qualifier, i) => (i === index ? { ...qualifier, ...patch } : qualifier)),
+    )
   }
 
   const updateJob = (index: number, patch: Partial<JobDraft>) => {
@@ -434,6 +466,16 @@ const UpsertPayloadItemDialog = ({
             ...(noteLinks.length > 0 ? { links: noteLinks } : {}),
           }
         })
+      const bodyQualifiers: SLOPayloadQualifier[] = qualifiers
+        .filter((qualifier) =>
+          [qualifier.id, qualifier.name, qualifier.url].some((value) => value.trim() !== ''),
+        )
+        .map((qualifier) => ({
+          id: qualifier.id.trim(),
+          name: qualifier.name.trim(),
+          state: qualifier.state,
+          url: qualifier.url.trim(),
+        }))
       const bodyJobs: SLOJob[] = jobs
         .filter((job) => job.name.trim() !== '')
         .map((job) => {
@@ -471,9 +513,7 @@ const UpsertPayloadItemDialog = ({
             payload_url: payloadURL.trim(),
             ...(analysisURL.trim() ? { analysis_url: analysisURL.trim() } : {}),
             ...(item?.details.finished_at ? { finished_at: item.details.finished_at } : {}),
-            ...((item?.details.qualifiers ?? []).length > 0
-              ? { qualifiers: item?.details.qualifiers }
-              : {}),
+            ...(bodyQualifiers.length > 0 ? { qualifiers: bodyQualifiers } : {}),
             ...(bodyNotes.length > 0 ? { shared_causes: bodyNotes } : {}),
             jobs: bodyJobs,
           },
@@ -577,6 +617,66 @@ const UpsertPayloadItemDialog = ({
               value={analysisURL}
               onChange={(event) => setAnalysisURL(event.target.value)}
             />
+          </SectionAccordion>
+          <SectionAccordion
+            title="Qualifiers"
+            count={qualifiers.length}
+            expanded={expanded.qualifiers}
+            onChange={toggleSection('qualifiers')}
+          >
+            {qualifiers.map((qualifier, index) => (
+              <Entry key={qualifier.draftId}>
+                <Field
+                  fullWidth
+                  label="Qualifier id"
+                  value={qualifier.id}
+                  onChange={(event) => updateQualifier(index, { id: event.target.value })}
+                />
+                <Field
+                  fullWidth
+                  label="Name"
+                  value={qualifier.name}
+                  onChange={(event) => updateQualifier(index, { name: event.target.value })}
+                />
+                <Field
+                  select
+                  fullWidth
+                  label="State"
+                  value={qualifier.state}
+                  onChange={(event) => updateQualifier(index, { state: event.target.value })}
+                >
+                  {QUALIFIER_STATES.map((value) => (
+                    <MenuItem key={value} value={value}>
+                      {value}
+                    </MenuItem>
+                  ))}
+                </Field>
+                <Field
+                  fullWidth
+                  label="Qualifier URL"
+                  value={qualifier.url}
+                  onChange={(event) => updateQualifier(index, { url: event.target.value })}
+                />
+                <EntryActions>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() =>
+                      setQualifiers((current) => current.filter((_, i) => i !== index))
+                    }
+                  >
+                    Remove qualifier
+                  </Button>
+                </EntryActions>
+              </Entry>
+            ))}
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => setQualifiers((current) => [...current, newQualifierDraft()])}
+            >
+              Add qualifier
+            </Button>
           </SectionAccordion>
           <SectionAccordion
             title="Shared root causes"

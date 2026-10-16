@@ -69,7 +69,17 @@ When('I open the TRT team SLO page with Markdown note examples', async ({ page }
   await teamPage.heading('TRT').waitFor()
 })
 
-When('I edit the payload and save', async ({ page }) => {
+const payloadEditButton = (page: Page, itemKey: string) =>
+  page
+    .getByText(itemKey, { exact: true })
+    .locator('xpath=ancestor::div[.//button[normalize-space()="Edit"]][1]')
+    .getByRole('button', { name: 'Edit' })
+
+Then('I should see an Edit button for {string}', async ({ page }, itemKey: string) => {
+  await expect(payloadEditButton(page, itemKey)).toBeVisible()
+})
+
+const capturePayloadSave = async (page: Page) => {
   savedBodies = []
   linkCalls = []
   await page.route(`${PROTECTED}/api/teams/**`, async (route) => {
@@ -82,17 +92,37 @@ When('I edit the payload and save', async ({ page }) => {
     linkCalls.push(`${method} ${url}`)
     return json(route, { error: 'unexpected' }, 500)
   })
+}
 
-  await page
-    .getByText('nightly-rejected', { exact: true })
-    .locator('xpath=ancestor::div[.//button[normalize-space()="Edit"]][1]')
-    .getByRole('button', { name: 'Edit' })
-    .click()
+const savePayloadDialog = async (page: Page) => {
   const dialog = page.getByRole('dialog')
-  await dialog.waitFor()
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog).toBeHidden()
+}
+
+When('I edit the payload and save', async ({ page }) => {
+  await capturePayloadSave(page)
+  await payloadEditButton(page, 'nightly-rejected').click()
+  await page.getByRole('dialog').waitFor()
+  await savePayloadDialog(page)
 })
+
+When(
+  'I change the {string} qualifier state to {string} and save',
+  async ({ page }, name: string, state: string) => {
+    await capturePayloadSave(page)
+    await payloadEditButton(page, 'nightly-rejected').click()
+    const dialog = page.getByRole('dialog')
+    await dialog.waitFor()
+    await dialog.getByRole('button', { name: /Qualifiers/ }).click()
+    const entry = dialog
+      .locator('input[value="' + name + '"]')
+      .locator('xpath=ancestor::div[.//*[@role="combobox"]][1]')
+    await entry.getByRole('combobox', { name: 'State' }).click()
+    await page.getByRole('option', { name: state, exact: true }).click()
+    await savePayloadDialog(page)
+  },
+)
 
 Then('I should see {string}', async ({ page }, text: string) => {
   await expect(page.getByText(text, { exact: true }).first()).toBeVisible()
@@ -224,6 +254,15 @@ Then(
     await expect(chip).toHaveText(name)
     await expect(chip).toHaveAttribute('href', qualifier?.url ?? '')
     await expect(chip).toHaveAttribute('data-qualifier-state', state)
+  },
+)
+
+Then(
+  'the payload save records qualifier {string} as {string}',
+  async ({ page: _page }, name: string, state: string) => {
+    expect(savedBodies).toHaveLength(1)
+    const qualifier = savedBodies[0].details?.qualifiers?.find((item) => item.name === name)
+    expect(qualifier?.state).toBe(state)
   },
 )
 

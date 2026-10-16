@@ -117,6 +117,7 @@ func TestE2E_TeamSLO(t *testing.T) {
 	t.Run("TRTPayloadStreams", func(t *testing.T) {
 		t.Run("Workspace", testTRTPayloadStreamsWorkspace(client))
 		t.Run("RejectsIncompleteDetails", testTRTPayloadStreamsRejectsIncompleteDetails(client))
+		t.Run("Qualifiers", testTRTPayloadQualifiers(client))
 		t.Run("Upsert", testTRTPayloadStreamsUpsert(client))
 		t.Run("Evaluation", testTRTPayloadStreamsEvaluation(client))
 		t.Run("ReplaceAndLink", testTRTPayloadStreamsReplaceAndLink(client))
@@ -294,6 +295,45 @@ func testTRTPayloadStreamsRejectsIncompleteDetails(client *TestHTTPClient) func(
 		defer resp.Body.Close()
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		assert.Empty(t, getTeamSLO(t, client).Items)
+	}
+}
+
+func testTRTPayloadQualifiers(client *TestHTTPClient) func(*testing.T) {
+	return func(t *testing.T) {
+		deleteWorkspaceItems(t, client)
+		t.Cleanup(func() { deleteWorkspaceItems(t, client) })
+
+		now := time.Now().UTC().Truncate(time.Microsecond)
+		qualifiers := []payloadv1.PayloadQualifier{
+			{ID: "driver-toolkit", Name: "dtk", State: "Failed", URL: "https://example.com/qualifier/driver-toolkit"},
+			{ID: "fips", Name: "fips", State: "Passed", URL: "https://example.com/qualifier/fips"},
+			{ID: "signoff", Name: "sign", State: "Accepted", URL: "https://example.com/qualifier/signoff"},
+		}
+		created := putSLOItemChai(t, client, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", payloadDetailsWithQualifiers(t, "https://example.com/q", qualifiers)))
+		assert.Equal(t, qualifiers, payloadDoc(t, created.Details).Qualifiers)
+
+		stored := itemByKey(t, getTeamSLO(t, client).Items, "e2e-qualifiers")
+		require.NotNil(t, stored)
+		assert.Equal(t, qualifiers, payloadDoc(t, stored.Details).Qualifiers)
+
+		edited := append([]payloadv1.PayloadQualifier(nil), qualifiers...)
+		edited[1].State = "Failed"
+		replaced := putSLOItemDeveloper(t, client, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", payloadDetailsWithQualifiers(t, "https://example.com/q", edited)))
+		assert.Equal(t, created.ID, replaced.ID)
+		assert.Equal(t, "developer", replaced.UpdatedBy)
+		assert.Equal(t, edited, payloadDoc(t, replaced.Details).Qualifiers)
+
+		bad := payloadDetailsWithQualifiers(t, "https://example.com/q", []payloadv1.PayloadQualifier{{
+			ID: "fips", Name: "fips", State: "Passed", URL: "javascript:alert(1)",
+		}})
+		resp, err := client.PutWithBearerToken(sloItemsPath, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", bad), chaiBotSAToken, "chai-bot")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		stored = itemByKey(t, getTeamSLO(t, client).Items, "e2e-qualifiers")
+		require.NotNil(t, stored)
+		assert.Equal(t, edited, payloadDoc(t, stored.Details).Qualifiers)
 	}
 }
 
@@ -753,6 +793,18 @@ func mustSLOItemBody(t *testing.T, itemKey, groupKey, outcome string, occurred t
 		"details":        details,
 		"notes":          notes,
 	})
+	require.NoError(t, err)
+	return body
+}
+
+func payloadDetailsWithQualifiers(t *testing.T, payloadURL string, qualifiers []payloadv1.PayloadQualifier) json.RawMessage {
+	t.Helper()
+	doc := payloadv1.PayloadDetails{
+		PayloadURL: payloadURL,
+		Qualifiers: qualifiers,
+		Jobs:       []payloadv1.PayloadJob{},
+	}
+	body, err := json.Marshal(doc)
 	require.NoError(t, err)
 	return body
 }

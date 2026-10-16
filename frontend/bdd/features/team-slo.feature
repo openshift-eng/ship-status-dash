@@ -18,7 +18,8 @@ Feature: Team SLO workspace
     Given I am logged in as a TRT SLO owner
     When I open the TRT team SLO page
     Then I should see the "Add payload" button
-    And I should see the "Edit" button
+    And I should see an Edit button for "nightly-rejected"
+    And I should see an Edit button for "nightly-states"
 
   Scenario: Component owner does not see SLO edit controls
     Given I am logged in as an admin for "Prow"
@@ -84,3 +85,9 @@ Feature: Team SLO workspace
     And I edit the payload and save
     Then the payload save keeps recurring_count 3
     And the existing SLO link is not changed
+
+  Scenario: Editing a qualifier updates the saved chip
+    Given I am logged in as a TRT SLO owner
+    When I open the TRT team SLO page
+    And I change the "fips" qualifier state to "Failed" and save
+    Then the payload save records qualifier "fips" as "Failed"
