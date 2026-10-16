@@ -80,7 +80,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			},
 			wantErr: true,
 			wantErrs: []string{
-				"job_name is required",
+				"job_names is required",
 				"systemd unit is required",
 			},
 		},
