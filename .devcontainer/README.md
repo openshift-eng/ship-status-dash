@@ -58,6 +58,38 @@ Copy `.devcontainer/.env.example` to `.devcontainer/.env` and fill in any blank 
 
 The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `make verify-apm` work without extra setup. MCP Python venvs for `mcp/` and `ship-status-dev/` are created in `post-create.sh`.
 
+### Reusing the toolchain
+
+Other devcontainers can build this Dockerfile directly and call `post-create.sh`
+from the dashboard checkout to share tool versions without copying them. Rebuild
+those containers after Dockerfile changes. Recreate them after setup script or
+environment changes to rerun `post-create.sh`.
+
+Claude Code is installed by `post-create.sh` by default, matching Sippy's setup.
+Set `SKIP_CLAUDE_INSTALL=true` in `.devcontainer/.env` to skip it. Set
+`INSTALL_OPENCODE=true` to install OpenCode V2 instead (or alongside Claude Code).
+`OPENCODE_VERSION` defaults to `latest` and can be set to an exact `@opencode/cli`
+package version.
+Neither coding agent is installed during the image build.
+
+For example, a devcontainer that covers several related checkouts can build this
+Dockerfile and install OpenCode alongside Claude Code during post-create setup:
+
+```json
+"build": {
+  "dockerfile": "../ship-status-dash/.devcontainer/Dockerfile",
+  "context": "../ship-status-dash/.devcontainer"
+},
+"containerEnv": {
+  "INSTALL_OPENCODE": "true"
+}
+```
+
+Set `SKIP_CLAUDE_INSTALL` to `"true"` in `containerEnv` to install OpenCode instead
+of Claude Code. These are runtime environment variables, not build arguments.
+Point `dockerfile` and `context` at this directory from the other
+environment, and call this checkout's `post-create.sh` from `postCreateCommand`.
+
 ## GitHub CLI Authentication
 
 The GitHub CLI (`gh`) is included in the image. Its configuration is mounted read-only from the host's `~/.config/gh`. By default, `gh auth login` may store tokens in the host's secure credential store, such as macOS Keychain or a Linux keyring. The devcontainer cannot access credentials stored there. To make the token available through the mounted configuration, authenticate on the host using file-based storage:

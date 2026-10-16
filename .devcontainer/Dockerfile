@@ -91,7 +91,4 @@ RUN sudo cp /usr/bin/base64 /usr/bin/base64.gnu && \
     printf '#!/bin/sh\nfor a in "$@"; do shift; case "$a" in -D) set -- "$@" -d;; *) set -- "$@" "$a";; esac; done\nexec /usr/bin/base64.gnu "$@"\n' | sudo tee /usr/bin/base64 > /dev/null && \
     sudo chmod +x /usr/bin/base64
 
-ARG CLAUDE_INSTALLER_VERSION=latest
-RUN curl -fsSL https://claude.ai/install.sh | sh
-
 WORKDIR /workspace

@@ -10,6 +10,9 @@ export default defineConfig({
   testDir,
   timeout: 60_000,
   retries: 0,
+  // Several local Chromium processes against one Vite server crash the browser (Target crashed).
+  // CI keeps Playwright's default worker count.
+  workers: process.env.CI ? undefined : 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://localhost:3030',
