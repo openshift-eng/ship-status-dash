@@ -4,17 +4,27 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
 
 // PayloadDetails is the payload_streams schema version 1 document.
 type PayloadDetails struct {
-	PayloadURL   string        `json:"payload_url"`
-	AnalysisURL  string        `json:"analysis_url,omitempty"`
-	FinishedAt   string        `json:"finished_at,omitempty"`
-	SharedCauses []SharedCause `json:"shared_causes,omitempty"`
-	Jobs         []PayloadJob  `json:"jobs"`
+	PayloadURL   string             `json:"payload_url"`
+	AnalysisURL  string             `json:"analysis_url,omitempty"`
+	FinishedAt   string             `json:"finished_at,omitempty"`
+	Qualifiers   []PayloadQualifier `json:"qualifiers,omitempty"`
+	SharedCauses []SharedCause      `json:"shared_causes,omitempty"`
+	Jobs         []PayloadJob       `json:"jobs"`
+}
+
+// PayloadQualifier is one release-controller qualifier chip on a payload.
+type PayloadQualifier struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+	URL   string `json:"url"`
 }
 
 // SharedCauseLink is one labeled URL on a shared cause.
@@ -78,6 +88,9 @@ func (d PayloadDetails) Validate() error {
 	if d.Jobs == nil {
 		return fmt.Errorf("jobs is required")
 	}
+	if err := validateQualifiers(d.Qualifiers); err != nil {
+		return err
+	}
 	noteIDs := make(map[string]struct{}, len(d.SharedCauses))
 	for i, note := range d.SharedCauses {
 		id := note.ID
@@ -135,6 +148,65 @@ func (d PayloadDetails) Validate() error {
 				return fmt.Errorf("jobs[%d].note_ids[%d] %q does not match a shared cause", i, j, id)
 			}
 		}
+	}
+	return nil
+}
+
+const (
+	QualifierPassed   = "Passed"
+	QualifierFailed   = "Failed"
+	QualifierPending  = "Pending"
+	QualifierAccepted = "Accepted"
+	QualifierRejected = "Rejected"
+)
+
+func validQualifierState(state string) bool {
+	switch state {
+	case QualifierPassed, QualifierFailed, QualifierPending, QualifierAccepted, QualifierRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateQualifiers(qualifiers []PayloadQualifier) error {
+	seen := make(map[string]struct{}, len(qualifiers))
+	for i, qualifier := range qualifiers {
+		id := qualifier.ID
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("qualifiers[%d].id is required", i)
+		}
+		if id != strings.TrimSpace(id) {
+			return fmt.Errorf("qualifiers[%d].id must not have surrounding whitespace", i)
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("qualifiers[%d].id %q is duplicated", i, id)
+		}
+		seen[id] = struct{}{}
+		name := qualifier.Name
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("qualifiers[%d].name is required", i)
+		}
+		if name != strings.TrimSpace(name) {
+			return fmt.Errorf("qualifiers[%d].name must not have surrounding whitespace", i)
+		}
+		if !validQualifierState(qualifier.State) {
+			return fmt.Errorf("qualifiers[%d].state is invalid", i)
+		}
+		if err := validateQualifierURL(i, qualifier.URL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateQualifierURL(index int, raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return fmt.Errorf("qualifiers[%d].url is required", index)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("qualifiers[%d].url must be an absolute http or https URL", index)
 	}
 	return nil
 }

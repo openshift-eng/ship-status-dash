@@ -274,6 +274,7 @@ func itemFor(now time.Time, team string, stream payloadv1.Stream, spec payloadSp
 	doc := payloadv1.PayloadDetails{
 		PayloadURL:   fmt.Sprintf("https://%s.ocp.releases.ci.openshift.org/releasestream/%s/release/%s", stream.ReleaseController, name, tag),
 		FinishedAt:   occurred.Format(time.RFC3339),
+		Qualifiers:   seedQualifiers(stream, spec.ago),
 		SharedCauses: spec.notes,
 		Jobs:         jobs,
 	}
@@ -543,6 +544,39 @@ func payloadNote(id string) payloadv1.SharedCause {
 	default:
 		return payloadv1.SharedCause{ID: id}
 	}
+}
+
+// seedQualifiers stamps dtk and fips chips. The pass, fail, and pending mix
+// rotates with the stream and payload age so the sample page is not one pair.
+func seedQualifiers(stream payloadv1.Stream, ago time.Duration) []payloadv1.PayloadQualifier {
+	patterns := [][2]string{
+		{payloadv1.QualifierFailed, payloadv1.QualifierPassed},
+		{payloadv1.QualifierPassed, payloadv1.QualifierPassed},
+		{payloadv1.QualifierPassed, payloadv1.QualifierFailed},
+		{payloadv1.QualifierFailed, payloadv1.QualifierFailed},
+		{payloadv1.QualifierPending, payloadv1.QualifierPassed},
+		{payloadv1.QualifierFailed, payloadv1.QualifierPending},
+	}
+	pair := patterns[qualifierSlot(stream.Name, ago)%len(patterns)]
+	page := fmt.Sprintf(
+		"https://%s.ocp.releases.ci.openshift.org/releasestream/%s/qualifier",
+		stream.ReleaseController, stream.Name,
+	)
+	return []payloadv1.PayloadQualifier{
+		{ID: "driver-toolkit", Name: "dtk", State: pair[0], URL: page + "/driver-toolkit"},
+		{ID: "fips", Name: "fips", State: pair[1], URL: page + "/fips"},
+	}
+}
+
+func qualifierSlot(name string, ago time.Duration) int {
+	slot := int(ago / time.Hour)
+	for _, r := range name {
+		slot += int(r)
+	}
+	if slot < 0 {
+		return -slot
+	}
+	return slot
 }
 
 // fillLaterPasses stamps a sample later_pass onto jobs that opted in.
