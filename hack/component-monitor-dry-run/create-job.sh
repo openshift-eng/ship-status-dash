@@ -6,8 +6,9 @@ CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
 JOB_GUID=$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -d'-' -f1)
 JOB_NAME="component-monitor-dry-run-${JOB_GUID}"
 NAMESPACE="${NAMESPACE:-ship-status}"
-CLUSTER="${CLUSTER:-app.ci}"
+CLUSTER="${CLUSTER:-core-ci}"
 IMAGE="${IMAGE:-quay.io/openshiftci/component-monitor:latest}"
+LOG_LEVEL="${LOG_LEVEL:-debug}"
 
 if [ ! -f "${CONFIG_FILE}" ]; then
     echo "Error: config file not found: ${CONFIG_FILE}"
@@ -55,6 +56,8 @@ spec:
         - --kubeconfig-dir
         - /kubeconfigs
         - --dry-run
+        - --log-level
+        - ${LOG_LEVEL}
         volumeMounts:
         - name: config
           mountPath: /config
