@@ -10,11 +10,20 @@ import (
 
 // PayloadDetails is the payload_streams schema version 1 document.
 type PayloadDetails struct {
-	PayloadURL   string        `json:"payload_url"`
-	AnalysisURL  string        `json:"analysis_url,omitempty"`
-	FinishedAt   string        `json:"finished_at,omitempty"`
-	SharedCauses []SharedCause `json:"shared_causes,omitempty"`
-	Jobs         []PayloadJob  `json:"jobs"`
+	PayloadURL   string             `json:"payload_url"`
+	AnalysisURL  string             `json:"analysis_url,omitempty"`
+	FinishedAt   string             `json:"finished_at,omitempty"`
+	Qualifiers   []PayloadQualifier `json:"qualifiers,omitempty"`
+	SharedCauses []SharedCause      `json:"shared_causes,omitempty"`
+	Jobs         []PayloadJob       `json:"jobs"`
+}
+
+// PayloadQualifier is one release-controller qualifier chip on a payload.
+type PayloadQualifier struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+	URL   string `json:"url"`
 }
 
 // SharedCauseLink is one labeled URL on a shared cause.
@@ -78,6 +87,9 @@ func (d PayloadDetails) Validate() error {
 	if d.Jobs == nil {
 		return fmt.Errorf("jobs is required")
 	}
+	if err := validateQualifiers(d.Qualifiers); err != nil {
+		return err
+	}
 	noteIDs := make(map[string]struct{}, len(d.SharedCauses))
 	for i, note := range d.SharedCauses {
 		id := note.ID
@@ -134,6 +146,45 @@ func (d PayloadDetails) Validate() error {
 			if _, ok := noteIDs[id]; !ok {
 				return fmt.Errorf("jobs[%d].note_ids[%d] %q does not match a shared cause", i, j, id)
 			}
+		}
+	}
+	return nil
+}
+
+var qualifierStates = map[string]struct{}{
+	"Passed":   {},
+	"Failed":   {},
+	"Pending":  {},
+	"Accepted": {},
+	"Rejected": {},
+}
+
+func validateQualifiers(qualifiers []PayloadQualifier) error {
+	seen := make(map[string]struct{}, len(qualifiers))
+	for i, qualifier := range qualifiers {
+		id := qualifier.ID
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("qualifiers[%d].id is required", i)
+		}
+		if id != strings.TrimSpace(id) {
+			return fmt.Errorf("qualifiers[%d].id must not have surrounding whitespace", i)
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("qualifiers[%d].id %q is duplicated", i, id)
+		}
+		seen[id] = struct{}{}
+		name := qualifier.Name
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("qualifiers[%d].name is required", i)
+		}
+		if name != strings.TrimSpace(name) {
+			return fmt.Errorf("qualifiers[%d].name must not have surrounding whitespace", i)
+		}
+		if _, ok := qualifierStates[qualifier.State]; !ok {
+			return fmt.Errorf("qualifiers[%d].state is invalid", i)
+		}
+		if strings.TrimSpace(qualifier.URL) == "" {
+			return fmt.Errorf("qualifiers[%d].url is required", i)
 		}
 	}
 	return nil

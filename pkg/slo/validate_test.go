@@ -88,6 +88,33 @@ func TestValidateDetails(t *testing.T) {
 			wantErr: "note_ids[0] must not have surrounding whitespace",
 		},
 		{
+			name:    "qualifiers",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","qualifiers":[{"id":"driver-toolkit","name":"dtk","state":"Failed","url":"https://example.test/qualifier/driver-toolkit"},{"id":"fips","name":"fips","state":"Passed","url":"https://example.test/qualifier/fips"}],"jobs":[]}`),
+		},
+		{
+			name:    "qualifier missing name",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","qualifiers":[{"id":"fips","state":"Passed","url":"https://example.test/qualifier/fips"}],"jobs":[]}`),
+			wantErr: "qualifiers[0].name is required",
+		},
+		{
+			name:    "qualifier state",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","qualifiers":[{"id":"fips","name":"fips","state":"Success","url":"https://example.test/qualifier/fips"}],"jobs":[]}`),
+			wantErr: "qualifiers[0].state is invalid",
+		},
+		{
+			name:    "duplicate qualifier",
+			kind:    payloadv1.Kind,
+			version: 1,
+			details: []byte(`{"payload_url":"https://example.test","qualifiers":[{"id":"fips","name":"fips","state":"Passed","url":"https://example.test/a"},{"id":"fips","name":"fips","state":"Failed","url":"https://example.test/b"}],"jobs":[]}`),
+			wantErr: `qualifiers[1].id "fips" is duplicated`,
+		},
+		{
 			name:    "unknown note id",
 			kind:    payloadv1.Kind,
 			version: 1,

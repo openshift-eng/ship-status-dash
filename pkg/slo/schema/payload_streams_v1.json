@@ -8,6 +8,23 @@
     "payload_url": { "type": "string", "minLength": 1 },
     "analysis_url": { "type": "string" },
     "finished_at": { "type": "string", "minLength": 1 },
+    "qualifiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "state", "url"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "state": {
+            "type": "string",
+            "enum": ["Passed", "Failed", "Pending", "Accepted", "Rejected"]
+          },
+          "url": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "shared_causes": {
       "type": "array",
       "items": {

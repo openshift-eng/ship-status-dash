@@ -69,6 +69,12 @@ Feature: Team SLO workspace
     When I click the outage history button for "Incidents"
     Then I should be on the sub-component page for "trt-incidents/incidents"
 
+  Scenario: Payload qualifiers use release-controller chip colors
+    Given I am not logged in
+    When I open the TRT team SLO page
+    Then the "nightly-rejected" payload should show qualifier "dtk" as "Failed"
+    And the "nightly-rejected" payload should show qualifier "fips" as "Passed"
+
   Scenario: Editing a payload keeps the streak and existing link
     Given I am logged in as a TRT SLO owner
     When I open the TRT team SLO page

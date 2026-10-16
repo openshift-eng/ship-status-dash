@@ -25,6 +25,16 @@ const streamPayloads = (rows: SLOItem[], stream: string): SLOItem[] =>
     .filter((item) => item.group_key === stream)
     .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
 
+const qualifierChipColor = (state: string): 'success' | 'error' | 'warning' => {
+  if (state === 'Passed' || state === 'Accepted') {
+    return 'success'
+  }
+  if (state === 'Failed' || state === 'Rejected') {
+    return 'error'
+  }
+  return 'warning'
+}
+
 const payloadTintStatus = (outcome?: string): string | undefined => {
   switch (outcome) {
     case 'Accepted':
@@ -589,6 +599,29 @@ const PayloadStreamsWorkspace = ({
                             {finished && <JobNote component="span">{finished}</JobNote>}
                           </PhaseValue>
                         </FactValue>
+                        {(row.details.qualifiers ?? []).length > 0 && (
+                          <>
+                            <FactLabel>Qualifiers</FactLabel>
+                            <FactValue>
+                              <PhaseValue>
+                                {(row.details.qualifiers ?? []).map((qualifier) => (
+                                  <Chip
+                                    key={qualifier.id}
+                                    size="small"
+                                    label={qualifier.name}
+                                    color={qualifierChipColor(qualifier.state)}
+                                    component="a"
+                                    href={qualifier.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    clickable
+                                    aria-label={`${qualifier.name}: ${qualifier.state}`}
+                                  />
+                                ))}
+                              </PhaseValue>
+                            </FactValue>
+                          </>
+                        )}
                         <FactLabel>Links</FactLabel>
                         <FactValue>
                           {row.links.length === 0 && '-'}

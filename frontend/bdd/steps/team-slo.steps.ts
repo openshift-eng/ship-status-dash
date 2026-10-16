@@ -20,7 +20,12 @@ import { TeamSLOPage } from '../pages/TeamSLOPage'
 
 const { Given, When, Then } = createBdd()
 
-let savedBodies: Array<{ details?: { jobs?: Array<{ recurring_count?: number }> } }> = []
+let savedBodies: Array<{
+  details?: {
+    jobs?: Array<{ recurring_count?: number }>
+    qualifiers?: Array<{ id: string; name: string; state: string; url: string }>
+  }
+}> = []
 let linkCalls: string[] = []
 
 Given('the TRT SLO is available', async ({ page }) => {
@@ -203,9 +208,28 @@ Then('I should be on the sub-component page for {string}', async ({ page }, path
   await page.waitForURL(`**/${path}`)
 })
 
+Then(
+  'the {string} payload should show qualifier {string} as {string}',
+  async ({ page }, itemKey: string, name: string, state: string) => {
+    const chip = payloadFacts(page, itemKey).getByRole('link', { name: `${name}: ${state}` })
+    const qualifier = mockTRTPayloadItem.details.qualifiers?.find((item) => item.name === name)
+    const color =
+      state === 'Failed' || state === 'Rejected'
+        ? 'MuiChip-colorError'
+        : state === 'Passed' || state === 'Accepted'
+          ? 'MuiChip-colorSuccess'
+          : 'MuiChip-colorWarning'
+    await expect(chip).toBeVisible()
+    await expect(chip).toHaveText(name)
+    await expect(chip).toHaveAttribute('href', qualifier?.url ?? '')
+    await expect(chip).toHaveClass(new RegExp(color))
+  },
+)
+
 Then('the payload save keeps recurring_count 3', async () => {
   expect(savedBodies).toHaveLength(1)
   expect(savedBodies[0].details?.jobs?.[0]?.recurring_count).toBe(3)
+  expect(savedBodies[0].details?.qualifiers).toEqual(mockTRTPayloadItem.details.qualifiers)
 })
 
 Then('the existing SLO link is not changed', async () => {

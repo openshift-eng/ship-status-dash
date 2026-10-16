@@ -3,6 +3,7 @@ package seed
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,6 +191,7 @@ func TestBuildSeed(t *testing.T) {
 	jiraLinks := 0
 	outageLinks := 0
 	seenKey := map[string]bool{}
+	qualifierPairs := map[string]struct{}{}
 	for _, row := range seeded {
 		item := row.item
 		assert.Equal(t, "Widget", item.Team)
@@ -199,6 +201,7 @@ func TestBuildSeed(t *testing.T) {
 		assert.False(t, seenKey[item.ItemKey])
 		seenKey[item.ItemKey] = true
 		require.NoError(t, payloadv1.ValidateDetails(item.Details))
+		qualifierPairs[assertSeededQualifiers(t, item)] = struct{}{}
 		if item.ItemKey == PruneCandidateItemKey {
 			assert.Equal(t, streams[0].Name, item.GroupKey)
 			assert.Equal(t, "Rejected", item.Outcome)
@@ -222,6 +225,8 @@ func TestBuildSeed(t *testing.T) {
 			}
 		}
 	}
+	assert.Greater(t, len(qualifierPairs), 1)
+	assert.Greater(t, len(newestQualifierPairs(t, items)), 2)
 	assert.Equal(t, 2, jiraLinks)
 	assert.Equal(t, 1, outageLinks)
 	assertConsistentStreaks(t, items)
@@ -363,6 +368,53 @@ func itemsWithPayloadNotes(t *testing.T, items []types.SLOWorkspaceItem) []types
 		return noted[i].OccurredAt.After(noted[j].OccurredAt)
 	})
 	return noted
+}
+
+func newestQualifierPairs(t *testing.T, items []types.SLOWorkspaceItem) map[string]struct{} {
+	t.Helper()
+	byStream := map[string][]types.SLOWorkspaceItem{}
+	for _, item := range items {
+		if item.ItemKey == PruneCandidateItemKey {
+			continue
+		}
+		byStream[item.GroupKey] = append(byStream[item.GroupKey], item)
+	}
+	pairs := map[string]struct{}{}
+	for _, rows := range byStream {
+		sort.Slice(rows, func(i, j int) bool {
+			return rows[i].OccurredAt.After(rows[j].OccurredAt)
+		})
+		limit := 2
+		if len(rows) < limit {
+			limit = len(rows)
+		}
+		for _, row := range rows[:limit] {
+			var doc payloadv1.PayloadDetails
+			require.NoError(t, json.Unmarshal(row.Details, &doc))
+			require.Len(t, doc.Qualifiers, 2)
+			pairs[doc.Qualifiers[0].State+"/"+doc.Qualifiers[1].State] = struct{}{}
+		}
+	}
+	return pairs
+}
+
+func assertSeededQualifiers(t *testing.T, item types.SLOWorkspaceItem) string {
+	t.Helper()
+	var doc payloadv1.PayloadDetails
+	require.NoError(t, json.Unmarshal(item.Details, &doc))
+	page, _, ok := strings.Cut(doc.PayloadURL, "/release/")
+	require.True(t, ok)
+	require.Len(t, doc.Qualifiers, 2)
+	assert.Equal(t, payloadv1.PayloadQualifier{
+		ID: "driver-toolkit", Name: "dtk", URL: page + "/qualifier/driver-toolkit", State: doc.Qualifiers[0].State,
+	}, doc.Qualifiers[0])
+	assert.Equal(t, payloadv1.PayloadQualifier{
+		ID: "fips", Name: "fips", URL: page + "/qualifier/fips", State: doc.Qualifiers[1].State,
+	}, doc.Qualifiers[1])
+	for _, qualifier := range doc.Qualifiers {
+		assert.Contains(t, []string{"Passed", "Failed", "Pending"}, qualifier.State)
+	}
+	return doc.Qualifiers[0].State + "/" + doc.Qualifiers[1].State
 }
 
 func assertSeededNotes(t *testing.T, item types.SLOWorkspaceItem, jobNoteIDs ...[]string) {

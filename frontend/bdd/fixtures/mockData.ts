@@ -368,6 +368,20 @@ export const mockTRTPayloadItem: SLOItem = {
   outcome: 'Rejected',
   details: {
     payload_url: 'https://example.com/payload',
+    qualifiers: [
+      {
+        id: 'driver-toolkit',
+        name: 'dtk',
+        state: 'Failed',
+        url: 'https://example.com/qualifier/driver-toolkit',
+      },
+      {
+        id: 'fips',
+        name: 'fips',
+        state: 'Passed',
+        url: 'https://example.com/qualifier/fips',
+      },
+    ],
     shared_causes: [
       {
         id: 'C1',

@@ -464,6 +464,9 @@ const UpsertPayloadItemDialog = ({
             payload_url: payloadURL.trim(),
             ...(analysisURL.trim() ? { analysis_url: analysisURL.trim() } : {}),
             ...(item?.details.finished_at ? { finished_at: item.details.finished_at } : {}),
+            ...((item?.details.qualifiers ?? []).length > 0
+              ? { qualifiers: item?.details.qualifiers }
+              : {}),
             ...(bodyNotes.length > 0 ? { shared_causes: bodyNotes } : {}),
             jobs: bodyJobs,
           },
