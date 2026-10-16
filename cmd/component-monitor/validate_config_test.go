@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *types.ComponentMonitorConfig
-		wantErrs []string
+		wantErrs []error
 	}{
 		{
 			name: "valid config",
@@ -52,12 +53,12 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErrs: []string{"failed to parse frequency"},
+			wantErrs: []error{errors.New("failed to parse frequency")},
 		},
 		{
 			name:     "invalid YAML",
 			config:   nil,
-			wantErrs: []string{"yaml:"},
+			wantErrs: []error{errors.New("yaml:")},
 		},
 		{
 			name: "invalid frequency and retry_after both reported",
@@ -75,9 +76,9 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErrs: []string{
-				"failed to parse frequency",
-				"failed to parse retry after duration",
+			wantErrs: []error{
+				errors.New("failed to parse frequency"),
+				errors.New("failed to parse retry after duration"),
 			},
 		},
 		{
@@ -99,9 +100,9 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErrs: []string{
-				"job_names is required",
-				"systemd unit is required",
+			wantErrs: []error{
+				errors.New("job_names is required"),
+				errors.New("systemd unit is required"),
 			},
 		},
 	}
@@ -135,7 +136,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			}
 			require.Error(t, err)
 			for _, want := range tt.wantErrs {
-				assert.ErrorContains(t, err, want)
+				assert.ErrorContains(t, err, want.Error())
 			}
 		})
 	}

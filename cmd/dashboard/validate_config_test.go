@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *types.DashboardConfig
-		wantErrs []string
+		wantErrs []error
 	}{
 		{
 			name: "valid config",
@@ -55,12 +56,12 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErrs: []string{"component must have at least one owner"},
+			wantErrs: []error{errors.New("component must have at least one owner")},
 		},
 		{
 			name:     "invalid YAML",
 			config:   nil,
-			wantErrs: []string{"yaml:"},
+			wantErrs: []error{errors.New("yaml:")},
 		},
 		{
 			name: "reports all errors",
@@ -82,10 +83,10 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErrs: []string{
-				"Missing Owner A",
-				"Missing Owner B",
-				"nonexistent-tag",
+			wantErrs: []error{
+				errors.New("Missing Owner A"),
+				errors.New("Missing Owner B"),
+				errors.New("nonexistent-tag"),
 			},
 		},
 	}
@@ -119,7 +120,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			}
 			require.Error(t, err)
 			for _, want := range tt.wantErrs {
-				assert.ErrorContains(t, err, want)
+				assert.ErrorContains(t, err, want.Error())
 			}
 		})
 	}
