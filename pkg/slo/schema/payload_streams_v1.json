@@ -21,7 +21,7 @@
             "type": "string",
             "enum": ["Passed", "Failed", "Pending", "Accepted", "Rejected"]
           },
-          "url": { "type": "string", "minLength": 1 }
+          "url": { "type": "string", "pattern": "^[hH][tT][tT][pP][sS]?://[^/\\s]+.*$" }
         }
       }
     },
