@@ -550,12 +550,12 @@ func payloadNote(id string) payloadv1.SharedCause {
 // rotates with the stream and payload age so the sample page is not one pair.
 func seedQualifiers(stream payloadv1.Stream, ago time.Duration) []payloadv1.PayloadQualifier {
 	patterns := [][2]string{
-		{"Failed", "Passed"},
-		{"Passed", "Passed"},
-		{"Passed", "Failed"},
-		{"Failed", "Failed"},
-		{"Pending", "Passed"},
-		{"Failed", "Pending"},
+		{payloadv1.QualifierFailed, payloadv1.QualifierPassed},
+		{payloadv1.QualifierPassed, payloadv1.QualifierPassed},
+		{payloadv1.QualifierPassed, payloadv1.QualifierFailed},
+		{payloadv1.QualifierFailed, payloadv1.QualifierFailed},
+		{payloadv1.QualifierPending, payloadv1.QualifierPassed},
+		{payloadv1.QualifierFailed, payloadv1.QualifierPending},
 	}
 	pair := patterns[qualifierSlot(stream.Name, ago)%len(patterns)]
 	page := fmt.Sprintf(

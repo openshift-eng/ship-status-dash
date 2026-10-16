@@ -412,7 +412,7 @@ func assertSeededQualifiers(t *testing.T, item types.SLOWorkspaceItem) string {
 		ID: "fips", Name: "fips", URL: page + "/qualifier/fips", State: doc.Qualifiers[1].State,
 	}, doc.Qualifiers[1])
 	for _, qualifier := range doc.Qualifiers {
-		assert.Contains(t, []string{"Passed", "Failed", "Pending"}, qualifier.State)
+		assert.Contains(t, []string{payloadv1.QualifierPassed, payloadv1.QualifierFailed, payloadv1.QualifierPending}, qualifier.State)
 	}
 	return doc.Qualifiers[0].State + "/" + doc.Qualifiers[1].State
 }

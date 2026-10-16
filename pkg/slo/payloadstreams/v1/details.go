@@ -152,12 +152,21 @@ func (d PayloadDetails) Validate() error {
 	return nil
 }
 
-var qualifierStates = map[string]struct{}{
-	"Passed":   {},
-	"Failed":   {},
-	"Pending":  {},
-	"Accepted": {},
-	"Rejected": {},
+const (
+	QualifierPassed   = "Passed"
+	QualifierFailed   = "Failed"
+	QualifierPending  = "Pending"
+	QualifierAccepted = "Accepted"
+	QualifierRejected = "Rejected"
+)
+
+func validQualifierState(state string) bool {
+	switch state {
+	case QualifierPassed, QualifierFailed, QualifierPending, QualifierAccepted, QualifierRejected:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateQualifiers(qualifiers []PayloadQualifier) error {
@@ -181,7 +190,7 @@ func validateQualifiers(qualifiers []PayloadQualifier) error {
 		if name != strings.TrimSpace(name) {
 			return fmt.Errorf("qualifiers[%d].name must not have surrounding whitespace", i)
 		}
-		if _, ok := qualifierStates[qualifier.State]; !ok {
+		if !validQualifierState(qualifier.State) {
 			return fmt.Errorf("qualifiers[%d].state is invalid", i)
 		}
 		if err := validateQualifierURL(i, qualifier.URL); err != nil {

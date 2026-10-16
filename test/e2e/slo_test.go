@@ -305,9 +305,9 @@ func testTRTPayloadQualifiers(client *TestHTTPClient) func(*testing.T) {
 
 		now := time.Now().UTC().Truncate(time.Microsecond)
 		qualifiers := []payloadv1.PayloadQualifier{
-			{ID: "driver-toolkit", Name: "dtk", State: "Failed", URL: "https://example.com/qualifier/driver-toolkit"},
-			{ID: "fips", Name: "fips", State: "Passed", URL: "https://example.com/qualifier/fips"},
-			{ID: "signoff", Name: "sign", State: "Accepted", URL: "https://example.com/qualifier/signoff"},
+			{ID: "driver-toolkit", Name: "dtk", State: payloadv1.QualifierFailed, URL: "https://example.com/qualifier/driver-toolkit"},
+			{ID: "fips", Name: "fips", State: payloadv1.QualifierPassed, URL: "https://example.com/qualifier/fips"},
+			{ID: "signoff", Name: "sign", State: payloadv1.QualifierAccepted, URL: "https://example.com/qualifier/signoff"},
 		}
 		created := putSLOItemChai(t, client, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", payloadDetailsWithQualifiers(t, "https://example.com/q", qualifiers)))
 		assert.Equal(t, qualifiers, payloadDoc(t, created.Details).Qualifiers)
@@ -317,14 +317,14 @@ func testTRTPayloadQualifiers(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, qualifiers, payloadDoc(t, stored.Details).Qualifiers)
 
 		edited := append([]payloadv1.PayloadQualifier(nil), qualifiers...)
-		edited[1].State = "Failed"
+		edited[1].State = payloadv1.QualifierFailed
 		replaced := putSLOItemDeveloper(t, client, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", payloadDetailsWithQualifiers(t, "https://example.com/q", edited)))
 		assert.Equal(t, created.ID, replaced.ID)
 		assert.Equal(t, "developer", replaced.UpdatedBy)
 		assert.Equal(t, edited, payloadDoc(t, replaced.Details).Qualifiers)
 
 		bad := payloadDetailsWithQualifiers(t, "https://example.com/q", []payloadv1.PayloadQualifier{{
-			ID: "fips", Name: "fips", State: "Passed", URL: "javascript:alert(1)",
+			ID: "fips", Name: "fips", State: payloadv1.QualifierPassed, URL: "javascript:alert(1)",
 		}})
 		resp, err := client.PutWithBearerToken(sloItemsPath, mustSLOItemBody(t, "e2e-qualifiers", trtStreamNightly, "Rejected", now, "", bad), chaiBotSAToken, "chai-bot")
 		require.NoError(t, err)
