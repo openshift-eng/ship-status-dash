@@ -14,9 +14,10 @@ import (
 
 func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  *types.ComponentMonitorConfig
-		wantErr bool
+		name     string
+		config   *types.ComponentMonitorConfig
+		wantErr  bool
+		wantErrs []string
 	}{
 		{
 			name: "valid config",
@@ -58,6 +59,31 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			config:  nil,
 			wantErr: true,
 		},
+		{
+			name: "reports all errors",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "20s",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "comp-a",
+						SubComponentSlug: "sub-a",
+						JUnitMonitor: &types.JUnitMonitor{
+							MaxAge: "1h",
+						},
+					},
+					{
+						ComponentSlug:    "comp-b",
+						SubComponentSlug: "sub-b",
+						SystemdMonitor:   &types.SystemdMonitor{Unit: ""},
+					},
+				},
+			},
+			wantErr: true,
+			wantErrs: []string{
+				"job_name is required",
+				"systemd unit is required",
+			},
+		},
 	}
 
 	log := logrus.New()
@@ -89,51 +115,12 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
+			for _, want := range tt.wantErrs {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected error containing %q, got: %s", want, err.Error())
+				}
+			}
 		})
-	}
-}
-
-func TestLoadAndValidateConfigReportsAllErrors(t *testing.T) {
-	cfg := &types.ComponentMonitorConfig{
-		Frequency: "20s",
-		Components: []types.MonitoringComponent{
-			{
-				ComponentSlug:    "comp-a",
-				SubComponentSlug: "sub-a",
-				JUnitMonitor: &types.JUnitMonitor{
-					MaxAge: "1h",
-				},
-			},
-			{
-				ComponentSlug:    "comp-b",
-				SubComponentSlug: "sub-b",
-				SystemdMonitor:   &types.SystemdMonitor{Unit: ""},
-			},
-		},
-	}
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	content, err := yaml.Marshal(cfg)
-	if err != nil {
-		t.Fatalf("marshal config: %v", err)
-	}
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	log := logrus.New()
-	log.SetLevel(logrus.ErrorLevel)
-
-	_, err = loadAndValidateConfig(log, path, "")
-	if err == nil {
-		t.Fatal("expected error but got nil")
-	}
-
-	msg := err.Error()
-	if !strings.Contains(msg, "job_name is required") {
-		t.Errorf("expected error about job_name, got: %s", msg)
-	}
-	if !strings.Contains(msg, "systemd unit is required") {
-		t.Errorf("expected error about systemd unit, got: %s", msg)
 	}
 }
 

@@ -43,10 +43,11 @@ func TestValidateTeamSLOs(t *testing.T) {
 	second.Team = "Widget"
 
 	tests := []struct {
-		name    string
-		cfg     *DashboardConfig
-		known   func(string, int) bool
-		wantErr string
+		name     string
+		cfg      *DashboardConfig
+		known    func(string, int) bool
+		wantErr  string
+		wantErrs []string
 	}{
 		{
 			name: "one workspace",
@@ -107,43 +108,47 @@ func TestValidateTeamSLOs(t *testing.T) {
 			cfg:     &DashboardConfig{Components: []*Component{incident(true)}, TeamSLOs: []TeamSLOConfig{team("trt-incidents"), second}},
 			wantErr: `listed on both "TRT" and "Widget"`,
 		},
+		{
+			name: "reports all errors",
+			cfg: &DashboardConfig{
+				TeamSLOs: []TeamSLOConfig{
+					{
+						Team: "Alpha",
+					},
+					{
+						Team:          "Beta",
+						Owners:        []Owner{{User: "user"}},
+						SLOComponents: []string{"missing-slug"},
+						SLOs: []NamedSLO{
+							{Name: "slo-a", Source: ""},
+						},
+					},
+				},
+			},
+			wantErrs: []string{
+				`"Alpha": owners is required`,
+				`"missing-slug" does not exist`,
+				"source is required",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.cfg.ValidateTeamSLOs(tt.known, nil)
-			if tt.wantErr == "" {
+			if tt.wantErr == "" && len(tt.wantErrs) == 0 {
 				require.NoError(t, err)
 				return
 			}
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			if tt.wantErr != "" {
+				assert.Contains(t, err.Error(), tt.wantErr)
+			}
+			for _, want := range tt.wantErrs {
+				assert.Contains(t, err.Error(), want)
+			}
 		})
 	}
-}
-
-func TestValidateTeamSLOsReportsAllErrors(t *testing.T) {
-	cfg := &DashboardConfig{
-		TeamSLOs: []TeamSLOConfig{
-			{
-				Team: "Alpha",
-			},
-			{
-				Team:          "Beta",
-				Owners:        []Owner{{User: "user"}},
-				SLOComponents: []string{"missing-slug"},
-				SLOs: []NamedSLO{
-					{Name: "slo-a", Source: ""},
-				},
-			},
-		},
-	}
-	err := cfg.ValidateTeamSLOs(nil, nil)
-	require.Error(t, err)
-	msg := err.Error()
-	assert.Contains(t, msg, `"Alpha": owners is required`)
-	assert.Contains(t, msg, `"missing-slug" does not exist`)
-	assert.Contains(t, msg, "source is required")
 }
 
 func TestValidateTeamSLOsSpecCallback(t *testing.T) {
