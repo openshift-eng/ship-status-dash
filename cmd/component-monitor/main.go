@@ -146,14 +146,14 @@ func loadAndValidateConfig(log *logrus.Logger, configPath string, kubeconfigDir 
 				errs = append(errs, fmt.Errorf("frequency mismatch for component %s/%s: %s vs %s", component.ComponentSlug, component.SubComponentSlug, prev, resolved))
 			}
 			resolvedBySub[key] = resolved
+		}
 
-			if component.HTTPMonitor != nil {
-				retryAfter, retryErr := time.ParseDuration(component.HTTPMonitor.RetryAfter)
-				if retryErr != nil {
-					errs = append(errs, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, retryErr))
-				} else if retryAfter > resolved {
-					errs = append(errs, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, resolved))
-				}
+		if component.HTTPMonitor != nil {
+			retryAfter, retryErr := time.ParseDuration(component.HTTPMonitor.RetryAfter)
+			if retryErr != nil {
+				errs = append(errs, fmt.Errorf("failed to parse retry after duration for component %s/%s: %w", component.ComponentSlug, component.SubComponentSlug, retryErr))
+			} else if freqErr == nil && frequency > 0 && retryAfter > resolved {
+				errs = append(errs, fmt.Errorf("retry after duration is greater than frequency for component %s/%s: %s > %s", component.ComponentSlug, component.SubComponentSlug, component.HTTPMonitor.RetryAfter, resolved))
 			}
 		}
 

@@ -115,7 +115,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 
 			_, err := loadAndValidateConfig(log, path)
 			if tt.wantErr && err == nil {
-				t.Error("expected error but got nil")
+				t.Fatal("expected error but got nil")
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)

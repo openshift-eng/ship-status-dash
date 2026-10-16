@@ -60,6 +60,28 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "invalid frequency and retry_after both reported",
+			config: &types.ComponentMonitorConfig{
+				Frequency: "not-a-duration",
+				Components: []types.MonitoringComponent{
+					{
+						ComponentSlug:    "test",
+						SubComponentSlug: "frontend",
+						HTTPMonitor: &types.HTTPMonitor{
+							URL:        "http://localhost:8080/health",
+							Code:       200,
+							RetryAfter: "also-invalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+			wantErrs: []string{
+				"failed to parse frequency",
+				"failed to parse retry after duration",
+			},
+		},
+		{
 			name: "reports all errors",
 			config: &types.ComponentMonitorConfig{
 				Frequency: "20s",
@@ -110,7 +132,7 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 
 			_, err := loadAndValidateConfig(log, path, "")
 			if tt.wantErr && err == nil {
-				t.Error("expected error but got nil")
+				t.Fatal("expected error but got nil")
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
