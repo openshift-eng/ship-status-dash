@@ -3,10 +3,11 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"ship-status-dash/pkg/types"
@@ -16,7 +17,6 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *types.ComponentMonitorConfig
-		wantErr  bool
 		wantErrs []string
 	}{
 		{
@@ -52,12 +52,12 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErrs: []string{"failed to parse frequency"},
 		},
 		{
-			name:    "invalid YAML",
-			config:  nil,
-			wantErr: true,
+			name:     "invalid YAML",
+			config:   nil,
+			wantErrs: []string{"yaml:"},
 		},
 		{
 			name: "invalid frequency and retry_after both reported",
@@ -75,7 +75,6 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
 			wantErrs: []string{
 				"failed to parse frequency",
 				"failed to parse retry after duration",
@@ -100,7 +99,6 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
 			wantErrs: []string{
 				"job_names is required",
 				"systemd unit is required",
@@ -131,16 +129,13 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			}
 
 			_, err := loadAndValidateConfig(log, path, "")
-			if tt.wantErr && err == nil {
-				t.Fatal("expected error but got nil")
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, err)
+				return
 			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
+			require.Error(t, err)
 			for _, want := range tt.wantErrs {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("expected error containing %q, got: %s", want, err.Error())
-				}
+				assert.ErrorContains(t, err, want)
 			}
 		})
 	}

@@ -3,10 +3,11 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"ship-status-dash/pkg/types"
@@ -16,7 +17,6 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   *types.DashboardConfig
-		wantErr  bool
 		wantErrs []string
 	}{
 		{
@@ -55,12 +55,12 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErrs: []string{"component must have at least one owner"},
 		},
 		{
-			name:    "invalid YAML",
-			config:  nil,
-			wantErr: true,
+			name:     "invalid YAML",
+			config:   nil,
+			wantErrs: []string{"yaml:"},
 		},
 		{
 			name: "reports all errors",
@@ -82,7 +82,6 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
 			wantErrs: []string{
 				"Missing Owner A",
 				"Missing Owner B",
@@ -114,16 +113,13 @@ func TestLoadAndValidateConfigForValidateOnly(t *testing.T) {
 			}
 
 			_, err := loadAndValidateConfig(log, path)
-			if tt.wantErr && err == nil {
-				t.Fatal("expected error but got nil")
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, err)
+				return
 			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
+			require.Error(t, err)
 			for _, want := range tt.wantErrs {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("expected error containing %q, got: %s", want, err.Error())
-				}
+				assert.ErrorContains(t, err, want)
 			}
 		})
 	}
