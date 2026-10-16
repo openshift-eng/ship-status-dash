@@ -315,7 +315,7 @@ Tables (names indicative):
 - `slo_workspace_items`: `team`, `kind` (same as YAML `workspace.kind`, e.g. `payload_streams`), `schema_version` (integer, required), `item_key` (opaque unique id within team+kind), optional `group_key` (UI/eval grouping), `occurred_at`, `outcome` (opaque string), `details` jsonb, `notes`, `updated_by`, `updated_at`. Unique `(team, kind, item_key)`.
 - `slo_workspace_links`: item id, url, `link_type` (`jira` / `outage` / `other`), optional `outage_id`.
 
-`details` is PostgreSQL jsonb (same as `outage_audit_logs.old` / `.new`). Its shape is defined by `(kind, schema_version)`, not by team name and not by "whatever Chai sent today". Ship-status validates upserts against that document. It does not add typed job columns when Chai grows a field. Bump `schema_version` instead.
+`details` is PostgreSQL jsonb (same as `outage_audit_logs.old` / `.new`). Its shape is defined by `(kind, schema_version)`, not by team name and not by "whatever Chai sent today". Ship-status validates upserts against that document. It does not add typed job columns when Chai grows a field. An optional field that old documents can omit can be added to the published schema. A new required field, a removed field, or a tighter constraint is a new `schema_version`. Ship the dashboard that accepts an optional field before a producer sends it.
 
 `schema_version` lives on the row (and in YAML), not buried only inside jsonb. The frontend must know which renderer to load before it parses `details`.
 
@@ -337,7 +337,7 @@ TRT mapping (producer and `payload_streams` v1 UI only, not the generic table):
 | `item_key` | payload tag |
 | `occurred_at` | tag timestamp |
 | `outcome` | `Accepted` / `Rejected` / `Ready` |
-| `details` | v1 document: release-controller URL, payload-agent analysis URL, failed blocking jobs with optional per-job notes |
+| `details` | v1 document: release-controller URL, payload-agent analysis URL, optional qualifier chips, failed blocking jobs with optional per-job notes |
 
 TRT `payload_streams` v1 `details` (indicative, frozen in the JSON schema this repo will ship):
 
@@ -345,6 +345,20 @@ TRT `payload_streams` v1 `details` (indicative, frozen in the JSON schema this r
 {
   "payload_url": "https://amd64.ocp.releases.ci.openshift.org/releasestream/5.1.0-0.nightly/release/5.1.0-0.nightly-2026-09-25-060000",
   "analysis_url": "https://storage.googleapis.com/test-platform-results/payload-agent/5.1.0-0.nightly-2026-09-24-180000.html",
+  "qualifiers": [
+    {
+      "id": "driver-toolkit",
+      "name": "dtk",
+      "state": "Failed",
+      "url": "https://amd64.ocp.releases.ci.openshift.org/releasestream/5.1.0-0.nightly/qualifier/driver-toolkit"
+    },
+    {
+      "id": "fips",
+      "name": "fips",
+      "state": "Passed",
+      "url": "https://amd64.ocp.releases.ci.openshift.org/releasestream/5.1.0-0.nightly/qualifier/fips"
+    }
+  ],
   "jobs": [
     {
       "name": "periodic-ci-...",
@@ -357,7 +371,9 @@ TRT `payload_streams` v1 `details` (indicative, frozen in the JSON schema this r
 }
 ```
 
-`payload_url` is required (release-controller page for that tag). `analysis_url` is the payload-agent HTML when present (typical for Rejected). `jobs[].notes` is optional. `jobs[].recurring_count` is optional. Chai sets it on insert when the same job name has `state: failure` on this payload and on the immediately previous stored payloads in that stream, walking newest-first and stopping at the first payload that does not fail that job. The count includes the payload being inserted. Omit it, or set it below 2, when the job is not a streak. The page shows a badge only when `recurring_count` is at least 2. Payload-wide notes stay on `slo_workspace_items.notes`, not in this document. A field added later is a new `schema_version`, not a quiet extra key on v1.
+`payload_url` is required (release-controller page for that tag). `analysis_url` is the payload-agent HTML when present (typical for Rejected). `jobs[].notes` is optional. `jobs[].recurring_count` is optional. Chai sets it on insert when the same job name has `state: failure` on this payload and on the immediately previous stored payloads in that stream, walking newest-first and stopping at the first payload that does not fail that job. The count includes the payload being inserted. Omit it, or set it below 2, when the job is not a streak. The page shows a badge only when `recurring_count` is at least 2. Payload-wide notes stay on `slo_workspace_items.notes`, not in this document.
+
+`qualifiers` is optional. Omit it when the payload has none. Each entry is one release-controller qualifier chip: `id` (qualifier id, such as `driver-toolkit`), `name` (badge label, or `id` when the badge name is empty), `state` (`Passed`, `Failed`, `Pending`, `Accepted`, or `Rejected`), and `url` (absolute `http` or `https` link to that stream's qualifier page). Chai writes the list on insert and on `refresh_slo_payload_item`, sorted by `id`, from `/api/v1/releasetag/{tag}/qualifiers`. `Passed` and `Accepted` render green, `Failed` and `Rejected` render red, and `Pending` renders as a warning. The team-page editor does not edit chips. An edit of an existing row sends the stored list back. Adding a tag that is already stored is refused, so a new form cannot replace those chips.
 
 Idempotent **insert** by `(team, kind, item_key)` on the scheduled path: if the row exists, skip. Persist every stored row whose `occurred_at` still falls inside the SLO `window` (24h for TRT). Also keep, for each stream still named in YAML, the single newest `Accepted` row even when it is outside that window and outside the last-N display set. When a newer `Accepted` is stored, the previous one may be pruned if it is outside both the window and the last-N set. Removing a stream from YAML drops that hold, and the row then follows normal prune. `recent_payloads` is a team-page UI cap only for `payload_streams`. The home widget does not list workspace rows (roll-up, worst-miss, and compact `slo_component` incident rows). Do not prune stored rows down to N. An in-window `Accepted` outcome must remain available to `payload_acceptance` even if later Rejected tags have pushed it off the visible list. Prune other rows only when they are outside both the evaluation window and the last-N display set.
 
@@ -509,7 +525,7 @@ frontend/src/components/team/slo/
   trt/v1/PayloadStreamsWorkspace.tsx
 ```
 
-`registry.ts` maps `(team, kind, schema_version)` to a React component. TRT v1 is `payload_streams` / `1` → `trt/v1/PayloadStreamsWorkspace`. Bumping TRT's `details` shape means `trt/v2/...` plus a ship-status JSON schema `payload_streams` v2. Leave v1 mounted until no displayed rows still use it.
+`registry.ts` maps `(team, kind, schema_version)` to a React component. TRT v1 is `payload_streams` / `1` → `trt/v1/PayloadStreamsWorkspace`. An optional field that old documents can omit stays on v1. A breaking change to `details` means `trt/v2/...` plus a ship-status JSON schema `payload_streams` v2. Leave v1 mounted until no displayed rows still use it.
 
 Team page lookup:
 
@@ -597,7 +613,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 - Persist SLO workspace items for the full evaluation `window`. Also retain the newest `Accepted` row per YAML stream after it leaves that window, so `last_accepted_at` stays available. A newer `Accepted` releases the previous one. Dropping the stream from YAML releases the hold. `recent_payloads` is team-page display-only for `payload_streams`. The home widget does not list workspace rows. An in-window `Accepted` outcome is never pruned just because later items filled the last-N list.
 - One workspace per team. Config load fails if two SLOs on the same team set `workspace`.
 - Store schema is generic (`slo_workspace_items` + jsonb `details`). Do not add `stream` / `tag` / `phase` columns. TRT maps those onto `group_key` / `item_key` / `outcome` in the producer and the `payload_streams` v1 UI.
-- TRT v1 `details` always includes `payload_url` (release-controller). `analysis_url` when payload-agent HTML exists. Failed jobs may have `notes`. Chai writes notes on the first insert. Humans can add or edit after. Scheduled ticks do not clobber. A human-requested refresh replaces the row (Chai authoritative on that write).
+- TRT v1 `details` always includes `payload_url` (release-controller). `analysis_url` when payload-agent HTML exists. Failed jobs may have `notes`. Optional `qualifiers` are the release-controller chips (`id`, `name`, `state`, `http`/`https` `url`). Chai writes notes and qualifiers on the first insert and replaces qualifiers on refresh. Humans can add or edit after. Scheduled ticks do not clobber. A human-requested refresh replaces the row (Chai authoritative on that write).
 - `owners` is required on `team_slos`. No fallback to component owners.
 - `payload_acceptance` is a named Go evaluator selected by YAML `source`. It scores `Accepted` rows inside the configured `window` against `min_accepted` for each YAML stream. Window and target are returned on the GET APIs for display. v1 does not add another `source`.
 - `(kind, schema_version)` is the Chai/ship-status contract. Required on YAML workspace and every stored row. Ship-status owns the JSON schema and a versioned per-team frontend component. Reject unknown versions. Mixed versions in a window render with the matching component, not a migration of old jsonb. Home does not load those components.
@@ -610,7 +626,7 @@ SHIP Status Dash v1 is complete when Chai can upsert and the team page renders i
 
 - Define `team_slos` YAML (including `chai-bot` owners), public read APIs, persisted workspace store, TeamPage SLO strip, and home-page widget linking to `#slo`.
 - Render TRT amd64 `payload_streams` **v1** from persisted upserts only (no release-controller poll): last N **displayed on the team page**, release-controller and payload-agent links, failed blocking jobs with per-job notes, the stored `recurring_count` badge, plus frontend add/edit. Evaluation uses the full `window`. Retain the newest `Accepted` per YAML stream for `last_accepted_at`. Home widget stays roll-up plus compact incident rows, no payload tables.
-- Versioned per-team workspace registry (`frontend/src/components/team/slo/{team}/v{n}/`) plus JSON schema per `(kind, schema_version)`. Unknown versions use the fallback component. Bumps add a new version; they do not mutate v1 in place.
+- Versioned per-team workspace registry (`frontend/src/components/team/slo/{team}/v{n}/`) plus JSON schema per `(kind, schema_version)`. Unknown versions use the fallback component. Optional fields that old documents can omit may be added to a published schema. A new required field, a removed field, or a tighter constraint adds a new version.
 - Protected write API plus authenticated MCP (`upsert_slo_item` / `add_slo_item_link`) so producers can upsert generic workspace rows with `schema_version`. TRT maps payloads into the v1 document (`acting-for`, same path as TRT-2666). E2e with chai-bot SA.
 - Add `SLOComponent` on `types.Component` in `pkg/types/config.go` (and `slo_component` on the frontend `Component` type). Set it on TRT Incidents in local YAML. Filter list APIs on that field.
 - Generic `SLOComponentWell` backed by `slo_component: true`. Lists that component's outages and titles itself from config (TRT Incidents first). Omit those components from home/team list APIs. Same well on the home SLO nested section.

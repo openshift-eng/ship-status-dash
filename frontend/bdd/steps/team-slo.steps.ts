@@ -13,6 +13,7 @@ import {
   mockLongUnbrokenJobName,
   mockLongUnbrokenPayloadNote,
   mockTRTPayloadItem,
+  mockTRTQualifierStatesItem,
   mockTRTSLOUser,
 } from '../fixtures/mockData'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -82,7 +83,11 @@ When('I edit the payload and save', async ({ page }) => {
     return json(route, { error: 'unexpected' }, 500)
   })
 
-  await page.getByRole('button', { name: 'Edit' }).click()
+  await page
+    .getByText('nightly-rejected', { exact: true })
+    .locator('xpath=ancestor::div[.//button[normalize-space()="Edit"]][1]')
+    .getByRole('button', { name: 'Edit' })
+    .click()
   const dialog = page.getByRole('dialog')
   await dialog.waitFor()
   await dialog.getByRole('button', { name: 'Save' }).click()
@@ -212,17 +217,13 @@ Then(
   'the {string} payload should show qualifier {string} as {string}',
   async ({ page }, itemKey: string, name: string, state: string) => {
     const chip = payloadFacts(page, itemKey).getByRole('link', { name: `${name}: ${state}` })
-    const qualifier = mockTRTPayloadItem.details.qualifiers?.find((item) => item.name === name)
-    const color =
-      state === 'Failed' || state === 'Rejected'
-        ? 'MuiChip-colorError'
-        : state === 'Passed' || state === 'Accepted'
-          ? 'MuiChip-colorSuccess'
-          : 'MuiChip-colorWarning'
+    const qualifier = [mockTRTPayloadItem, mockTRTQualifierStatesItem]
+      .flatMap((item) => item.details.qualifiers ?? [])
+      .find((item) => item.name === name && item.state === state)
     await expect(chip).toBeVisible()
     await expect(chip).toHaveText(name)
     await expect(chip).toHaveAttribute('href', qualifier?.url ?? '')
-    await expect(chip).toHaveClass(new RegExp(color))
+    await expect(chip).toHaveAttribute('data-qualifier-state', state)
   },
 )
 

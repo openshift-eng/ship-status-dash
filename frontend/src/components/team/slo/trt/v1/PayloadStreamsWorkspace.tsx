@@ -616,6 +616,7 @@ const PayloadStreamsWorkspace = ({
                                     rel="noopener noreferrer"
                                     clickable
                                     aria-label={`${qualifier.name}: ${qualifier.state}`}
+                                    data-qualifier-state={qualifier.state}
                                   />
                                 ))}
                               </PhaseValue>
@@ -682,6 +683,7 @@ const PayloadStreamsWorkspace = ({
           open={dialogOpen}
           team={team}
           streams={streams.map((stream) => stream.name)}
+          items={items}
           item={editing}
           onClose={() => setDialogOpen(false)}
           onSuccess={() => {

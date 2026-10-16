@@ -74,6 +74,9 @@ Feature: Team SLO workspace
     When I open the TRT team SLO page
     Then the "nightly-rejected" payload should show qualifier "dtk" as "Failed"
     And the "nightly-rejected" payload should show qualifier "fips" as "Passed"
+    And the "nightly-states" payload should show qualifier "preview" as "Pending"
+    And the "nightly-states" payload should show qualifier "sign" as "Accepted"
+    And the "nightly-states" payload should show qualifier "gate" as "Rejected"
 
   Scenario: Editing a payload keeps the streak and existing link
     Given I am logged in as a TRT SLO owner

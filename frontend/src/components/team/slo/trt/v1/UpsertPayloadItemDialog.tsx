@@ -148,6 +148,7 @@ interface UpsertPayloadItemDialogProps {
   open: boolean
   team: string
   streams: string[]
+  items: SLOItem[]
   item?: SLOItem
   onClose: () => void
   onSuccess: () => void
@@ -288,6 +289,7 @@ const UpsertPayloadItemDialog = ({
   open,
   team,
   streams,
+  items,
   item,
   onClose,
   onSuccess,
@@ -408,6 +410,11 @@ const UpsertPayloadItemDialog = ({
     const occurred = new Date(occurredAt)
     if (occurredAt.trim() === '' || Number.isNaN(occurred.getTime())) {
       setError('Occurred at must be a valid time')
+      return
+    }
+    const trimmedTag = tag.trim()
+    if (!editing && items.some((row) => row.item_key === trimmedTag)) {
+      setError(`Payload ${trimmedTag} already exists. Edit that payload.`)
       return
     }
     setSaving(true)

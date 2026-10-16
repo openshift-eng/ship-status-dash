@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -183,9 +184,20 @@ func validateQualifiers(qualifiers []PayloadQualifier) error {
 		if _, ok := qualifierStates[qualifier.State]; !ok {
 			return fmt.Errorf("qualifiers[%d].state is invalid", i)
 		}
-		if strings.TrimSpace(qualifier.URL) == "" {
-			return fmt.Errorf("qualifiers[%d].url is required", i)
+		if err := validateQualifierURL(i, qualifier.URL); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateQualifierURL(index int, raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return fmt.Errorf("qualifiers[%d].url is required", index)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("qualifiers[%d].url must be an absolute http or https URL", index)
 	}
 	return nil
 }

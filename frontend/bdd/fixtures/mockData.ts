@@ -409,6 +409,42 @@ export const mockTRTPayloadItem: SLOItem = {
   links: [{ ID: 4, url: 'https://example.com/issues/1', link_type: 'other' }],
 }
 
+export const mockTRTQualifierStatesItem: SLOItem = {
+  id: 9,
+  kind: 'payload_streams',
+  schema_version: 1,
+  item_key: 'nightly-states',
+  group_key: '5.1.0-0.nightly',
+  occurred_at: trtOccurredAt,
+  outcome: 'Accepted',
+  details: {
+    payload_url: 'https://example.com/payload-states',
+    qualifiers: [
+      {
+        id: 'preview',
+        name: 'preview',
+        state: 'Pending',
+        url: 'https://example.com/qualifier/preview',
+      },
+      {
+        id: 'signoff',
+        name: 'sign',
+        state: 'Accepted',
+        url: 'https://example.com/qualifier/signoff',
+      },
+      {
+        id: 'gate',
+        name: 'gate',
+        state: 'Rejected',
+        url: 'https://example.com/qualifier/gate',
+      },
+    ],
+    jobs: [],
+  },
+  updated_by: 'developer',
+  links: [],
+}
+
 const trtEvaluation: SLOEvaluation = {
   name: 'accepted-payload-per-day',
   display_name: '1 accepted payload per day',
@@ -458,7 +494,7 @@ export const mockTRTTeamSLO: TeamSLO = {
   },
   evaluations: [trtEvaluation],
   slo_components: trtSLOComponents,
-  items: [mockTRTPayloadItem],
+  items: [mockTRTPayloadItem, mockTRTQualifierStatesItem],
 }
 
 export const mockTRTMarkdownTeamSLO: TeamSLO = {
