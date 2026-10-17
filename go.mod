@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/18F/hmacauth v0.0.0-20151013130326-9232a6386b73
-	github.com/godbus/dbus/v5 v5.2.2
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
