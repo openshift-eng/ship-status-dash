@@ -509,13 +509,17 @@ const PayloadStreamsWorkspace = ({
   const streamEvals = result ? result.streams : []
   const streams = settings.streams
 
-  const controllerGroups: { controller: string; streams: typeof streams }[] = []
+  const controllerGroups: { controller: string; url?: string; streams: typeof streams }[] = []
   for (const stream of streams) {
     const last = controllerGroups[controllerGroups.length - 1]
     if (last && last.controller === stream.release_controller) {
       last.streams.push(stream)
     } else {
-      controllerGroups.push({ controller: stream.release_controller, streams: [stream] })
+      controllerGroups.push({
+        controller: stream.release_controller,
+        url: stream.release_controller_url,
+        streams: [stream],
+      })
     }
   }
   const multipleControllers = controllerGroups.length > 1
@@ -536,11 +540,17 @@ const PayloadStreamsWorkspace = ({
           </Button>
         )}
       </Header>
-      {controllerGroups.map(({ controller, streams: groupStreams }) => (
+      {controllerGroups.map(({ controller, url, streams: groupStreams }) => (
         <Box key={controller}>
           {multipleControllers && (
             <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>
-              {controller}
+              {url ? (
+                <Link href={url} target="_blank" rel="noopener noreferrer">
+                  {controller}
+                </Link>
+              ) : (
+                controller
+              )}
             </Typography>
           )}
           {groupStreams.map((stream) => {

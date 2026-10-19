@@ -2,6 +2,7 @@ import type { SLOEvaluation, SLOWorkspace } from '../../../../../types'
 
 export interface TRTPayloadStream {
   release_controller: string
+  release_controller_url?: string
   name: string
   window?: string
   min_accepted?: number

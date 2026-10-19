@@ -30,10 +30,11 @@ type Settings struct {
 // Stream is one watched release stream. Window and MinAccepted are resolved
 // to their effective values at parse time (see resolveStreamDefaults).
 type Stream struct {
-	ReleaseController string `json:"release_controller"`
-	Name              string `json:"name"`
-	Window            string `json:"window,omitempty"`
-	MinAccepted       *int   `json:"min_accepted,omitempty"`
+	ReleaseController    string `json:"release_controller"`
+	ReleaseControllerURL string `json:"release_controller_url,omitempty"`
+	Name                 string `json:"name"`
+	Window               string `json:"window,omitempty"`
+	MinAccepted          *int   `json:"min_accepted,omitempty"`
 }
 
 // ParseSettings decodes and checks schema-specific workspace settings.
