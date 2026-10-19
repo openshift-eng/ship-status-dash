@@ -210,10 +210,18 @@ export interface SLOJob {
   recurring_count?: number
 }
 
+export interface SLOPayloadQualifier {
+  id: string
+  name: string
+  state: string
+  url: string
+}
+
 export interface SLOPayloadDetails {
   payload_url?: string
   analysis_url?: string
   finished_at?: string
+  qualifiers?: SLOPayloadQualifier[]
   shared_causes?: SLOSharedCause[]
   jobs: SLOJob[]
 }
