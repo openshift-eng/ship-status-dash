@@ -60,8 +60,8 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
       <SectionTitle>{team} SLOs</SectionTitle>
       {evaluations.map((evaluation) => {
         const result = trtPayloadResult(evaluation)
-        const groups = result ? result.groups : []
-        const metCount = groups.filter((group) => group.met).length
+        const streamEvals = result ? result.groups : []
+        const metCount = streamEvals.filter((stream) => stream.met).length
         const miss = result ? worstMiss(result) : undefined
         return (
           <Box key={evaluation.name}>
@@ -70,7 +70,7 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 <MetricLabel>{evaluation.display_name || evaluation.name}</MetricLabel>
                 {result && (
                   <MetricValue>
-                    {metCount} of {groups.length}
+                    {metCount} of {streamEvals.length}
                   </MetricValue>
                 )}
                 <Chip
@@ -98,15 +98,15 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
               )}
             </Metrics>
             <ChipRow>
-              {groups.map((group) => (
+              {streamEvals.map((stream) => (
                 <Chip
-                  key={group.key}
+                  key={stream.key}
                   size="small"
-                  label={`${group.key}${group.window ? ` (${group.window})` : ''} · ${formatAge(group.last_accepted_at)}`}
-                  color={group.met ? 'success' : 'warning'}
+                  label={`${stream.key}${stream.window ? ` (${stream.window})` : ''} · ${formatAge(stream.last_accepted_at)}`}
+                  color={stream.met ? 'success' : 'warning'}
                   clickable
                   component="a"
-                  href={`#${streamDomId(group.key)}`}
+                  href={`#${streamDomId(stream.key)}`}
                 />
               ))}
             </ChipRow>

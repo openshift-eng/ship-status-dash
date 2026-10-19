@@ -13,12 +13,12 @@ import (
 // The newest Accepted row for each watched stream is kept.
 // Rows for streams no longer in the watched list follow the global window only.
 func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) []uint {
-	globalWindow := settings.WindowDuration()
+	defaultWindow := settings.WindowDuration()
 	watched := sets.New[string]()
 	for _, stream := range settings.Streams {
 		watched.Insert(stream.Name)
 	}
-	globalCutoff := now.Add(-globalWindow)
+	defaultCutoff := now.Add(-defaultWindow)
 	byStream := map[string][]types.SLOWorkspaceItem{}
 	var other []types.SLOWorkspaceItem
 	for _, item := range items {
@@ -31,11 +31,12 @@ func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) 
 
 	var drop []uint
 	for _, stream := range settings.Streams {
-		cutoff := now.Add(-stream.EffectiveWindowDuration(globalWindow))
+		streamWindow, _ := time.ParseDuration(stream.Window)
+		cutoff := now.Add(-streamWindow)
 		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[stream.Name])...)
 	}
 	for _, item := range other {
-		if item.OccurredAt.Before(globalCutoff) {
+		if item.OccurredAt.Before(defaultCutoff) {
 			drop = append(drop, item.ID)
 		}
 	}

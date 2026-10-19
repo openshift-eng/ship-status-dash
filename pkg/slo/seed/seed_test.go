@@ -150,7 +150,7 @@ func TestRecentRejectStaysMetWhenRecentListIsShort(t *testing.T) {
 			var result payloadv1.Result
 			require.NoError(t, json.Unmarshal(got[0].Result, &result))
 
-			byStream := map[string]payloadv1.GroupEval{}
+			byStream := map[string]payloadv1.StreamEval{}
 			for _, group := range result.Groups {
 				byStream[group.Key] = group
 			}
@@ -252,7 +252,7 @@ func TestBuildSeed(t *testing.T) {
 	var result payloadv1.Result
 	require.NoError(t, json.Unmarshal(got[0].Result, &result))
 
-	byStream := map[string]payloadv1.GroupEval{}
+	byStream := map[string]payloadv1.StreamEval{}
 	for _, group := range result.Groups {
 		byStream[group.Key] = group
 	}

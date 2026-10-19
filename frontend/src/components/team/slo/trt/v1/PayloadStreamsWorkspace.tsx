@@ -506,7 +506,7 @@ const PayloadStreamsWorkspace = ({
   if (!settings) {
     return null
   }
-  const groups = result ? result.groups : []
+  const streamEvals = result ? result.groups : []
   const streams = settings.streams
 
   return (
@@ -526,7 +526,7 @@ const PayloadStreamsWorkspace = ({
         )}
       </Header>
       {streams.map((stream) => {
-        const group = groups.find((item) => item.key === stream.name)
+        const streamEval = streamEvals.find((item) => item.key === stream.name)
         const rows = streamPayloads(items, stream.name).slice(0, settings.recent_payloads)
         return (
           <StreamWell
@@ -537,15 +537,15 @@ const PayloadStreamsWorkspace = ({
           >
             <StreamHead>
               <Typography fontWeight={600}>{stream.name}</Typography>
-              {group && (
+              {streamEval && (
                 <Chip
                   size="small"
-                  color={group.met ? 'success' : 'warning'}
-                  label={`${group.met ? 'SLO met' : 'SLO missed'}${
-                    group.window ? ` (${group.window})` : ''
+                  color={streamEval.met ? 'success' : 'warning'}
+                  label={`${streamEval.met ? 'SLO met' : 'SLO missed'}${
+                    streamEval.window ? ` (${streamEval.window})` : ''
                   } · ${
-                    group.last_accepted_at
-                      ? `last accepted ${formatAge(group.last_accepted_at)} ago`
+                    streamEval.last_accepted_at
+                      ? `last accepted ${formatAge(streamEval.last_accepted_at)} ago`
                       : 'no accepted payload stored'
                   }`}
                 />

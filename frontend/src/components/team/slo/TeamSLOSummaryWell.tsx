@@ -163,7 +163,7 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
   const navigate = useNavigate()
   const status = sloStatus(evaluation?.met)
   const result = trtPayloadResult(evaluation)
-  const missedCount = result ? result.groups.filter((group) => !group.met).length : 0
+  const missedCount = result ? result.groups.filter((stream) => !stream.met).length : 0
   const open = () => navigate(`/team/${encodeURIComponent(team)}#slo`)
 
   return (
@@ -195,16 +195,16 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
       </HeaderBox>
       {result && result.groups.length > 0 && (
         <ChipRow>
-          {result.groups.map((group) => (
+          {result.groups.map((stream) => (
             <StatusChip
-              key={group.key}
+              key={stream.key}
               size="small"
-              status={group.met ? 'Healthy' : 'Degraded'}
+              status={stream.met ? 'Healthy' : 'Degraded'}
               variant="filled"
-              label={`${group.key}${group.window ? ` (${group.window})` : ''} · ${formatAge(group.last_accepted_at)}`}
+              label={`${stream.key}${stream.window ? ` (${stream.window})` : ''} · ${formatAge(stream.last_accepted_at)}`}
               onClick={(event) => {
                 event.stopPropagation()
-                navigate(`/team/${encodeURIComponent(team)}#${streamDomId(group.key)}`)
+                navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {

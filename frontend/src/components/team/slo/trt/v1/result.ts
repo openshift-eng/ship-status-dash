@@ -14,7 +14,7 @@ export interface TRTPayloadSettings {
   streams: TRTPayloadStream[]
 }
 
-export interface TRTPayloadGroup {
+export interface TRTPayloadStreamEval {
   key: string
   accepted: number
   met: boolean
@@ -26,7 +26,7 @@ export interface TRTPayloadGroup {
 export interface TRTPayloadResult {
   window: string
   target: { min_accepted: number }
-  groups: TRTPayloadGroup[]
+  groups: TRTPayloadStreamEval[]
 }
 
 export const trtPayloadSettings = (workspace: SLOWorkspace): TRTPayloadSettings | undefined => {
@@ -43,18 +43,18 @@ export const trtPayloadResult = (evaluation?: SLOEvaluation): TRTPayloadResult |
   return evaluation.result as TRTPayloadResult
 }
 
-export const worstMiss = (result: TRTPayloadResult): TRTPayloadGroup | undefined => {
-  const missed = result.groups.filter((group) => !group.met)
+export const worstMiss = (result: TRTPayloadResult): TRTPayloadStreamEval | undefined => {
+  const missed = result.groups.filter((stream) => !stream.met)
   if (missed.length === 0) {
     return undefined
   }
-  return missed.reduce((worst, group) => {
+  return missed.reduce((worst, stream) => {
     if (!worst.last_accepted_at) {
       return worst
     }
-    if (!group.last_accepted_at) {
-      return group
+    if (!stream.last_accepted_at) {
+      return stream
     }
-    return new Date(group.last_accepted_at) < new Date(worst.last_accepted_at) ? group : worst
+    return new Date(stream.last_accepted_at) < new Date(worst.last_accepted_at) ? stream : worst
   })
 }
