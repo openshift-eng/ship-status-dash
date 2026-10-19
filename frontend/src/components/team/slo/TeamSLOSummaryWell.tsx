@@ -201,7 +201,7 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
               size="small"
               status={group.met ? 'Healthy' : 'Degraded'}
               variant="filled"
-              label={`${group.key} · ${formatAge(group.last_accepted_at)}`}
+              label={`${group.key}${group.window ? ` (${group.window})` : ''} · ${formatAge(group.last_accepted_at)}`}
               onClick={(event) => {
                 event.stopPropagation()
                 navigate(`/team/${encodeURIComponent(team)}#${streamDomId(group.key)}`)

@@ -102,7 +102,7 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 <Chip
                   key={group.key}
                   size="small"
-                  label={`${group.key} · ${formatAge(group.last_accepted_at)}`}
+                  label={`${group.key}${group.window ? ` (${group.window})` : ''} · ${formatAge(group.last_accepted_at)}`}
                   color={group.met ? 'success' : 'warning'}
                   clickable
                   component="a"

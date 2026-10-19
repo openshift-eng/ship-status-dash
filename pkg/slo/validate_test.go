@@ -214,6 +214,23 @@ func TestValidateSettings(t *testing.T) {
 		{name: "missing release controller", ws: valid(func(s *payloadv1.Settings) {
 			s.Streams = []payloadv1.Stream{{Name: "nightly"}}
 		}), wantErr: "release_controller is required"},
+		{name: "per-stream window", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", Window: "168h"}}
+		})},
+		{name: "per-stream min_accepted", ws: valid(func(s *payloadv1.Settings) {
+			min := 2
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", MinAccepted: &min}}
+		})},
+		{name: "invalid per-stream window", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", Window: "bad"}}
+		}), wantErr: "stream \"nightly\": window must be a positive duration"},
+		{name: "nonpositive per-stream window", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", Window: "0s"}}
+		}), wantErr: "stream \"nightly\": window must be a positive duration"},
+		{name: "nonpositive per-stream min_accepted", ws: valid(func(s *payloadv1.Settings) {
+			min := 0
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", MinAccepted: &min}}
+		}), wantErr: "stream \"nightly\": min_accepted must be positive"},
 	}
 
 	for _, tt := range tests {

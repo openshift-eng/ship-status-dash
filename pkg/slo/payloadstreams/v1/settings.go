@@ -27,10 +27,41 @@ type Settings struct {
 	Streams        []Stream `json:"streams"`
 }
 
-// Stream is one watched release stream.
+// Stream is one watched release stream. Window and MinAccepted optionally
+// override the global Settings values for this stream.
 type Stream struct {
 	ReleaseController string `json:"release_controller"`
 	Name              string `json:"name"`
+	Window            string `json:"window,omitempty"`
+	MinAccepted       *int   `json:"min_accepted,omitempty"`
+}
+
+// EffectiveWindow returns this stream's window, falling back to the global value.
+func (s Stream) EffectiveWindow(global string) string {
+	if s.Window != "" {
+		return s.Window
+	}
+	return global
+}
+
+// EffectiveWindowDuration returns this stream's window as a duration, falling back to global.
+func (s Stream) EffectiveWindowDuration(global time.Duration) time.Duration {
+	if s.Window != "" {
+		d, err := time.ParseDuration(s.Window)
+		if err != nil {
+			return global
+		}
+		return d
+	}
+	return global
+}
+
+// EffectiveMinAccepted returns this stream's min_accepted, falling back to the global value.
+func (s Stream) EffectiveMinAccepted(global int) int {
+	if s.MinAccepted != nil {
+		return *s.MinAccepted
+	}
+	return global
 }
 
 // ParseSettings decodes and checks schema-specific workspace settings.
@@ -77,6 +108,15 @@ func (s Settings) Validate() error {
 		seen.Insert(name)
 		if strings.TrimSpace(stream.ReleaseController) == "" {
 			return fmt.Errorf("stream %q: release_controller is required", name)
+		}
+		if stream.Window != "" {
+			w, err := time.ParseDuration(stream.Window)
+			if err != nil || w <= 0 {
+				return fmt.Errorf("stream %q: window must be a positive duration", name)
+			}
+		}
+		if stream.MinAccepted != nil && *stream.MinAccepted <= 0 {
+			return fmt.Errorf("stream %q: min_accepted must be positive", name)
 		}
 	}
 	return nil

@@ -29,6 +29,17 @@ func payloadWorkspaceMin(min int, streams ...string) *types.SLOWorkspace {
 	return &types.SLOWorkspace{Kind: payloadv1.Kind, SchemaVersion: payloadv1.SchemaVersion, Spec: raw}
 }
 
+func intPtr(v int) *int { return &v }
+
+func payloadWorkspaceStreams(streams []payloadv1.Stream) *types.SLOWorkspace {
+	settings := payloadv1.Settings{Window: "24h", MinAccepted: 1, RecentPayloads: 2, Streams: streams}
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		panic(err)
+	}
+	return &types.SLOWorkspace{Kind: payloadv1.Kind, SchemaVersion: payloadv1.SchemaVersion, Spec: raw}
+}
+
 func at(t time.Time) *time.Time {
 	return &t
 }
@@ -166,6 +177,55 @@ func TestEvaluate(t *testing.T) {
 			wantLast: []*time.Time{nil},
 		},
 		{
+			name: "stream with custom window meets while global misses",
+			team: &types.TeamSLOConfig{Team: "TRT", SLOs: []types.NamedSLO{{
+				Name: "accepted-payload-per-day", Source: payloadv1.Source,
+				Workspace: payloadWorkspaceStreams([]payloadv1.Stream{
+					{ReleaseController: "amd64", Name: "nightly"},
+					{ReleaseController: "amd64", Name: "multi-arch", Window: "168h"},
+				}),
+			}}},
+			items: []types.SLOWorkspaceItem{
+				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: inWindow},
+				{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-72 * time.Hour)},
+			},
+			wantLen: 1, wantMet: true, wantWindow: "24h", wantMin: 1,
+			wantAccepted: []int{1, 1}, wantGroupMet: []bool{true, true},
+		},
+		{
+			name: "stream with custom window misses outside its window",
+			team: &types.TeamSLOConfig{Team: "TRT", SLOs: []types.NamedSLO{{
+				Name: "accepted-payload-per-day", Source: payloadv1.Source,
+				Workspace: payloadWorkspaceStreams([]payloadv1.Stream{
+					{ReleaseController: "amd64", Name: "nightly"},
+					{ReleaseController: "amd64", Name: "multi-arch", Window: "48h"},
+				}),
+			}}},
+			items: []types.SLOWorkspaceItem{
+				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: inWindow},
+				{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-72 * time.Hour)},
+			},
+			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 1,
+			wantAccepted: []int{1, 0}, wantGroupMet: []bool{true, false},
+		},
+		{
+			name: "stream with custom min_accepted",
+			team: &types.TeamSLOConfig{Team: "TRT", SLOs: []types.NamedSLO{{
+				Name: "accepted-payload-per-day", Source: payloadv1.Source,
+				Workspace: payloadWorkspaceStreams([]payloadv1.Stream{
+					{ReleaseController: "amd64", Name: "nightly"},
+					{ReleaseController: "amd64", Name: "strict", MinAccepted: intPtr(3)},
+				}),
+			}}},
+			items: []types.SLOWorkspaceItem{
+				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: inWindow},
+				{Kind: payloadv1.Kind, GroupKey: "strict", Outcome: "Accepted", OccurredAt: now.Add(-2 * time.Hour)},
+				{Kind: payloadv1.Kind, GroupKey: "strict", Outcome: "Accepted", OccurredAt: now.Add(-4 * time.Hour)},
+			},
+			wantLen: 1, wantMet: false, wantMin: 1,
+			wantAccepted: []int{1, 2}, wantGroupMet: []bool{true, false},
+		},
+		{
 			name:    "ignores unknown source",
 			team:    &types.TeamSLOConfig{SLOs: []types.NamedSLO{{Name: "other", Source: "prometheus"}}},
 			wantLen: 0,
@@ -206,6 +266,56 @@ func TestEvaluate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEvaluatePerStreamOverrides(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	team := &types.TeamSLOConfig{Team: "TRT", SLOs: []types.NamedSLO{{
+		Name: "accepted-payload-per-day", Source: payloadv1.Source,
+		Workspace: payloadWorkspaceStreams([]payloadv1.Stream{
+			{ReleaseController: "amd64", Name: "nightly"},
+			{ReleaseController: "amd64", Name: "multi-arch", Window: "168h", MinAccepted: intPtr(2)},
+		}),
+	}}}
+	items := []types.SLOWorkspaceItem{
+		{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-2 * time.Hour)},
+		{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-72 * time.Hour)},
+		{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-120 * time.Hour)},
+	}
+	got, err := Evaluate(now, team, items)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.True(t, got[0].Met)
+	result := payloadResult(t, got[0])
+
+	assert.Equal(t, "24h", result.Window)
+	assert.Equal(t, 1, result.Target.MinAccepted)
+
+	require.Len(t, result.Groups, 2)
+
+	assert.Equal(t, "", result.Groups[0].Window)
+	assert.Nil(t, result.Groups[0].Target)
+
+	assert.Equal(t, "168h", result.Groups[1].Window)
+	require.NotNil(t, result.Groups[1].Target)
+	assert.Equal(t, 2, result.Groups[1].Target.MinAccepted)
+}
+
+func TestPrunePerStreamWindow(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	items := []types.SLOWorkspaceItem{
+		{Model: gorm.Model{ID: 1}, ItemKey: "a", GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-30 * time.Hour)},
+		{Model: gorm.Model{ID: 2}, ItemKey: "b", GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-30 * time.Hour)},
+	}
+	settings := payloadv1.Settings{
+		Window: "24h", MinAccepted: 1, RecentPayloads: 2,
+		Streams: []payloadv1.Stream{
+			{ReleaseController: "amd64", Name: "nightly"},
+			{ReleaseController: "amd64", Name: "multi-arch", Window: "168h"},
+		},
+	}
+	drop := payloadv1.PruneIDs(now, settings, items)
+	assert.NotContains(t, drop, uint(2), "multi-arch item within its 168h window should be kept")
 }
 
 func TestPruneAndDisplay(t *testing.T) {

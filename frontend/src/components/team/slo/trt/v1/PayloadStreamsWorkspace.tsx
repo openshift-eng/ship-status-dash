@@ -541,7 +541,9 @@ const PayloadStreamsWorkspace = ({
                 <Chip
                   size="small"
                   color={group.met ? 'success' : 'warning'}
-                  label={`${group.met ? 'SLO met' : 'SLO missed'} · ${
+                  label={`${group.met ? 'SLO met' : 'SLO missed'}${
+                    group.window ? ` (${group.window})` : ''
+                  } · ${
                     group.last_accepted_at
                       ? `last accepted ${formatAge(group.last_accepted_at)} ago`
                       : 'no accepted payload stored'

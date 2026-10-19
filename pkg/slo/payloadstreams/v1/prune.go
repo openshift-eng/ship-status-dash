@@ -11,14 +11,14 @@ import (
 
 // PruneIDs returns item IDs outside the configured window and outside the last-N set.
 // The newest Accepted row for each watched stream is kept.
-// Rows for streams no longer in the watched list follow the window only.
+// Rows for streams no longer in the watched list follow the global window only.
 func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) []uint {
-	streams := make([]string, 0, len(settings.Streams))
+	globalWindow := settings.WindowDuration()
+	watched := sets.New[string]()
 	for _, stream := range settings.Streams {
-		streams = append(streams, stream.Name)
+		watched.Insert(stream.Name)
 	}
-	watched := sets.New[string](streams...)
-	cutoff := now.Add(-settings.WindowDuration())
+	globalCutoff := now.Add(-globalWindow)
 	byStream := map[string][]types.SLOWorkspaceItem{}
 	var other []types.SLOWorkspaceItem
 	for _, item := range items {
@@ -30,11 +30,12 @@ func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) 
 	}
 
 	var drop []uint
-	for _, name := range streams {
-		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[name])...)
+	for _, stream := range settings.Streams {
+		cutoff := now.Add(-stream.EffectiveWindowDuration(globalWindow))
+		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[stream.Name])...)
 	}
 	for _, item := range other {
-		if item.OccurredAt.Before(cutoff) {
+		if item.OccurredAt.Before(globalCutoff) {
 			drop = append(drop, item.ID)
 		}
 	}

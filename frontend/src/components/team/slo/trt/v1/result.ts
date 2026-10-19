@@ -3,6 +3,8 @@ import type { SLOEvaluation, SLOWorkspace } from '../../../../../types'
 export interface TRTPayloadStream {
   release_controller: string
   name: string
+  window?: string
+  min_accepted?: number
 }
 
 export interface TRTPayloadSettings {
@@ -17,6 +19,8 @@ export interface TRTPayloadGroup {
   accepted: number
   met: boolean
   last_accepted_at?: string
+  window?: string
+  target?: { min_accepted: number }
 }
 
 export interface TRTPayloadResult {

@@ -11,12 +11,15 @@ type Target struct {
 	MinAccepted int `json:"min_accepted"`
 }
 
-// GroupEval is one stream's met/miss result.
+// GroupEval is one stream's met/miss result. Window and Target are set only
+// when the stream overrides the global defaults.
 type GroupEval struct {
 	Key            string     `json:"key"`
 	Accepted       int        `json:"accepted"`
 	Met            bool       `json:"met"`
 	LastAcceptedAt *time.Time `json:"last_accepted_at,omitempty"`
+	Window         string     `json:"window,omitempty"`
+	Target         *Target    `json:"target,omitempty"`
 }
 
 // Result is the payload_streams v1 evaluation.
@@ -29,7 +32,7 @@ type Result struct {
 
 // Evaluate scores accepted payloads in the configured window.
 func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []types.SLOWorkspaceItem) Result {
-	cutoff := now.Add(-settings.WindowDuration())
+	globalWindow := settings.WindowDuration()
 	result := Result{
 		Window: settings.Window,
 		Target: Target{MinAccepted: settings.MinAccepted},
@@ -37,7 +40,17 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 		Groups: []GroupEval{},
 	}
 	for _, stream := range settings.Streams {
+		streamWindow := stream.EffectiveWindowDuration(globalWindow)
+		streamMin := stream.EffectiveMinAccepted(settings.MinAccepted)
+		cutoff := now.Add(-streamWindow)
+
 		group := GroupEval{Key: stream.Name, Met: false}
+		if stream.Window != "" {
+			group.Window = stream.Window
+		}
+		if stream.MinAccepted != nil {
+			group.Target = &Target{MinAccepted: *stream.MinAccepted}
+		}
 		var last *time.Time
 		for i := range items {
 			item := &items[i]
@@ -57,7 +70,7 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 			}
 		}
 		group.LastAcceptedAt = last
-		group.Met = group.Accepted >= settings.MinAccepted
+		group.Met = group.Accepted >= streamMin
 		if !group.Met {
 			result.Met = false
 		}
