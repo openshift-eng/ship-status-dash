@@ -540,8 +540,8 @@ const PayloadStreamsWorkspace = ({
           </Button>
         )}
       </Header>
-      {controllerGroups.map(({ controller, url, streams: groupStreams }) => (
-        <Box key={controller}>
+      {controllerGroups.map(({ controller, url, streams: groupStreams }, groupIndex) => (
+        <Box key={`${controller}-${groupIndex}`}>
           {multipleControllers && (
             <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>
               {url ? (
