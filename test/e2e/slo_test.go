@@ -44,7 +44,7 @@ type e2eResult struct {
 	Target struct {
 		MinAccepted int `json:"min_accepted"`
 	} `json:"target"`
-	Groups []e2eGroup `json:"groups"`
+	Streams []e2eGroup `json:"streams"`
 }
 
 type e2eEvaluation struct {
@@ -278,11 +278,11 @@ func testTRTPayloadStreamsWorkspace(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "24h", result.Window)
 		assert.Equal(t, 1, result.Target.MinAccepted)
 		assert.False(t, ev.Met)
-		require.Len(t, result.Groups, 2)
-		assert.Equal(t, trtStreamNightly, result.Groups[0].Key)
-		assert.Equal(t, trtStreamCI, result.Groups[1].Key)
-		assert.False(t, result.Groups[0].Met)
-		assert.Nil(t, result.Groups[0].LastAcceptedAt)
+		require.Len(t, result.Streams, 2)
+		assert.Equal(t, trtStreamNightly, result.Streams[0].Key)
+		assert.Equal(t, trtStreamCI, result.Streams[1].Key)
+		assert.False(t, result.Streams[0].Met)
+		assert.Nil(t, result.Streams[0].LastAcceptedAt)
 	}
 }
 
@@ -550,7 +550,7 @@ func assertSeededWorkspace(t *testing.T, view e2eTeamView) {
 	require.NotEmpty(t, view.Evaluations)
 	ev := view.Evaluations[0]
 	result := payloadResult(t, ev)
-	require.Len(t, result.Groups, len(streams))
+	require.Len(t, result.Streams, len(streams))
 	require.NotEmpty(t, view.Items)
 	if seed.MissIndex(len(streams)) >= 0 {
 		assert.False(t, ev.Met)
@@ -606,11 +606,11 @@ func assertEvaluationsMatch(t *testing.T, team, summary []e2eEvaluation) {
 		assert.Equal(t, team[i].Met, summary[i].Met)
 		teamResult := payloadResult(t, team[i])
 		summaryResult := payloadResult(t, summary[i])
-		require.Len(t, summaryResult.Groups, len(teamResult.Groups))
-		for j := range teamResult.Groups {
-			assert.Equal(t, teamResult.Groups[j].Key, summaryResult.Groups[j].Key)
-			assert.Equal(t, teamResult.Groups[j].Met, summaryResult.Groups[j].Met)
-			assert.Equal(t, teamResult.Groups[j].Accepted, summaryResult.Groups[j].Accepted)
+		require.Len(t, summaryResult.Streams, len(teamResult.Streams))
+		for j := range teamResult.Streams {
+			assert.Equal(t, teamResult.Streams[j].Key, summaryResult.Streams[j].Key)
+			assert.Equal(t, teamResult.Streams[j].Met, summaryResult.Streams[j].Met)
+			assert.Equal(t, teamResult.Streams[j].Accepted, summaryResult.Streams[j].Accepted)
 		}
 	}
 }
@@ -880,7 +880,7 @@ func itemByKey(t *testing.T, items []e2eItem, key string) *e2eItem {
 
 func groupByKey(t *testing.T, ev e2eEvaluation, key string) e2eGroup {
 	t.Helper()
-	for _, group := range payloadResult(t, ev).Groups {
+	for _, group := range payloadResult(t, ev).Streams {
 		if group.Key == key {
 			return group
 		}
