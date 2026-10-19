@@ -512,7 +512,7 @@ const PayloadStreamsWorkspace = ({
   return (
     <Box>
       <Header>
-        <Typography variant="h6">Payload streams (amd64)</Typography>
+        <Typography variant="h6">Payload streams</Typography>
         {canEdit && (
           <Button
             variant="outlined"

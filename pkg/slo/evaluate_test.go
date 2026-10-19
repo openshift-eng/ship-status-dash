@@ -305,7 +305,9 @@ func TestPrunePerStreamWindow(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	items := []types.SLOWorkspaceItem{
 		{Model: gorm.Model{ID: 1}, ItemKey: "a", GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-30 * time.Hour)},
-		{Model: gorm.Model{ID: 2}, ItemKey: "b", GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-30 * time.Hour)},
+		{Model: gorm.Model{ID: 2}, ItemKey: "b", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-30 * time.Hour)},
+		{Model: gorm.Model{ID: 3}, ItemKey: "c", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-2 * time.Hour)},
+		{Model: gorm.Model{ID: 4}, ItemKey: "d", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-time.Hour)},
 	}
 	settings := payloadv1.Settings{
 		Window: "24h", MinAccepted: 1, RecentPayloads: 2,

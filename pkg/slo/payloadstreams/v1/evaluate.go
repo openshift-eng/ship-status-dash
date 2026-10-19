@@ -45,11 +45,11 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 		cutoff := now.Add(-streamWindow)
 
 		group := GroupEval{Key: stream.Name, Met: false}
-		if stream.Window != "" {
+		if stream.Window != "" && streamWindow != globalWindow {
 			group.Window = stream.Window
 		}
-		if stream.MinAccepted != nil {
-			group.Target = &Target{MinAccepted: *stream.MinAccepted}
+		if stream.MinAccepted != nil && streamMin != settings.MinAccepted {
+			group.Target = &Target{MinAccepted: streamMin}
 		}
 		var last *time.Time
 		for i := range items {
