@@ -60,16 +60,16 @@ func TestEvaluate(t *testing.T) {
 	justBefore := cutoff.Add(-time.Millisecond)
 
 	tests := []struct {
-		name         string
-		team         *types.TeamSLOConfig
-		items        []types.SLOWorkspaceItem
-		wantLen      int
-		wantMet      bool
-		wantAccepted []int
-		wantGroupMet []bool
-		wantLast     []*time.Time
-		wantWindow   string
-		wantMin      int
+		name          string
+		team          *types.TeamSLOConfig
+		items         []types.SLOWorkspaceItem
+		wantLen       int
+		wantMet       bool
+		wantAccepted  []int
+		wantStreamMet []bool
+		wantLast      []*time.Time
+		wantWindow    string
+		wantMin       int
 	}{
 		{
 			name: "misses a stream outside the window",
@@ -84,7 +84,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "5.0.0-0.nightly", Outcome: "Rejected", OccurredAt: now.Add(-3 * time.Hour)},
 				{Kind: payloadv1.Kind, GroupKey: "4.19-gone", Outcome: "Accepted", OccurredAt: now.Add(-time.Hour)},
 			},
-			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 1, wantAccepted: []int{1, 0}, wantGroupMet: []bool{true, false},
+			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 1, wantAccepted: []int{1, 0}, wantStreamMet: []bool{true, false},
 		},
 		{
 			name: "ignores future payloads",
@@ -98,7 +98,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "5.1.0-0.nightly", Outcome: "Accepted", OccurredAt: now},
 				{Kind: payloadv1.Kind, GroupKey: "5.0.0-0.nightly", Outcome: "Accepted", OccurredAt: now.Add(time.Hour)},
 			},
-			wantLen: 1, wantMet: false, wantAccepted: []int{2, 0}, wantGroupMet: []bool{true, false},
+			wantLen: 1, wantMet: false, wantAccepted: []int{2, 0}, wantStreamMet: []bool{true, false},
 			wantLast: []*time.Time{at(now), nil},
 		},
 		{
@@ -112,7 +112,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-time.Hour)},
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Rejected", OccurredAt: now.Add(-time.Minute)},
 			},
-			wantLen: 1, wantMet: true, wantWindow: "24h", wantMin: 2, wantAccepted: []int{2}, wantGroupMet: []bool{true},
+			wantLen: 1, wantMet: true, wantWindow: "24h", wantMin: 2, wantAccepted: []int{2}, wantStreamMet: []bool{true},
 		},
 		{
 			name: "misses when accepted count is below min_accepted",
@@ -123,7 +123,7 @@ func TestEvaluate(t *testing.T) {
 			items: []types.SLOWorkspaceItem{
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: inWindow},
 			},
-			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 2, wantAccepted: []int{1}, wantGroupMet: []bool{false},
+			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 2, wantAccepted: []int{1}, wantStreamMet: []bool{false},
 		},
 		{
 			name: "counts one above min_accepted",
@@ -136,7 +136,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-4 * time.Hour)},
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(-3 * time.Hour)},
 			},
-			wantLen: 1, wantMet: true, wantMin: 2, wantAccepted: []int{3}, wantGroupMet: []bool{true},
+			wantLen: 1, wantMet: true, wantMin: 2, wantAccepted: []int{3}, wantStreamMet: []bool{true},
 		},
 		{
 			name: "counts the cutoff and records an older miss as last accepted",
@@ -149,7 +149,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "before-cutoff", Outcome: "Accepted", OccurredAt: justBefore},
 				{Kind: payloadv1.Kind, GroupKey: "at-cutoff", Outcome: "Accepted", OccurredAt: now.Add(time.Hour)},
 			},
-			wantLen: 1, wantMet: false, wantAccepted: []int{1, 0}, wantGroupMet: []bool{true, false},
+			wantLen: 1, wantMet: false, wantAccepted: []int{1, 0}, wantStreamMet: []bool{true, false},
 			wantLast: []*time.Time{at(cutoff), at(justBefore)},
 		},
 		{
@@ -161,7 +161,7 @@ func TestEvaluate(t *testing.T) {
 			items: []types.SLOWorkspaceItem{
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now},
 			},
-			wantLen: 1, wantMet: true, wantAccepted: []int{1}, wantGroupMet: []bool{true},
+			wantLen: 1, wantMet: true, wantAccepted: []int{1}, wantStreamMet: []bool{true},
 			wantLast: []*time.Time{at(now)},
 		},
 		{
@@ -173,7 +173,7 @@ func TestEvaluate(t *testing.T) {
 			items: []types.SLOWorkspaceItem{
 				{Kind: payloadv1.Kind, GroupKey: "nightly", Outcome: "Accepted", OccurredAt: now.Add(time.Hour)},
 			},
-			wantLen: 1, wantMet: false, wantAccepted: []int{0}, wantGroupMet: []bool{false},
+			wantLen: 1, wantMet: false, wantAccepted: []int{0}, wantStreamMet: []bool{false},
 			wantLast: []*time.Time{nil},
 		},
 		{
@@ -190,7 +190,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-72 * time.Hour)},
 			},
 			wantLen: 1, wantMet: true, wantWindow: "24h", wantMin: 1,
-			wantAccepted: []int{1, 1}, wantGroupMet: []bool{true, true},
+			wantAccepted: []int{1, 1}, wantStreamMet: []bool{true, true},
 		},
 		{
 			name: "stream with custom window misses outside its window",
@@ -206,7 +206,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "multi-arch", Outcome: "Accepted", OccurredAt: now.Add(-72 * time.Hour)},
 			},
 			wantLen: 1, wantMet: false, wantWindow: "24h", wantMin: 1,
-			wantAccepted: []int{1, 0}, wantGroupMet: []bool{true, false},
+			wantAccepted: []int{1, 0}, wantStreamMet: []bool{true, false},
 		},
 		{
 			name: "stream with custom min_accepted",
@@ -223,7 +223,7 @@ func TestEvaluate(t *testing.T) {
 				{Kind: payloadv1.Kind, GroupKey: "strict", Outcome: "Accepted", OccurredAt: now.Add(-4 * time.Hour)},
 			},
 			wantLen: 1, wantMet: false, wantMin: 1,
-			wantAccepted: []int{1, 2}, wantGroupMet: []bool{true, false},
+			wantAccepted: []int{1, 2}, wantStreamMet: []bool{true, false},
 		},
 		{
 			name:    "ignores unknown source",
@@ -246,22 +246,22 @@ func TestEvaluate(t *testing.T) {
 				assert.Equal(t, tt.wantWindow, result.Window)
 				assert.Equal(t, tt.wantMin, result.Target.MinAccepted)
 			}
-			require.Len(t, result.Groups, len(tt.wantAccepted))
-			require.Len(t, tt.wantGroupMet, len(tt.wantAccepted))
+			require.Len(t, result.Streams, len(tt.wantAccepted))
+			require.Len(t, tt.wantStreamMet, len(tt.wantAccepted))
 			for i, accepted := range tt.wantAccepted {
-				assert.Equal(t, accepted, result.Groups[i].Accepted)
-				assert.Equal(t, tt.wantGroupMet[i], result.Groups[i].Met)
+				assert.Equal(t, accepted, result.Streams[i].Accepted)
+				assert.Equal(t, tt.wantStreamMet[i], result.Streams[i].Met)
 			}
 			if tt.wantLast != nil {
-				require.Len(t, tt.wantLast, len(result.Groups))
+				require.Len(t, tt.wantLast, len(result.Streams))
 				for i, want := range tt.wantLast {
-					got := result.Groups[i].LastAcceptedAt
+					got := result.Streams[i].LastAcceptedAt
 					if want == nil {
 						assert.Nil(t, got)
 						continue
 					}
 					require.NotNil(t, got)
-					assert.True(t, got.Equal(*want), "group %d last accepted %s, want %s", i, got, want)
+					assert.True(t, got.Equal(*want), "stream %d last accepted %s, want %s", i, got, want)
 				}
 			}
 		})
@@ -291,14 +291,14 @@ func TestEvaluatePerStreamOverrides(t *testing.T) {
 	assert.Equal(t, "24h", result.Window)
 	assert.Equal(t, 1, result.Target.MinAccepted)
 
-	require.Len(t, result.Groups, 2)
+	require.Len(t, result.Streams, 2)
 
-	assert.Equal(t, "", result.Groups[0].Window)
-	assert.Nil(t, result.Groups[0].Target)
+	assert.Equal(t, "", result.Streams[0].Window)
+	assert.Nil(t, result.Streams[0].Target)
 
-	assert.Equal(t, "168h", result.Groups[1].Window)
-	require.NotNil(t, result.Groups[1].Target)
-	assert.Equal(t, 2, result.Groups[1].Target.MinAccepted)
+	assert.Equal(t, "168h", result.Streams[1].Window)
+	require.NotNil(t, result.Streams[1].Target)
+	assert.Equal(t, 2, result.Streams[1].Target.MinAccepted)
 }
 
 func TestPrunePerStreamWindow(t *testing.T) {

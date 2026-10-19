@@ -163,7 +163,7 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
   const navigate = useNavigate()
   const status = sloStatus(evaluation?.met)
   const result = trtPayloadResult(evaluation)
-  const missedCount = result ? result.groups.filter((stream) => !stream.met).length : 0
+  const missedCount = result ? result.streams.filter((stream) => !stream.met).length : 0
   const open = () => navigate(`/team/${encodeURIComponent(team)}#slo`)
 
   return (
@@ -184,8 +184,8 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
             label={
               result
                 ? evaluation.met
-                  ? `All ${result.groups.length} met`
-                  : `${missedCount} of ${result.groups.length} missed`
+                  ? `All ${result.streams.length} met`
+                  : `${missedCount} of ${result.streams.length} missed`
                 : evaluation.met
                   ? 'Met'
                   : 'Missed'
@@ -193,9 +193,9 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
           />
         )}
       </HeaderBox>
-      {result && result.groups.length > 0 && (
+      {result && result.streams.length > 0 && (
         <ChipRow>
-          {result.groups.map((stream) => (
+          {result.streams.map((stream) => (
             <StatusChip
               key={stream.key}
               size="small"

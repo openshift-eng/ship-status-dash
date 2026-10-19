@@ -24,20 +24,20 @@ type StreamEval struct {
 
 // Result is the payload_streams v1 evaluation.
 type Result struct {
-	Window string       `json:"window"`
-	Target Target       `json:"target"`
-	Groups []StreamEval `json:"groups"`
-	Met    bool         `json:"-"`
+	Window  string       `json:"window"`
+	Target  Target       `json:"target"`
+	Streams []StreamEval `json:"streams"`
+	Met     bool         `json:"-"`
 }
 
 // Evaluate scores accepted payloads in the configured window.
 func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []types.SLOWorkspaceItem) Result {
 	defaultWindow := settings.WindowDuration()
 	result := Result{
-		Window: settings.Window,
-		Target: Target{MinAccepted: settings.MinAccepted},
-		Met:    true,
-		Groups: []StreamEval{},
+		Window:  settings.Window,
+		Target:  Target{MinAccepted: settings.MinAccepted},
+		Met:     true,
+		Streams: []StreamEval{},
 	}
 	for _, stream := range settings.Streams {
 		streamWindow, _ := time.ParseDuration(stream.Window)
@@ -74,7 +74,7 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 		if !se.Met {
 			result.Met = false
 		}
-		result.Groups = append(result.Groups, se)
+		result.Streams = append(result.Streams, se)
 	}
 	if len(settings.Streams) == 0 {
 		result.Met = false

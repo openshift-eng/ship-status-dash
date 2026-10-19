@@ -60,7 +60,7 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
       <SectionTitle>{team} SLOs</SectionTitle>
       {evaluations.map((evaluation) => {
         const result = trtPayloadResult(evaluation)
-        const streamEvals = result ? result.groups : []
+        const streamEvals = result ? result.streams : []
         const metCount = streamEvals.filter((stream) => stream.met).length
         const miss = result ? worstMiss(result) : undefined
         return (

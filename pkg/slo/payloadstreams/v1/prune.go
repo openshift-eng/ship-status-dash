@@ -83,17 +83,17 @@ func DisplayItems(settings Settings, items []types.SLOWorkspaceItem) []types.SLO
 	}
 	var out []types.SLOWorkspaceItem
 	for _, stream := range settings.Streams {
-		group := byStream[stream.Name]
-		sort.Slice(group, func(i, j int) bool {
-			if group[i].OccurredAt.Equal(group[j].OccurredAt) {
-				return group[i].ID > group[j].ID
+		rows := byStream[stream.Name]
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].OccurredAt.Equal(rows[j].OccurredAt) {
+				return rows[i].ID > rows[j].ID
 			}
-			return group[i].OccurredAt.After(group[j].OccurredAt)
+			return rows[i].OccurredAt.After(rows[j].OccurredAt)
 		})
-		if len(group) > settings.RecentPayloads {
-			group = group[:settings.RecentPayloads]
+		if len(rows) > settings.RecentPayloads {
+			rows = rows[:settings.RecentPayloads]
 		}
-		out = append(out, group...)
+		out = append(out, rows...)
 	}
 	if out == nil {
 		out = []types.SLOWorkspaceItem{}

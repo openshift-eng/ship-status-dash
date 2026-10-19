@@ -506,7 +506,7 @@ const PayloadStreamsWorkspace = ({
   if (!settings) {
     return null
   }
-  const streamEvals = result ? result.groups : []
+  const streamEvals = result ? result.streams : []
   const streams = settings.streams
 
   const controllerGroups: { controller: string; streams: typeof streams }[] = []

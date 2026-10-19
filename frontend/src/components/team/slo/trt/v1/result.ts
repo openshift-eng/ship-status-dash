@@ -26,7 +26,7 @@ export interface TRTPayloadStreamEval {
 export interface TRTPayloadResult {
   window: string
   target: { min_accepted: number }
-  groups: TRTPayloadStreamEval[]
+  streams: TRTPayloadStreamEval[]
 }
 
 export const trtPayloadSettings = (workspace: SLOWorkspace): TRTPayloadSettings | undefined => {
@@ -44,7 +44,7 @@ export const trtPayloadResult = (evaluation?: SLOEvaluation): TRTPayloadResult |
 }
 
 export const worstMiss = (result: TRTPayloadResult): TRTPayloadStreamEval | undefined => {
-  const missed = result.groups.filter((stream) => !stream.met)
+  const missed = result.streams.filter((stream) => !stream.met)
   if (missed.length === 0) {
     return undefined
   }
