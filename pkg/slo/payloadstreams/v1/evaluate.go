@@ -12,7 +12,7 @@ type Target struct {
 }
 
 // StreamEval is one stream's met/miss result. Window and Target are set only
-// when the stream overrides the workspace defaults.
+// when the stream's effective value differs from the workspace default.
 type StreamEval struct {
 	Key                  string     `json:"key"`
 	ReleaseController    string     `json:"release_controller"`
@@ -34,6 +34,7 @@ type Result struct {
 
 // Evaluate scores accepted payloads in the configured window.
 func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []types.SLOWorkspaceItem) Result {
+	settings.resolveStreamDefaults()
 	defaultWindow := settings.WindowDuration()
 	result := Result{
 		Window:  settings.Window,

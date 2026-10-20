@@ -13,6 +13,7 @@ import (
 // The newest Accepted row for each watched stream is kept.
 // Rows for streams no longer in the watched list follow the global window only.
 func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) []uint {
+	settings.resolveStreamDefaults()
 	defaultWindow := settings.WindowDuration()
 	watched := sets.New[string]()
 	for _, stream := range settings.Streams {

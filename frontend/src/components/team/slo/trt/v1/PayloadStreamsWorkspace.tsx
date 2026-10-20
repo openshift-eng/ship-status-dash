@@ -15,9 +15,14 @@ import { getStatusChipColor } from '../../../../../utils/helpers'
 import { slugify } from '../../../../../utils/slugify'
 import { getStatusTintStyles } from '../../../../../utils/styles'
 import MarkdownRenderer from '../../../../MarkdownRenderer'
-import { controllerDomId, finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
+import { controllerDomId, finishedLabel, linkLabel, streamDomId } from '../../format'
 
-import { parseHours, trtPayloadResult, trtPayloadSettings } from './result'
+import {
+  groupStreamsByController,
+  streamTooltip,
+  trtPayloadResult,
+  trtPayloadSettings,
+} from './result'
 import UpsertPayloadItemDialog from './UpsertPayloadItemDialog'
 
 const streamPayloads = (rows: SLOItem[], stream: string): SLOItem[] =>
@@ -509,19 +514,7 @@ const PayloadStreamsWorkspace = ({
   const streamEvals = result ? result.streams : []
   const streams = settings.streams
 
-  const controllerGroups: { controller: string; url?: string; streams: typeof streams }[] = []
-  for (const stream of streams) {
-    const last = controllerGroups[controllerGroups.length - 1]
-    if (last && last.controller === stream.release_controller) {
-      last.streams.push(stream)
-    } else {
-      controllerGroups.push({
-        controller: stream.release_controller,
-        url: stream.release_controller_url,
-        streams: [stream],
-      })
-    }
-  }
+  const controllerGroups = groupStreamsByController(streams)
   const multipleControllers = controllerGroups.length > 1
 
   return (
@@ -569,24 +562,16 @@ const PayloadStreamsWorkspace = ({
               >
                 <StreamHead>
                   <Typography fontWeight={600}>{stream.name}</Typography>
-                  {streamEval &&
-                    (() => {
-                      const age = streamEval.last_accepted_at
-                        ? formatAge(streamEval.last_accepted_at)
-                        : 'never'
-                      const windowHours = parseHours(streamEval.window || settings.window)
-                      const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
-                      return (
-                        <Tooltip title={tip} describeChild arrow>
-                          <Chip
-                            size="small"
-                            tabIndex={0}
-                            color={streamEval.met ? 'success' : 'warning'}
-                            label={streamEval.met ? 'SLO met' : 'SLO missed'}
-                          />
-                        </Tooltip>
-                      )
-                    })()}
+                  {streamEval && (
+                    <Tooltip title={streamTooltip(streamEval, settings.window)} describeChild arrow>
+                      <Chip
+                        size="small"
+                        tabIndex={0}
+                        color={streamEval.met ? 'success' : 'warning'}
+                        label={streamEval.met ? 'SLO met' : 'SLO missed'}
+                      />
+                    </Tooltip>
+                  )}
                 </StreamHead>
                 <PayloadList>
                   {rows.length === 0 && <Typography>No payloads stored</Typography>}

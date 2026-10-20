@@ -8,9 +8,9 @@ import { worstOutageStatus } from '../../../utils/helpers'
 import { getStatusTintStyles } from '../../../utils/styles'
 import { StatusChip } from '../../StatusColors'
 
-import { formatAge, streamDomId, subComponentPath } from './format'
+import { streamDomId, subComponentPath } from './format'
 import SLOOutageCard from './SLOOutageCard'
-import { parseHours, trtPayloadResult } from './trt/v1/result'
+import { streamTooltip, trtPayloadResult } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(5),
@@ -196,11 +196,13 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
       {result && result.streams.length > 0 && (
         <ChipRow>
           {result.streams.map((stream) => {
-            const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
-            const windowHours = parseHours(stream.window || result.window)
-            const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
             return (
-              <Tooltip key={stream.key} title={tip} describeChild arrow>
+              <Tooltip
+                key={stream.key}
+                title={streamTooltip(stream, result.window)}
+                describeChild
+                arrow
+              >
                 <Chip
                   size="small"
                   color={stream.met ? 'success' : 'warning'}

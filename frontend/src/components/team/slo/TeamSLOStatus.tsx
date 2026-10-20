@@ -2,8 +2,13 @@ import { Box, Chip, Divider, styled, Tooltip, Typography } from '@mui/material'
 
 import type { SLOComponentBlock, SLOEvaluation } from '../../../types'
 
-import { controllerDomId, formatAge, streamDomId } from './format'
-import { groupStreamsByController, parseHours, trtPayloadResult, worstMiss } from './trt/v1/result'
+import { controllerDomId, streamDomId } from './format'
+import {
+  groupStreamsByController,
+  streamTooltip,
+  trtPayloadResult,
+  worstMiss,
+} from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
@@ -74,15 +79,6 @@ const ControllerChip = styled(Chip)(({ theme }) => ({
   fontWeight: 600,
   marginBottom: theme.spacing(0.5),
 }))
-
-const streamTooltip = (
-  stream: { last_accepted_at?: string; window?: string },
-  defaultWindow: string,
-) => {
-  const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
-  const windowHours = parseHours(stream.window || defaultWindow)
-  return `Last accepted ${age} ago; expected every ${windowHours}h`
-}
 
 interface TeamSLOStatusProps {
   team: string

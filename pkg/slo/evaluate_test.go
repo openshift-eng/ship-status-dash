@@ -306,6 +306,7 @@ func TestPrunePerStreamWindow(t *testing.T) {
 		items          []types.SLOWorkspaceItem
 		settings       payloadv1.Settings
 		wantNotDropped []uint
+		wantDropped    []uint
 	}{
 		{
 			name: "respects per-stream 168h window",
@@ -314,6 +315,7 @@ func TestPrunePerStreamWindow(t *testing.T) {
 				{Model: gorm.Model{ID: 2}, ItemKey: "b", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-30 * time.Hour)},
 				{Model: gorm.Model{ID: 3}, ItemKey: "c", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-2 * time.Hour)},
 				{Model: gorm.Model{ID: 4}, ItemKey: "d", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-time.Hour)},
+				{Model: gorm.Model{ID: 5}, ItemKey: "e", GroupKey: "multi-arch", Outcome: "Rejected", OccurredAt: now.Add(-200 * time.Hour)},
 			},
 			settings: payloadv1.Settings{
 				Window: "24h", MinAccepted: 1, RecentPayloads: 2,
@@ -323,6 +325,7 @@ func TestPrunePerStreamWindow(t *testing.T) {
 				},
 			},
 			wantNotDropped: []uint{2},
+			wantDropped:    []uint{5},
 		},
 		{
 			name: "inherits global window for stream without override",
@@ -348,6 +351,9 @@ func TestPrunePerStreamWindow(t *testing.T) {
 			drop := payloadv1.PruneIDs(now, settings, tt.items)
 			for _, id := range tt.wantNotDropped {
 				assert.NotContains(t, drop, id, "item %d within its stream window should be kept", id)
+			}
+			for _, id := range tt.wantDropped {
+				assert.Contains(t, drop, id, "item %d outside its stream window should be dropped", id)
 			}
 		})
 	}

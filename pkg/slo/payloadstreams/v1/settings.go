@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -94,6 +95,12 @@ func (s Settings) Validate() error {
 		seen.Insert(name)
 		if strings.TrimSpace(stream.ReleaseController) == "" {
 			return fmt.Errorf("stream %q: release_controller is required", name)
+		}
+		if stream.ReleaseControllerURL != "" {
+			parsed, err := url.Parse(stream.ReleaseControllerURL)
+			if err != nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return fmt.Errorf("stream %q: release_controller_url must be an absolute http or https URL", name)
+			}
 		}
 		if stream.Window != "" {
 			w, err := time.ParseDuration(stream.Window)

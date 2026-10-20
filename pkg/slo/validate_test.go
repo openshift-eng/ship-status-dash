@@ -231,6 +231,15 @@ func TestValidateSettings(t *testing.T) {
 			min := 0
 			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", MinAccepted: &min}}
 		}), wantErr: "stream \"nightly\": min_accepted must be positive"},
+		{name: "valid release_controller_url", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", ReleaseControllerURL: "https://example.com/controller"}}
+		})},
+		{name: "javascript release_controller_url", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", ReleaseControllerURL: "javascript:alert(1)"}}
+		}), wantErr: "stream \"nightly\": release_controller_url must be an absolute http or https URL"},
+		{name: "relative release_controller_url", ws: valid(func(s *payloadv1.Settings) {
+			s.Streams = []payloadv1.Stream{{ReleaseController: "amd64", Name: "nightly", ReleaseControllerURL: "/relative/path"}}
+		}), wantErr: "stream \"nightly\": release_controller_url must be an absolute http or https URL"},
 	}
 
 	for _, tt := range tests {

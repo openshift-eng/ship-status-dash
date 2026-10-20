@@ -1,4 +1,5 @@
 import type { SLOEvaluation, SLOWorkspace } from '../../../../../types'
+import { formatAge } from '../../format'
 
 export interface TRTPayloadStream {
   release_controller: string
@@ -32,27 +33,44 @@ export interface TRTPayloadResult {
   streams: TRTPayloadStreamEval[]
 }
 
-export interface ControllerGroup {
-  controller: string
-  url?: string
-  streams: TRTPayloadStreamEval[]
+interface Controllered {
+  release_controller: string
+  release_controller_url?: string
 }
 
-export const groupStreamsByController = (streams: TRTPayloadStreamEval[]): ControllerGroup[] => {
-  const groups: ControllerGroup[] = []
+export interface ControllerGroup<T extends Controllered = TRTPayloadStreamEval> {
+  controller: string
+  url?: string
+  streams: T[]
+}
+
+export const groupStreamsByController = <T extends Controllered>(
+  streams: T[],
+): ControllerGroup<T>[] => {
+  const map = new Map<string, ControllerGroup<T>>()
+  const order: string[] = []
   for (const stream of streams) {
-    const last = groups[groups.length - 1]
-    if (last && last.controller === stream.release_controller) {
-      last.streams.push(stream)
-    } else {
-      groups.push({
-        controller: stream.release_controller,
-        url: stream.release_controller_url,
-        streams: [stream],
-      })
+    const key = stream.release_controller
+    let group = map.get(key)
+    if (!group) {
+      group = { controller: key, url: stream.release_controller_url, streams: [] }
+      map.set(key, group)
+      order.push(key)
     }
+    group.streams.push(stream)
   }
-  return groups
+  return order.map((key) => map.get(key)!)
+}
+
+export const streamTooltip = (
+  stream: { last_accepted_at?: string; window?: string },
+  defaultWindow: string,
+): string => {
+  const windowHours = parseHours(stream.window || defaultWindow) || parseHours(defaultWindow)
+  if (!stream.last_accepted_at) {
+    return `Never accepted; expected every ${windowHours}h`
+  }
+  return `Last accepted ${formatAge(stream.last_accepted_at)} ago; expected every ${windowHours}h`
 }
 
 export const trtPayloadSettings = (workspace: SLOWorkspace): TRTPayloadSettings | undefined => {
