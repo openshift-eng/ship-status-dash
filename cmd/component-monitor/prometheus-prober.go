@@ -99,9 +99,9 @@ func (p *PrometheusProber) runQuery(ctx context.Context, query string, duration 
 				End:   now,
 				Step:  stepDuration,
 			}
-			result, warnings, err = p.client.QueryRange(ctx, query, r)
+			result, warnings, _, err = p.client.QueryRange(ctx, query, r)
 		} else {
-			result, warnings, err = p.client.Query(ctx, query, now)
+			result, warnings, _, err = p.client.Query(ctx, query, now)
 		}
 
 		if err == nil {

@@ -36,7 +36,7 @@ type queryResult struct {
 	warnings promclientv1.Warnings
 }
 
-func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Time, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
+func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Time, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, promclientv1.Infos, error) {
 	m.mu.Lock()
 	m.callCount++
 	count := m.callCount
@@ -49,15 +49,15 @@ func (m *mockPrometheusAPI) Query(ctx context.Context, query string, ts time.Tim
 	}
 
 	if m.failErr != nil && count <= m.failCount {
-		return nil, nil, m.failErr
+		return nil, nil, nil, m.failErr
 	}
 	if err, ok := m.queryErrors[query]; ok {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if result, ok := m.queryResults[query]; ok {
-		return result.value, result.warnings, nil
+		return result.value, result.warnings, nil, nil
 	}
-	return nil, nil, nil
+	return nil, nil, nil, nil
 }
 
 func (m *mockPrometheusAPI) getCallCount() int {
@@ -66,20 +66,20 @@ func (m *mockPrometheusAPI) getCallCount() int {
 	return m.callCount
 }
 
-func (m *mockPrometheusAPI) QueryRange(ctx context.Context, query string, r promclientv1.Range, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
+func (m *mockPrometheusAPI) QueryRange(ctx context.Context, query string, r promclientv1.Range, opts ...promclientv1.Option) (model.Value, promclientv1.Warnings, promclientv1.Infos, error) {
+	return nil, nil, nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheusAPI) Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) ([]model.LabelSet, promclientv1.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
+func (m *mockPrometheusAPI) Series(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) ([]model.LabelSet, promclientv1.Warnings, promclientv1.Infos, error) {
+	return nil, nil, nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheusAPI) LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) (model.LabelNames, promclientv1.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
+func (m *mockPrometheusAPI) LabelNames(ctx context.Context, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) (model.LabelNames, promclientv1.Warnings, promclientv1.Infos, error) {
+	return nil, nil, nil, errors.New("not implemented")
 }
 
-func (m *mockPrometheusAPI) LabelValues(ctx context.Context, label string, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) (model.LabelValues, promclientv1.Warnings, error) {
-	return nil, nil, errors.New("not implemented")
+func (m *mockPrometheusAPI) LabelValues(ctx context.Context, label string, matches []string, startTime time.Time, endTime time.Time, opts ...promclientv1.Option) (model.LabelValues, promclientv1.Warnings, promclientv1.Infos, error) {
+	return nil, nil, nil, errors.New("not implemented")
 }
 
 func (m *mockPrometheusAPI) Targets(ctx context.Context) (promclientv1.TargetsResult, error) {
