@@ -150,9 +150,9 @@ func TestRecentRejectStaysMetWhenRecentListIsShort(t *testing.T) {
 			var result payloadv1.Result
 			require.NoError(t, json.Unmarshal(got[0].Result, &result))
 
-			byStream := map[string]payloadv1.GroupEval{}
-			for _, group := range result.Groups {
-				byStream[group.Key] = group
+			byStream := map[string]payloadv1.StreamEval{}
+			for _, se := range result.Streams {
+				byStream[se.Key] = se
 			}
 			recent := streams[0].Name
 			assert.True(t, byStream[recent].Met)
@@ -252,9 +252,9 @@ func TestBuildSeed(t *testing.T) {
 	var result payloadv1.Result
 	require.NoError(t, json.Unmarshal(got[0].Result, &result))
 
-	byStream := map[string]payloadv1.GroupEval{}
-	for _, group := range result.Groups {
-		byStream[group.Key] = group
+	byStream := map[string]payloadv1.StreamEval{}
+	for _, se := range result.Streams {
+		byStream[se.Key] = se
 	}
 	assert.True(t, byStream[streams[0].Name].Met)
 	assert.Equal(t, "Rejected", newest(items, streams[0].Name).Outcome)

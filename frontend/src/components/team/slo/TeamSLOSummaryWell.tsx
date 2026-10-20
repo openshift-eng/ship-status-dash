@@ -1,5 +1,5 @@
 import HistoryIcon from '@mui/icons-material/History'
-import { Box, Card, IconButton, styled, Typography } from '@mui/material'
+import { Box, Card, Chip, IconButton, styled, Tooltip, Typography } from '@mui/material'
 import type { KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -8,9 +8,9 @@ import { worstOutageStatus } from '../../../utils/helpers'
 import { getStatusTintStyles } from '../../../utils/styles'
 import { StatusChip } from '../../StatusColors'
 
-import { formatAge, streamDomId, subComponentPath } from './format'
+import { streamDomId, subComponentPath } from './format'
 import SLOOutageCard from './SLOOutageCard'
-import { trtPayloadResult } from './trt/v1/result'
+import { streamTooltip, trtPayloadResult } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(5),
@@ -163,7 +163,7 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
   const navigate = useNavigate()
   const status = sloStatus(evaluation?.met)
   const result = trtPayloadResult(evaluation)
-  const missedCount = result ? result.groups.filter((group) => !group.met).length : 0
+  const missedCount = result ? result.streams.filter((stream) => !stream.met).length : 0
   const open = () => navigate(`/team/${encodeURIComponent(team)}#slo`)
 
   return (
@@ -184,8 +184,8 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
             label={
               result
                 ? evaluation.met
-                  ? `All ${result.groups.length} met`
-                  : `${missedCount} of ${result.groups.length} missed`
+                  ? `All ${result.streams.length} met`
+                  : `${missedCount} of ${result.streams.length} missed`
                 : evaluation.met
                   ? 'Met'
                   : 'Missed'
@@ -193,26 +193,40 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
           />
         )}
       </HeaderBox>
-      {result && result.groups.length > 0 && (
+      {result && result.streams.length > 0 && (
         <ChipRow>
-          {result.groups.map((group) => (
-            <StatusChip
-              key={group.key}
-              size="small"
-              status={group.met ? 'Healthy' : 'Degraded'}
-              variant="filled"
-              label={`${group.key} · ${formatAge(group.last_accepted_at)}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                navigate(`/team/${encodeURIComponent(team)}#${streamDomId(group.key)}`)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.stopPropagation()
-                }
-              }}
-            />
-          ))}
+          {result.streams.map((stream) => {
+            return (
+              <Tooltip
+                key={stream.key}
+                title={streamTooltip(stream, result.window)}
+                describeChild
+                arrow
+              >
+                <Chip
+                  size="small"
+                  color={stream.met ? 'success' : 'warning'}
+                  label={stream.key}
+                  aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
+                  clickable
+                  component="a"
+                  href={`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (!event.metaKey && !event.ctrlKey && event.button === 0) {
+                      event.preventDefault()
+                      navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation()
+                    }
+                  }}
+                />
+              </Tooltip>
+            )
+          })}
         </ChipRow>
       )}
       {components.length > 0 && (

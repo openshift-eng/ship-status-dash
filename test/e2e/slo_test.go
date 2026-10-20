@@ -32,11 +32,13 @@ type e2eItem struct {
 	Links      []types.SLOWorkspaceLink `json:"links"`
 }
 
-type e2eGroup struct {
-	Key            string     `json:"key"`
-	Accepted       int        `json:"accepted"`
-	Met            bool       `json:"met"`
-	LastAcceptedAt *time.Time `json:"last_accepted_at,omitempty"`
+type e2eStream struct {
+	Key                  string     `json:"key"`
+	ReleaseController    string     `json:"release_controller"`
+	ReleaseControllerURL string     `json:"release_controller_url,omitempty"`
+	Accepted             int        `json:"accepted"`
+	Met                  bool       `json:"met"`
+	LastAcceptedAt       *time.Time `json:"last_accepted_at,omitempty"`
 }
 
 type e2eResult struct {
@@ -44,7 +46,7 @@ type e2eResult struct {
 	Target struct {
 		MinAccepted int `json:"min_accepted"`
 	} `json:"target"`
-	Groups []e2eGroup `json:"groups"`
+	Streams []e2eStream `json:"streams"`
 }
 
 type e2eEvaluation struct {
@@ -278,11 +280,11 @@ func testTRTPayloadStreamsWorkspace(client *TestHTTPClient) func(*testing.T) {
 		assert.Equal(t, "24h", result.Window)
 		assert.Equal(t, 1, result.Target.MinAccepted)
 		assert.False(t, ev.Met)
-		require.Len(t, result.Groups, 2)
-		assert.Equal(t, trtStreamNightly, result.Groups[0].Key)
-		assert.Equal(t, trtStreamCI, result.Groups[1].Key)
-		assert.False(t, result.Groups[0].Met)
-		assert.Nil(t, result.Groups[0].LastAcceptedAt)
+		require.Len(t, result.Streams, 2)
+		assert.Equal(t, trtStreamNightly, result.Streams[0].Key)
+		assert.Equal(t, trtStreamCI, result.Streams[1].Key)
+		assert.False(t, result.Streams[0].Met)
+		assert.Nil(t, result.Streams[0].LastAcceptedAt)
 	}
 }
 
@@ -370,8 +372,8 @@ func testTRTPayloadStreamsEvaluation(client *TestHTTPClient) func(*testing.T) {
 		putSLOItemChai(t, client, mustSLOItemBody(t, "e2e-nightly-accepted", trtStreamNightly, "Accepted", now.Add(-time.Hour), "", payloadDetails(t, "https://example.com/nightly", nil)))
 
 		view := getTeamSLO(t, client)
-		nightly := groupByKey(t, view.Evaluations[0], trtStreamNightly)
-		ci := groupByKey(t, view.Evaluations[0], trtStreamCI)
+		nightly := streamByKey(t, view.Evaluations[0], trtStreamNightly)
+		ci := streamByKey(t, view.Evaluations[0], trtStreamCI)
 		assert.Equal(t, 1, nightly.Accepted)
 		assert.True(t, nightly.Met)
 		require.NotNil(t, nightly.LastAcceptedAt)
@@ -380,7 +382,7 @@ func testTRTPayloadStreamsEvaluation(client *TestHTTPClient) func(*testing.T) {
 
 		putSLOItemChai(t, client, mustSLOItemBody(t, "e2e-ci-accepted", trtStreamCI, "Accepted", now.Add(-30*time.Minute), "", payloadDetails(t, "https://example.com/ci", nil)))
 		view = getTeamSLO(t, client)
-		assert.True(t, groupByKey(t, view.Evaluations[0], trtStreamCI).Met)
+		assert.True(t, streamByKey(t, view.Evaluations[0], trtStreamCI).Met)
 		assert.True(t, view.Evaluations[0].Met)
 	}
 }
@@ -468,7 +470,7 @@ func testTRTPayloadStreamsPrune(client *TestHTTPClient) func(*testing.T) {
 		held := getTeamSLO(t, client)
 		assert.Contains(t, itemKeys(held.Items), "e2e-old-accepted")
 		assert.NotContains(t, itemKeys(held.Items), "e2e-old-rejected")
-		ci := groupByKey(t, held.Evaluations[0], trtStreamCI)
+		ci := streamByKey(t, held.Evaluations[0], trtStreamCI)
 		assert.Equal(t, 0, ci.Accepted)
 		assert.False(t, ci.Met)
 		require.NotNil(t, ci.LastAcceptedAt)
@@ -481,7 +483,7 @@ func testTRTPayloadStreamsPrune(client *TestHTTPClient) func(*testing.T) {
 		assert.NotContains(t, itemKeys(released.Items), "e2e-old-rejected")
 		assert.Contains(t, itemKeys(released.Items), "e2e-ci-new")
 		assert.Contains(t, itemKeys(released.Items), "e2e-ci-pad-1")
-		ci = groupByKey(t, released.Evaluations[0], trtStreamCI)
+		ci = streamByKey(t, released.Evaluations[0], trtStreamCI)
 		assert.Equal(t, 1, ci.Accepted)
 		assert.True(t, ci.Met)
 		assert.True(t, released.Evaluations[0].Met)
@@ -550,7 +552,7 @@ func assertSeededWorkspace(t *testing.T, view e2eTeamView) {
 	require.NotEmpty(t, view.Evaluations)
 	ev := view.Evaluations[0]
 	result := payloadResult(t, ev)
-	require.Len(t, result.Groups, len(streams))
+	require.Len(t, result.Streams, len(streams))
 	require.NotEmpty(t, view.Items)
 	if seed.MissIndex(len(streams)) >= 0 {
 		assert.False(t, ev.Met)
@@ -559,7 +561,7 @@ func assertSeededWorkspace(t *testing.T, view e2eTeamView) {
 	}
 
 	for i, stream := range streams {
-		group := groupByKey(t, ev, stream.Name)
+		group := streamByKey(t, ev, stream.Name)
 		rows := itemsForStream(view.Items, stream.Name)
 		require.NotEmpty(t, rows, stream.Name)
 		assert.Equal(t, seed.UpdatedBy, rows[0].UpdatedBy)
@@ -606,11 +608,11 @@ func assertEvaluationsMatch(t *testing.T, team, summary []e2eEvaluation) {
 		assert.Equal(t, team[i].Met, summary[i].Met)
 		teamResult := payloadResult(t, team[i])
 		summaryResult := payloadResult(t, summary[i])
-		require.Len(t, summaryResult.Groups, len(teamResult.Groups))
-		for j := range teamResult.Groups {
-			assert.Equal(t, teamResult.Groups[j].Key, summaryResult.Groups[j].Key)
-			assert.Equal(t, teamResult.Groups[j].Met, summaryResult.Groups[j].Met)
-			assert.Equal(t, teamResult.Groups[j].Accepted, summaryResult.Groups[j].Accepted)
+		require.Len(t, summaryResult.Streams, len(teamResult.Streams))
+		for j := range teamResult.Streams {
+			assert.Equal(t, teamResult.Streams[j].Key, summaryResult.Streams[j].Key)
+			assert.Equal(t, teamResult.Streams[j].Met, summaryResult.Streams[j].Met)
+			assert.Equal(t, teamResult.Streams[j].Accepted, summaryResult.Streams[j].Accepted)
 		}
 	}
 }
@@ -878,15 +880,15 @@ func itemByKey(t *testing.T, items []e2eItem, key string) *e2eItem {
 	return nil
 }
 
-func groupByKey(t *testing.T, ev e2eEvaluation, key string) e2eGroup {
+func streamByKey(t *testing.T, ev e2eEvaluation, key string) e2eStream {
 	t.Helper()
-	for _, group := range payloadResult(t, ev).Groups {
+	for _, group := range payloadResult(t, ev).Streams {
 		if group.Key == key {
 			return group
 		}
 	}
 	t.Fatalf("missing evaluation group %s", key)
-	return e2eGroup{}
+	return e2eStream{}
 }
 
 func payloadResult(t *testing.T, ev e2eEvaluation) e2eResult {

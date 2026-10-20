@@ -11,33 +11,54 @@ type Target struct {
 	MinAccepted int `json:"min_accepted"`
 }
 
-// GroupEval is one stream's met/miss result.
-type GroupEval struct {
-	Key            string     `json:"key"`
-	Accepted       int        `json:"accepted"`
-	Met            bool       `json:"met"`
-	LastAcceptedAt *time.Time `json:"last_accepted_at,omitempty"`
+// StreamEval is one stream's met/miss result. Window and Target are set only
+// when the stream's effective value differs from the workspace default.
+type StreamEval struct {
+	Key                  string     `json:"key"`
+	ReleaseController    string     `json:"release_controller"`
+	ReleaseControllerURL string     `json:"release_controller_url,omitempty"`
+	Accepted             int        `json:"accepted"`
+	Met                  bool       `json:"met"`
+	LastAcceptedAt       *time.Time `json:"last_accepted_at,omitempty"`
+	Window               string     `json:"window,omitempty"`
+	Target               *Target    `json:"target,omitempty"`
 }
 
 // Result is the payload_streams v1 evaluation.
 type Result struct {
-	Window string      `json:"window"`
-	Target Target      `json:"target"`
-	Groups []GroupEval `json:"groups"`
-	Met    bool        `json:"-"`
+	Window  string       `json:"window"`
+	Target  Target       `json:"target"`
+	Streams []StreamEval `json:"streams"`
+	Met     bool         `json:"-"`
 }
 
 // Evaluate scores accepted payloads in the configured window.
 func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []types.SLOWorkspaceItem) Result {
-	cutoff := now.Add(-settings.WindowDuration())
+	settings.resolveStreamDefaults()
+	defaultWindow := settings.WindowDuration()
 	result := Result{
-		Window: settings.Window,
-		Target: Target{MinAccepted: settings.MinAccepted},
-		Met:    true,
-		Groups: []GroupEval{},
+		Window:  settings.Window,
+		Target:  Target{MinAccepted: settings.MinAccepted},
+		Met:     true,
+		Streams: []StreamEval{},
 	}
 	for _, stream := range settings.Streams {
-		group := GroupEval{Key: stream.Name, Met: false}
+		streamWindow, _ := time.ParseDuration(stream.Window)
+		streamMin := *stream.MinAccepted
+		cutoff := now.Add(-streamWindow)
+
+		se := StreamEval{
+			Key:                  stream.Name,
+			ReleaseController:    stream.ReleaseController,
+			ReleaseControllerURL: stream.ReleaseControllerURL,
+			Met:                  false,
+		}
+		if streamWindow != defaultWindow {
+			se.Window = stream.Window
+		}
+		if streamMin != settings.MinAccepted {
+			se.Target = &Target{MinAccepted: streamMin}
+		}
 		var last *time.Time
 		for i := range items {
 			item := &items[i]
@@ -53,15 +74,15 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 				last = &t
 			}
 			if !occurred.Before(cutoff) {
-				group.Accepted++
+				se.Accepted++
 			}
 		}
-		group.LastAcceptedAt = last
-		group.Met = group.Accepted >= settings.MinAccepted
-		if !group.Met {
+		se.LastAcceptedAt = last
+		se.Met = se.Accepted >= streamMin
+		if !se.Met {
 			result.Met = false
 		}
-		result.Groups = append(result.Groups, group)
+		result.Streams = append(result.Streams, se)
 	}
 	if len(settings.Streams) == 0 {
 		result.Met = false

@@ -1,7 +1,7 @@
 import CheckCircle from '@mui/icons-material/CheckCircle'
 import ExpandLess from '@mui/icons-material/ExpandLess'
 import ExpandMore from '@mui/icons-material/ExpandMore'
-import { Box, Button, Card, Chip, Link, styled, Typography } from '@mui/material'
+import { Box, Button, Card, Chip, Link, styled, Tooltip, Typography } from '@mui/material'
 import { useState } from 'react'
 
 import type {
@@ -15,9 +15,14 @@ import { getStatusChipColor } from '../../../../../utils/helpers'
 import { slugify } from '../../../../../utils/slugify'
 import { getStatusTintStyles } from '../../../../../utils/styles'
 import MarkdownRenderer from '../../../../MarkdownRenderer'
-import { finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
+import { controllerDomId, finishedLabel, linkLabel, streamDomId } from '../../format'
 
-import { trtPayloadResult, trtPayloadSettings } from './result'
+import {
+  groupStreamsByController,
+  streamTooltip,
+  trtPayloadResult,
+  trtPayloadSettings,
+} from './result'
 import UpsertPayloadItemDialog from './UpsertPayloadItemDialog'
 
 const streamPayloads = (rows: SLOItem[], stream: string): SLOItem[] =>
@@ -506,13 +511,16 @@ const PayloadStreamsWorkspace = ({
   if (!settings) {
     return null
   }
-  const groups = result ? result.groups : []
+  const streamEvals = result ? result.streams : []
   const streams = settings.streams
+
+  const controllerGroups = groupStreamsByController(streams)
+  const multipleControllers = controllerGroups.length > 1
 
   return (
     <Box>
       <Header>
-        <Typography variant="h6">Payload streams (amd64)</Typography>
+        <Typography variant="h6">Payload streams</Typography>
         {canEdit && (
           <Button
             variant="outlined"
@@ -525,158 +533,176 @@ const PayloadStreamsWorkspace = ({
           </Button>
         )}
       </Header>
-      {streams.map((stream) => {
-        const group = groups.find((item) => item.key === stream.name)
-        const rows = streamPayloads(items, stream.name).slice(0, settings.recent_payloads)
-        return (
-          <StreamWell
-            key={stream.name}
-            id={streamDomId(stream.name)}
-            elevation={0}
-            status={payloadTintStatus(rows[0]?.outcome)}
-          >
-            <StreamHead>
-              <Typography fontWeight={600}>{stream.name}</Typography>
-              {group && (
-                <Chip
-                  size="small"
-                  color={group.met ? 'success' : 'warning'}
-                  label={`${group.met ? 'SLO met' : 'SLO missed'} · ${
-                    group.last_accepted_at
-                      ? `last accepted ${formatAge(group.last_accepted_at)} ago`
-                      : 'no accepted payload stored'
-                  }`}
-                />
+      {controllerGroups.map(({ controller, url, streams: groupStreams }, groupIndex) => (
+        <Box key={`${controller}-${groupIndex}`} id={controllerDomId(controller)}>
+          {multipleControllers && (
+            <Box sx={{ mt: 2, mb: 1 }}>
+              {url ? (
+                <Link href={url} target="_blank" rel="noopener noreferrer" underline="hover">
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {controller}
+                  </Typography>
+                </Link>
+              ) : (
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {controller}
+                </Typography>
               )}
-            </StreamHead>
-            <PayloadList>
-              {rows.length === 0 && <Typography>No payloads stored</Typography>}
-              {rows.map((row) => {
-                const finished = row.details.finished_at
-                  ? finishedLabel(row.details.finished_at)
-                  : ''
-                const clear = (row.details.jobs ?? []).length === 0
-                const tone: RowTone | undefined =
-                  row.outcome === 'Rejected' ? 'down' : clear ? 'healthy' : undefined
-                return (
-                  <PayloadRow key={row.item_key} tone={tone}>
-                    <FactPanel>
-                      <FactList>
-                        <FactLabel>Payload</FactLabel>
-                        <FactValue>
-                          <div>{row.item_key}</div>
-                          {row.details.payload_url && (
-                            <div>
-                              <Link
-                                href={row.details.payload_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Release controller
-                              </Link>
-                            </div>
-                          )}
-                          {row.details.analysis_url && (
-                            <div>
-                              <Link
-                                href={row.details.analysis_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Payload agent
-                              </Link>
-                            </div>
-                          )}
-                        </FactValue>
-                        <FactLabel>Phase</FactLabel>
-                        <FactValue>
-                          <PhaseValue>
-                            <Chip
-                              size="small"
-                              label={row.outcome}
-                              color={row.outcome === 'Accepted' ? 'success' : 'error'}
-                            />
-                            {finished && <JobNote component="span">{finished}</JobNote>}
-                          </PhaseValue>
-                        </FactValue>
-                        {(row.details.qualifiers ?? []).length > 0 && (
-                          <>
-                            <FactLabel>Qualifiers</FactLabel>
+            </Box>
+          )}
+          {groupStreams.map((stream) => {
+            const streamEval = streamEvals.find((item) => item.key === stream.name)
+            const rows = streamPayloads(items, stream.name).slice(0, settings.recent_payloads)
+            return (
+              <StreamWell
+                key={stream.name}
+                id={streamDomId(stream.name)}
+                elevation={0}
+                status={payloadTintStatus(rows[0]?.outcome)}
+              >
+                <StreamHead>
+                  <Typography fontWeight={600}>{stream.name}</Typography>
+                  {streamEval && (
+                    <Tooltip title={streamTooltip(streamEval, settings.window)} describeChild arrow>
+                      <Chip
+                        size="small"
+                        tabIndex={0}
+                        color={streamEval.met ? 'success' : 'warning'}
+                        label={streamEval.met ? 'SLO met' : 'SLO missed'}
+                      />
+                    </Tooltip>
+                  )}
+                </StreamHead>
+                <PayloadList>
+                  {rows.length === 0 && <Typography>No payloads stored</Typography>}
+                  {rows.map((row) => {
+                    const finished = row.details.finished_at
+                      ? finishedLabel(row.details.finished_at)
+                      : ''
+                    const clear = (row.details.jobs ?? []).length === 0
+                    const tone: RowTone | undefined =
+                      row.outcome === 'Rejected' ? 'down' : clear ? 'healthy' : undefined
+                    return (
+                      <PayloadRow key={row.item_key} tone={tone}>
+                        <FactPanel>
+                          <FactList>
+                            <FactLabel>Payload</FactLabel>
                             <FactValue>
-                              <PhaseValue>
-                                {(row.details.qualifiers ?? []).map((qualifier) => (
-                                  <Chip
-                                    key={qualifier.id}
-                                    size="small"
-                                    label={qualifier.name}
-                                    color={qualifierChipColor(qualifier.state)}
-                                    component="a"
-                                    href={qualifier.url}
+                              <div>{row.item_key}</div>
+                              {row.details.payload_url && (
+                                <div>
+                                  <Link
+                                    href={row.details.payload_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    clickable
-                                    aria-label={`${qualifier.name}: ${qualifier.state}`}
-                                    data-qualifier-state={qualifier.state}
-                                  />
-                                ))}
+                                  >
+                                    Release controller
+                                  </Link>
+                                </div>
+                              )}
+                              {row.details.analysis_url && (
+                                <div>
+                                  <Link
+                                    href={row.details.analysis_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Payload agent
+                                  </Link>
+                                </div>
+                              )}
+                            </FactValue>
+                            <FactLabel>Phase</FactLabel>
+                            <FactValue>
+                              <PhaseValue>
+                                <Chip
+                                  size="small"
+                                  label={row.outcome}
+                                  color={row.outcome === 'Accepted' ? 'success' : 'error'}
+                                />
+                                {finished && <JobNote component="span">{finished}</JobNote>}
                               </PhaseValue>
                             </FactValue>
-                          </>
-                        )}
-                        <FactLabel>Links</FactLabel>
-                        <FactValue>
-                          {row.links.length === 0 && '-'}
-                          {row.links.map((link) => (
-                            <div key={link.ID}>
-                              <Link href={link.url} target="_blank" rel="noopener noreferrer">
-                                {linkLabel(link)}
-                              </Link>
-                            </div>
-                          ))}
-                        </FactValue>
-                        {(row.notes ?? '').trim() !== '' && (
-                          <>
-                            <FactLabel>Note</FactLabel>
+                            {(row.details.qualifiers ?? []).length > 0 && (
+                              <>
+                                <FactLabel>Qualifiers</FactLabel>
+                                <FactValue>
+                                  <PhaseValue>
+                                    {(row.details.qualifiers ?? []).map((qualifier) => (
+                                      <Chip
+                                        key={qualifier.id}
+                                        size="small"
+                                        label={qualifier.name}
+                                        color={qualifierChipColor(qualifier.state)}
+                                        component="a"
+                                        href={qualifier.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        clickable
+                                        aria-label={`${qualifier.name}: ${qualifier.state}`}
+                                        data-qualifier-state={qualifier.state}
+                                      />
+                                    ))}
+                                  </PhaseValue>
+                                </FactValue>
+                              </>
+                            )}
+                            <FactLabel>Links</FactLabel>
                             <FactValue>
-                              <PayloadNote>
-                                <MarkdownRenderer content={row.notes ?? ''} />
-                              </PayloadNote>
+                              {row.links.length === 0 && '-'}
+                              {row.links.map((link) => (
+                                <div key={link.ID}>
+                                  <Link href={link.url} target="_blank" rel="noopener noreferrer">
+                                    {linkLabel(link)}
+                                  </Link>
+                                </div>
+                              ))}
                             </FactValue>
-                          </>
-                        )}
-                      </FactList>
-                      {canEdit && (
-                        <EditAction>
-                          <Button
-                            variant="outlined"
-                            color="primary"
-                            size="small"
-                            onClick={() => {
-                              setEditing(row)
-                              setDialogOpen(true)
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </EditAction>
-                      )}
-                    </FactPanel>
-                    <Box>
-                      <FailedJobs
-                        itemKey={row.item_key}
-                        jobs={row.details.jobs}
-                        notes={row.details.shared_causes ?? []}
-                        highlightedCause={highlightedCause}
-                        onFocusCause={focusCause}
-                      />
-                    </Box>
-                  </PayloadRow>
-                )
-              })}
-            </PayloadList>
-          </StreamWell>
-        )
-      })}
+                            {(row.notes ?? '').trim() !== '' && (
+                              <>
+                                <FactLabel>Note</FactLabel>
+                                <FactValue>
+                                  <PayloadNote>
+                                    <MarkdownRenderer content={row.notes ?? ''} />
+                                  </PayloadNote>
+                                </FactValue>
+                              </>
+                            )}
+                          </FactList>
+                          {canEdit && (
+                            <EditAction>
+                              <Button
+                                variant="outlined"
+                                color="primary"
+                                size="small"
+                                onClick={() => {
+                                  setEditing(row)
+                                  setDialogOpen(true)
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            </EditAction>
+                          )}
+                        </FactPanel>
+                        <Box>
+                          <FailedJobs
+                            itemKey={row.item_key}
+                            jobs={row.details.jobs}
+                            notes={row.details.shared_causes ?? []}
+                            highlightedCause={highlightedCause}
+                            onFocusCause={focusCause}
+                          />
+                        </Box>
+                      </PayloadRow>
+                    )
+                  })}
+                </PayloadList>
+              </StreamWell>
+            )
+          })}
+        </Box>
+      ))}
       {canEdit && (
         <UpsertPayloadItemDialog
           key={`${dialogOpen}-${editing?.item_key ?? 'new'}`}

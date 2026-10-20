@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,10 +28,14 @@ type Settings struct {
 	Streams        []Stream `json:"streams"`
 }
 
-// Stream is one watched release stream.
+// Stream is one watched release stream. Window and MinAccepted are resolved
+// to their effective values at parse time (see resolveStreamDefaults).
 type Stream struct {
-	ReleaseController string `json:"release_controller"`
-	Name              string `json:"name"`
+	ReleaseController    string `json:"release_controller"`
+	ReleaseControllerURL string `json:"release_controller_url,omitempty"`
+	Name                 string `json:"name"`
+	Window               string `json:"window,omitempty"`
+	MinAccepted          *int   `json:"min_accepted,omitempty"`
 }
 
 // ParseSettings decodes and checks schema-specific workspace settings.
@@ -47,7 +52,20 @@ func ParseSettings(spec json.RawMessage) (Settings, error) {
 	if err := settings.Validate(); err != nil {
 		return Settings{}, err
 	}
+	settings.resolveStreamDefaults()
 	return settings, nil
+}
+
+func (s *Settings) resolveStreamDefaults() {
+	for i := range s.Streams {
+		if s.Streams[i].Window == "" {
+			s.Streams[i].Window = s.Window
+		}
+		if s.Streams[i].MinAccepted == nil {
+			v := s.MinAccepted
+			s.Streams[i].MinAccepted = &v
+		}
+	}
 }
 
 // Validate checks the payload_streams v1 settings.
@@ -77,6 +95,21 @@ func (s Settings) Validate() error {
 		seen.Insert(name)
 		if strings.TrimSpace(stream.ReleaseController) == "" {
 			return fmt.Errorf("stream %q: release_controller is required", name)
+		}
+		if stream.ReleaseControllerURL != "" {
+			parsed, err := url.Parse(stream.ReleaseControllerURL)
+			if err != nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return fmt.Errorf("stream %q: release_controller_url must be an absolute http or https URL", name)
+			}
+		}
+		if stream.Window != "" {
+			w, err := time.ParseDuration(stream.Window)
+			if err != nil || w <= 0 {
+				return fmt.Errorf("stream %q: window must be a positive duration", name)
+			}
+		}
+		if stream.MinAccepted != nil && *stream.MinAccepted <= 0 {
+			return fmt.Errorf("stream %q: min_accepted must be positive", name)
 		}
 	}
 	return nil

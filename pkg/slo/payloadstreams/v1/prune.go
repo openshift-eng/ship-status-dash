@@ -11,14 +11,15 @@ import (
 
 // PruneIDs returns item IDs outside the configured window and outside the last-N set.
 // The newest Accepted row for each watched stream is kept.
-// Rows for streams no longer in the watched list follow the window only.
+// Rows for streams no longer in the watched list follow the global window only.
 func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) []uint {
-	streams := make([]string, 0, len(settings.Streams))
+	settings.resolveStreamDefaults()
+	defaultWindow := settings.WindowDuration()
+	watched := sets.New[string]()
 	for _, stream := range settings.Streams {
-		streams = append(streams, stream.Name)
+		watched.Insert(stream.Name)
 	}
-	watched := sets.New[string](streams...)
-	cutoff := now.Add(-settings.WindowDuration())
+	defaultCutoff := now.Add(-defaultWindow)
 	byStream := map[string][]types.SLOWorkspaceItem{}
 	var other []types.SLOWorkspaceItem
 	for _, item := range items {
@@ -30,11 +31,13 @@ func PruneIDs(now time.Time, settings Settings, items []types.SLOWorkspaceItem) 
 	}
 
 	var drop []uint
-	for _, name := range streams {
-		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[name])...)
+	for _, stream := range settings.Streams {
+		streamWindow, _ := time.ParseDuration(stream.Window)
+		cutoff := now.Add(-streamWindow)
+		drop = append(drop, pruneStream(now, cutoff, settings.RecentPayloads, byStream[stream.Name])...)
 	}
 	for _, item := range other {
-		if item.OccurredAt.Before(cutoff) {
+		if item.OccurredAt.Before(defaultCutoff) {
 			drop = append(drop, item.ID)
 		}
 	}
@@ -81,17 +84,17 @@ func DisplayItems(settings Settings, items []types.SLOWorkspaceItem) []types.SLO
 	}
 	var out []types.SLOWorkspaceItem
 	for _, stream := range settings.Streams {
-		group := byStream[stream.Name]
-		sort.Slice(group, func(i, j int) bool {
-			if group[i].OccurredAt.Equal(group[j].OccurredAt) {
-				return group[i].ID > group[j].ID
+		rows := byStream[stream.Name]
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].OccurredAt.Equal(rows[j].OccurredAt) {
+				return rows[i].ID > rows[j].ID
 			}
-			return group[i].OccurredAt.After(group[j].OccurredAt)
+			return rows[i].OccurredAt.After(rows[j].OccurredAt)
 		})
-		if len(group) > settings.RecentPayloads {
-			group = group[:settings.RecentPayloads]
+		if len(rows) > settings.RecentPayloads {
+			rows = rows[:settings.RecentPayloads]
 		}
-		out = append(out, group...)
+		out = append(out, rows...)
 	}
 	if out == nil {
 		out = []types.SLOWorkspaceItem{}

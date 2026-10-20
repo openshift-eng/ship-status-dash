@@ -453,7 +453,15 @@ const trtEvaluation: SLOEvaluation = {
   result: {
     window: '24h',
     target: { min_accepted: 1 },
-    groups: [{ key: '5.1.0-0.nightly', accepted: 0, met: false, last_accepted_at: trtOccurredAt }],
+    streams: [
+      {
+        key: '5.1.0-0.nightly',
+        release_controller: 'amd64',
+        accepted: 0,
+        met: false,
+        last_accepted_at: trtOccurredAt,
+      },
+    ],
   },
 }
 

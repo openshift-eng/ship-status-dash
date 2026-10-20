@@ -17,6 +17,8 @@ export const sloComponentDomId = (componentName: string, subComponentName: strin
 
 export const streamDomId = (streamName: string) => `stream-${streamName}`
 
+export const controllerDomId = (controllerName: string) => `controller-${slugify(controllerName)}`
+
 const jiraKeyPattern = /\/browse\/([A-Z][A-Z0-9]+-\d+)\/?(?:[?#].*)?$/
 const outageLinkPattern = /^\/([^/]+)\/([^/]+)\/outages\/\d+/
 

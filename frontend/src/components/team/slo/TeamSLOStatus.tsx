@@ -1,9 +1,14 @@
-import { Box, Chip, styled, Typography } from '@mui/material'
+import { Box, Chip, Divider, styled, Tooltip, Typography } from '@mui/material'
 
 import type { SLOComponentBlock, SLOEvaluation } from '../../../types'
 
-import { formatAge, streamDomId } from './format'
-import { trtPayloadResult, worstMiss } from './trt/v1/result'
+import { controllerDomId, formatAge, streamDomId } from './format'
+import {
+  groupStreamsByController,
+  streamTooltip,
+  trtPayloadResult,
+  worstMiss,
+} from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
@@ -17,7 +22,6 @@ const Metrics = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexWrap: 'wrap',
   gap: theme.spacing(3),
-  marginBottom: theme.spacing(2),
 }))
 
 const MetricLabel = styled(Typography)(({ theme }) => ({
@@ -46,6 +50,36 @@ const ChipRow = styled(Box)(({ theme }) => ({
   gap: theme.spacing(1),
 }))
 
+const EvalRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  gap: theme.spacing(4),
+  alignItems: 'flex-start',
+}))
+
+const StreamChipsPanel = styled(Box)(({ theme }) => ({
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1),
+}))
+
+const StreamChip = styled(Chip)({
+  fontSize: '0.8125rem',
+})
+
+const ControllerSection = styled(Box)(({ theme }) => ({
+  marginBottom: theme.spacing(1),
+}))
+
+const ControllerChip = styled(Chip)(({ theme }) => ({
+  borderRadius: theme.spacing(0.5),
+  height: 28,
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  marginBottom: theme.spacing(0.5),
+}))
+
 interface TeamSLOStatusProps {
   team: string
   evaluations: SLOEvaluation[]
@@ -60,17 +94,19 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
       <SectionTitle>{team} SLOs</SectionTitle>
       {evaluations.map((evaluation) => {
         const result = trtPayloadResult(evaluation)
-        const groups = result ? result.groups : []
-        const metCount = groups.filter((group) => group.met).length
+        const streamEvals = result ? result.streams : []
+        const metCount = streamEvals.filter((stream) => stream.met).length
         const miss = result ? worstMiss(result) : undefined
+        const controllerGroups = groupStreamsByController(streamEvals)
+        const multipleControllers = controllerGroups.length > 1
         return (
-          <Box key={evaluation.name}>
+          <EvalRow key={evaluation.name}>
             <Metrics>
               <Box>
                 <MetricLabel>{evaluation.display_name || evaluation.name}</MetricLabel>
                 {result && (
                   <MetricValue>
-                    {metCount} of {groups.length}
+                    {metCount} of {streamEvals.length}
                   </MetricValue>
                 )}
                 <Chip
@@ -97,20 +133,43 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 </Box>
               )}
             </Metrics>
-            <ChipRow>
-              {groups.map((group) => (
-                <Chip
-                  key={group.key}
-                  size="small"
-                  label={`${group.key} · ${formatAge(group.last_accepted_at)}`}
-                  color={group.met ? 'success' : 'warning'}
-                  clickable
-                  component="a"
-                  href={`#${streamDomId(group.key)}`}
-                />
+            <StreamChipsPanel>
+              {controllerGroups.map(({ controller, streams }, groupIndex) => (
+                <ControllerSection key={`${controller}-${groupIndex}`}>
+                  {groupIndex > 0 && <Divider sx={{ mb: 1 }} />}
+                  {multipleControllers && (
+                    <ControllerChip
+                      label={controller}
+                      size="small"
+                      variant="outlined"
+                      clickable
+                      component="a"
+                      href={`#${controllerDomId(controller)}`}
+                    />
+                  )}
+                  <ChipRow>
+                    {streams.map((stream) => (
+                      <Tooltip
+                        key={stream.key}
+                        title={streamTooltip(stream, result?.window || '')}
+                        describeChild
+                        arrow
+                      >
+                        <StreamChip
+                          label={stream.key}
+                          aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
+                          color={stream.met ? 'success' : 'warning'}
+                          clickable
+                          component="a"
+                          href={`#${streamDomId(stream.key)}`}
+                        />
+                      </Tooltip>
+                    ))}
+                  </ChipRow>
+                </ControllerSection>
               ))}
-            </ChipRow>
-          </Box>
+            </StreamChipsPanel>
+          </EvalRow>
         )
       })}
     </Section>
