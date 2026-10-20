@@ -573,9 +573,10 @@ const PayloadStreamsWorkspace = ({
                       const windowHours = parseHours(streamEval.window || settings.window)
                       const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
                       return (
-                        <Tooltip title={tip} arrow>
+                        <Tooltip title={tip} describeChild arrow>
                           <Chip
                             size="small"
+                            tabIndex={0}
                             color={streamEval.met ? 'success' : 'warning'}
                             label={streamEval.met ? 'SLO met' : 'SLO missed'}
                           />

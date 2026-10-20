@@ -198,8 +198,8 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
         (() => {
           const controllerGroups = groupStreamsByController(result.streams)
           const multipleControllers = controllerGroups.length > 1
-          return controllerGroups.map(({ controller, url, streams }) => (
-            <Box key={controller} sx={{ mb: 1 }}>
+          return controllerGroups.map(({ controller, url, streams }, groupIndex) => (
+            <Box key={`${controller}-${groupIndex}`} sx={{ mb: 1 }}>
               {multipleControllers && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                   <Chip
@@ -219,12 +219,13 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
                   const windowHours = parseHours(stream.window || result.window)
                   const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
                   return (
-                    <Tooltip key={stream.key} title={tip} arrow>
+                    <Tooltip key={stream.key} title={tip} describeChild arrow>
                       <StatusChip
                         size="small"
                         status={stream.met ? 'Healthy' : 'Degraded'}
                         variant="filled"
                         label={stream.key}
+                        aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
                         onClick={(event) => {
                           event.stopPropagation()
                           navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)

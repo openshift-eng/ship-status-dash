@@ -70,8 +70,15 @@ export const trtPayloadResult = (evaluation?: SLOEvaluation): TRTPayloadResult |
 }
 
 export const parseHours = (duration: string): number => {
-  const match = duration.match(/^(\d+(?:\.\d+)?)h$/)
-  return match ? parseFloat(match[1]) : 0
+  const units: Record<string, number> = { h: 1, m: 1 / 60, s: 1 / 3600, ms: 1 / 3_600_000 }
+  if (!/^(\d+(?:\.\d+)?(?:h|ms|m|s))+$/.test(duration)) {
+    return 0
+  }
+  let hours = 0
+  for (const [, value, unit] of duration.matchAll(/(\d+(?:\.\d+)?)(h|ms|m|s)/g)) {
+    hours += parseFloat(value) * units[unit]
+  }
+  return hours
 }
 
 export const worstMiss = (result: TRTPayloadResult): TRTPayloadStreamEval | undefined => {

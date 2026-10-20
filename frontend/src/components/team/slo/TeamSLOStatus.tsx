@@ -119,8 +119,8 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 </Box>
               )}
             </Metrics>
-            {controllerGroups.map(({ controller, url, streams }) => (
-              <ControllerSection key={controller}>
+            {controllerGroups.map(({ controller, url, streams }, groupIndex) => (
+              <ControllerSection key={`${controller}-${groupIndex}`}>
                 {multipleControllers && (
                   <ControllerLabel>
                     <Chip
@@ -138,11 +138,13 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                     <Tooltip
                       key={stream.key}
                       title={streamTooltip(stream, result?.window || '')}
+                      describeChild
                       arrow
                     >
                       <Chip
                         size="small"
                         label={stream.key}
+                        aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
                         color={stream.met ? 'success' : 'warning'}
                         clickable
                         component="a"
