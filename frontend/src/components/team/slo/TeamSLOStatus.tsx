@@ -59,23 +59,19 @@ const StreamChipsPanel = styled(Box)(({ theme }) => ({
   gap: theme.spacing(1),
 }))
 
-const StreamChip = styled(Chip)(({ theme }) => ({
-  borderRadius: theme.spacing(0.5),
-  height: 28,
+const StreamChip = styled(Chip)({
   fontSize: '0.8125rem',
-}))
+})
 
 const ControllerSection = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(1),
 }))
 
-const ControllerLabel = styled('a')(({ theme }) => ({
-  display: 'block',
+const ControllerChip = styled(Chip)(({ theme }) => ({
+  borderRadius: theme.spacing(0.5),
+  height: 28,
   fontSize: '0.75rem',
   fontWeight: 600,
-  color: theme.palette.text.secondary,
-  textDecoration: 'none',
-  cursor: 'pointer',
   marginBottom: theme.spacing(0.5),
 }))
 
@@ -146,9 +142,14 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 <ControllerSection key={`${controller}-${groupIndex}`}>
                   {groupIndex > 0 && <Divider sx={{ mb: 1 }} />}
                   {multipleControllers && (
-                    <ControllerLabel href={`#${controllerDomId(controller)}`}>
-                      {controller}
-                    </ControllerLabel>
+                    <ControllerChip
+                      label={controller}
+                      size="small"
+                      variant="outlined"
+                      clickable
+                      component="a"
+                      href={`#${controllerDomId(controller)}`}
+                    />
                   )}
                   <ChipRow>
                     {streams.map((stream) => (
