@@ -113,26 +113,27 @@ def test_get_infrastructure_status(api: ShipStatusAPI):
     assert result["components"][0]["component_name"] == "Prow"
 
 
-def test_get_component_outages_passthrough(api: ShipStatusAPI):
+def test_get_component_outages_returns_summaries(api: ShipStatusAPI):
     with patch.object(api.client, "public_get", return_value=[_list_outage_no_slack(active=True)]):
         result = api.get_component_outages("build-farm", "build06")
     assert result["active_count"] == 1
-    assert result["outages"][0]["ID"] == 6041
+    assert result["total_outages"] == 1
+    assert result["returned"] == 1
+    outage = result["outages"][0]
+    assert outage["ID"] == 6041
+    assert outage["severity"] == "Degraded"
+    assert outage["active"] is True
+    assert "description" not in outage
+    assert "reasons" not in outage
+    assert "detail_hint" in result
 
 
-def test_get_component_outages_merges_slack(api: ShipStatusAPI):
-    list_row = _list_outage_no_slack(active=True)
-
-    def fake_get(path: str):
-        if path.endswith("/outages"):
-            return [list_row]
-        if path.endswith("/outages/6041"):
-            return _detail_with_slack()
-        raise AssertionError(path)
-
-    with patch.object(api.client, "public_get", side_effect=fake_get):
+def test_get_component_outages_no_slack_enrichment(api: ShipStatusAPI):
+    """Listing responses return compact summaries without per-outage API calls."""
+    with patch.object(api.client, "public_get", return_value=[_list_outage_no_slack(active=True)]) as mock_get:
         result = api.get_component_outages("build-farm", "build06")
-    assert result["outages"][0]["slack_threads"][0]["channel_id"] == "C01234567"
+    mock_get.assert_called_once()
+    assert "slack_threads" not in result["outages"][0]
 
 
 def test_get_outages_during_requires_start_or_end(api: ShipStatusAPI):
@@ -160,7 +161,13 @@ def test_get_outages_during_builds_query(api: ShipStatusAPI):
             end="2026-05-13T23:59:59Z",
             component_name="build-farm",
         )
-    assert result["count"] == 1
+    assert result["total"] == 1
+    assert result["returned"] == 1
+    outage = result["outages"][0]
+    assert outage["ID"] == 6041
+    assert outage["active"] is False
+    assert "description" not in outage
+    assert "detail_hint" in result
 
 
 def test_outage_is_active_sql_null():
@@ -388,5 +395,111 @@ def test_delete_outage_success(tmp_path):
     with patch.object(api.client, "protected_request", return_value=None):
         result = api.delete_outage("prow", "tide", 1)
     assert result["success"] is True
+
+
+# --- Sparse listing and pagination tests (TRT-3026) ---
+
+
+def _make_outage(oid: int, *, active: bool = False) -> dict:
+    end = None if active else "2026-05-02T12:00:00Z"
+    return {
+        "ID": oid,
+        "CreatedAt": "2026-05-01T10:00:00Z",
+        "component_name": "build-farm",
+        "sub_component_name": f"build{oid:02d}",
+        "severity": "Degraded",
+        "start_time": "2026-05-01T10:05:00Z",
+        "end_time": end,
+        "description": "Component monitor detected outage " * 50,
+        "reasons": [{"type": "junit", "detail": "long detail " * 100}],
+        "slack_threads": [{"channel_id": "C01234567"}],
+        "triage_notes": [{"body": "note " * 200}],
+        "links": [{"url": "https://example.com", "link_type": "jira"}],
+    }
+
+
+def test_get_component_outages_large_history_fits_response(api: ShipStatusAPI):
+    """1500 outages should produce a response within the character limit."""
+    outages = [_make_outage(i) for i in range(1500)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_component_outages("build-farm")
+    assert "error" not in result
+    assert result["total_outages"] == 1500
+    assert result["returned"] == 100
+    assert len(result["outages"]) == 100
+    for o in result["outages"]:
+        assert "description" not in o
+        assert "reasons" not in o
+        assert "slack_threads" not in o
+        assert "triage_notes" not in o
+        assert "links" not in o
+
+
+def test_get_component_outages_pagination(api: ShipStatusAPI):
+    outages = [_make_outage(i) for i in range(250)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_component_outages("build-farm", offset=100, limit=50)
+    assert result["total_outages"] == 250
+    assert result["offset"] == 100
+    assert result["limit"] == 50
+    assert result["returned"] == 50
+    assert result["outages"][0]["ID"] == 100
+    assert result["outages"][-1]["ID"] == 149
+
+
+def test_get_component_outages_pagination_end(api: ShipStatusAPI):
+    outages = [_make_outage(i) for i in range(10)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_component_outages("build-farm", offset=8, limit=100)
+    assert result["total_outages"] == 10
+    assert result["returned"] == 2
+    assert result["outages"][0]["ID"] == 8
+
+
+def test_get_outages_during_large_result_fits_response(api: ShipStatusAPI):
+    outages = [_make_outage(i) for i in range(500)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_outages_during(start="2026-01-01T00:00:00Z", end="2026-12-31T23:59:59Z")
+    assert "error" not in result
+    assert result["total"] == 500
+    assert result["returned"] == 100
+    for o in result["outages"]:
+        assert "description" not in o
+        assert "reasons" not in o
+
+
+def test_get_outages_during_pagination(api: ShipStatusAPI):
+    outages = [_make_outage(i) for i in range(200)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_outages_during(
+            start="2026-01-01T00:00:00Z",
+            offset=150,
+            limit=25,
+        )
+    assert result["total"] == 200
+    assert result["offset"] == 150
+    assert result["limit"] == 25
+    assert result["returned"] == 25
+    assert result["outages"][0]["ID"] == 150
+
+
+def test_get_outage_still_returns_full_detail(api: ShipStatusAPI):
+    """Single-outage retrieval must still return full detail."""
+    full = _make_outage(42, active=True)
+    with patch.object(api.client, "public_get", return_value=full):
+        result = api.get_outage("build-farm", "build42", 42)
+    assert result["description"].startswith("Component monitor")
+    assert "slack_threads" in result
+    assert "triage_notes" in result
+    assert "links" in result
+
+
+def test_summarize_outage_includes_active_flag(api: ShipStatusAPI):
+    active = _make_outage(1, active=True)
+    resolved = _make_outage(2, active=False)
+    with patch.object(api.client, "public_get", return_value=[active, resolved]):
+        result = api.get_component_outages("build-farm")
+    assert result["outages"][0]["active"] is True
+    assert result["outages"][1]["active"] is False
 
 

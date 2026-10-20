@@ -29,13 +29,18 @@ def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         return api.get_component_details(component_slug)
 
     @server.tool()
-    def get_component_outages(component_slug: str, sub_component_slug: str = "") -> dict:
-        """Outage history for a component or sub-component (active and resolved). Omit sub_component_slug for all subs."""
-        return api.get_component_outages(component_slug, sub_component_slug)
+    def get_component_outages(
+        component_slug: str,
+        sub_component_slug: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict:
+        """Compact outage summaries for a component or sub-component (active and resolved). Returns ID, severity, start/end times, and active status. Use get_outage() with the returned IDs for full details. Omit sub_component_slug for all subs. Use offset/limit to paginate large histories."""
+        return api.get_component_outages(component_slug, sub_component_slug, offset, limit)
 
     @server.tool()
     def get_outage(component_slug: str, sub_component_slug: str, outage_id: int) -> dict:
-        """Single outage by ID (includes slack_threads when present)."""
+        """Full outage detail by ID, including description, slack_threads, triage_notes, links, and relationships. Use outage IDs from get_component_outages or get_outages_during."""
         return api.get_outage(component_slug, sub_component_slug, outage_id)
 
     @server.tool()
@@ -46,8 +51,10 @@ def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         sub_component_name: str = "",
         tag: str = "",
         team: str = "",
+        offset: int = 0,
+        limit: int = 100,
     ) -> dict:
-        """Outages overlapping a time instant or interval (RFC3339 UTC). At least one of start or end is required.
+        """Compact outage summaries overlapping a time instant or interval (RFC3339 UTC). Returns ID, severity, start/end times, and active status. Use get_outage() with the returned IDs for full details. At least one of start or end is required. Use offset/limit to paginate large result sets.
 
         When provided, component_name must be an exact component slug (e.g. build-farm)
         and sub_component_name must be an exact sub-component slug (e.g. build07),
@@ -62,6 +69,8 @@ def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
             sub_component_name=sub_component_name,
             tag=tag,
             team=team,
+            offset=offset,
+            limit=limit,
         )
 
     @server.tool()
