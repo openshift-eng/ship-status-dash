@@ -15,7 +15,7 @@ import { getStatusChipColor } from '../../../../../utils/helpers'
 import { slugify } from '../../../../../utils/slugify'
 import { getStatusTintStyles } from '../../../../../utils/styles'
 import MarkdownRenderer from '../../../../MarkdownRenderer'
-import { finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
+import { controllerDomId, finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
 
 import { parseHours, trtPayloadResult, trtPayloadSettings } from './result'
 import UpsertPayloadItemDialog from './UpsertPayloadItemDialog'
@@ -541,16 +541,20 @@ const PayloadStreamsWorkspace = ({
         )}
       </Header>
       {controllerGroups.map(({ controller, url, streams: groupStreams }, groupIndex) => (
-        <Box key={`${controller}-${groupIndex}`}>
+        <Box key={`${controller}-${groupIndex}`} id={controllerDomId(controller)}>
           {multipleControllers && (
             <Box sx={{ mt: 2, mb: 1 }}>
-              <Chip
-                label={controller}
-                variant="outlined"
-                clickable={!!url}
-                component={url ? 'a' : 'span'}
-                {...(url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {})}
-              />
+              {url ? (
+                <Link href={url} target="_blank" rel="noopener noreferrer" underline="hover">
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {controller}
+                  </Typography>
+                </Link>
+              ) : (
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {controller}
+                </Typography>
+              )}
             </Box>
           )}
           {groupStreams.map((stream) => {

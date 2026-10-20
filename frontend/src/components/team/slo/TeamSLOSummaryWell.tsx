@@ -10,7 +10,7 @@ import { StatusChip } from '../../StatusColors'
 
 import { formatAge, streamDomId, subComponentPath } from './format'
 import SLOOutageCard from './SLOOutageCard'
-import { groupStreamsByController, parseHours, trtPayloadResult } from './trt/v1/result'
+import { parseHours, trtPayloadResult } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(5),
@@ -193,56 +193,35 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
           />
         )}
       </HeaderBox>
-      {result &&
-        result.streams.length > 0 &&
-        (() => {
-          const controllerGroups = groupStreamsByController(result.streams)
-          const multipleControllers = controllerGroups.length > 1
-          return controllerGroups.map(({ controller, url, streams }, groupIndex) => (
-            <Box key={`${controller}-${groupIndex}`} sx={{ mb: 1 }}>
-              {multipleControllers && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={controller}
-                    clickable={!!url}
-                    component={url ? 'a' : 'span'}
-                    {...(url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {})}
-                    onClick={(event: React.MouseEvent) => event.stopPropagation()}
-                  />
-                </Box>
-              )}
-              <ChipRow>
-                {streams.map((stream) => {
-                  const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
-                  const windowHours = parseHours(stream.window || result.window)
-                  const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
-                  return (
-                    <Tooltip key={stream.key} title={tip} describeChild arrow>
-                      <StatusChip
-                        size="small"
-                        status={stream.met ? 'Healthy' : 'Degraded'}
-                        variant="filled"
-                        label={stream.key}
-                        aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.stopPropagation()
-                          }
-                        }}
-                      />
-                    </Tooltip>
-                  )
-                })}
-              </ChipRow>
-            </Box>
-          ))
-        })()}
+      {result && result.streams.length > 0 && (
+        <ChipRow>
+          {result.streams.map((stream) => {
+            const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
+            const windowHours = parseHours(stream.window || result.window)
+            const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
+            return (
+              <Tooltip key={stream.key} title={tip} describeChild arrow>
+                <Chip
+                  size="small"
+                  color={stream.met ? 'success' : 'warning'}
+                  label={stream.key}
+                  aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
+                  clickable
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation()
+                    }
+                  }}
+                />
+              </Tooltip>
+            )
+          })}
+        </ChipRow>
+      )}
       {components.length > 0 && (
         <Stack>
           {components.map((block) => (
