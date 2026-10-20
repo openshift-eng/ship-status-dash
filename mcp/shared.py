@@ -21,6 +21,23 @@ DEFAULT_TIMEOUT = 10
 
 _MAX_OUTAGES_SLACK_ENRICH = 60
 _MAX_RESPONSE_CHARS = 28000
+_DEFAULT_LISTING_LIMIT = 100
+_MAX_LISTING_LIMIT = 140
+
+_SUMMARY_FIELDS = (
+    "ID", "id", "component_name", "sub_component_name",
+    "severity", "start_time", "end_time",
+)
+
+
+def _summarize_outage(raw: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact summary of an outage for listing responses."""
+    summary: dict[str, Any] = {}
+    for key in _SUMMARY_FIELDS:
+        if key in raw:
+            summary[key] = raw[key]
+    summary["active"] = _outage_is_active(raw)
+    return summary
 
 
 def _env(name: str, default: str) -> str:
@@ -281,7 +298,11 @@ class ShipStatusAPI:
         return copies, note
 
     def get_component_outages(
-        self, component_slug: str, sub_component_slug: str = ""
+        self,
+        component_slug: str,
+        sub_component_slug: str = "",
+        offset: int = 0,
+        limit: int = _DEFAULT_LISTING_LIMIT,
     ) -> dict[str, Any]:
         if sub_component_slug:
             path = f"/components/{component_slug}/{sub_component_slug}/outages"
@@ -309,23 +330,31 @@ class ShipStatusAPI:
             }
 
         raw_list = [x for x in data if isinstance(x, dict)]
-        outages, enrich_note = self._enrich_outages_slack_threads(
-            component_slug, sub_component_slug, raw_list
-        )
+        active = [o for o in raw_list if _outage_is_active(o)]
+        resolved = [o for o in raw_list if not _outage_is_active(o)]
+        total = len(raw_list)
 
-        active = [o for o in outages if _outage_is_active(o)]
-        resolved = [o for o in outages if not _outage_is_active(o)]
+        limit = max(1, min(limit, _MAX_LISTING_LIMIT))
+        offset = max(0, offset)
+        page = raw_list[offset : offset + limit]
+        summaries = [_summarize_outage(o) for o in page]
 
         out: dict[str, Any] = {
             "component": component_slug,
             "sub_component": sub_component_slug or "(all)",
-            "total_outages": len(outages),
+            "total_outages": total,
             "active_count": len(active),
             "resolved_count": len(resolved),
-            "outages": outages,
+            "offset": offset,
+            "limit": limit,
+            "returned": len(summaries),
+            "outages": summaries,
+            "detail_hint": (
+                "These are compact summaries. Use get_outage(component_slug, "
+                "sub_component_slug, outage_id) for full outage details "
+                "including description, slack_threads, triage_notes, and links."
+            ),
         }
-        if enrich_note:
-            out["enrichment_note"] = enrich_note
         return _truncate_json(out)
 
     def get_outages_during(
@@ -336,6 +365,8 @@ class ShipStatusAPI:
         sub_component_name: str = "",
         tag: str = "",
         team: str = "",
+        offset: int = 0,
+        limit: int = _DEFAULT_LISTING_LIMIT,
     ) -> dict[str, Any]:
         start_s = (start or "").strip()
         end_s = (end or "").strip()
@@ -381,9 +412,28 @@ class ShipStatusAPI:
             }
         if isinstance(data, dict) and "error" in data:
             return data
-        if isinstance(data, list):
-            return _truncate_json({"outages": data, "count": len(data)})
-        return {"error": "Unexpected JSON shape from /api/outages/during (expected a list)."}
+        if not isinstance(data, list):
+            return {"error": "Unexpected JSON shape from /api/outages/during (expected a list)."}
+
+        raw_list = [x for x in data if isinstance(x, dict)]
+        total = len(raw_list)
+        limit = max(1, min(limit, _MAX_LISTING_LIMIT))
+        offset = max(0, offset)
+        page = raw_list[offset : offset + limit]
+        summaries = [_summarize_outage(o) for o in page]
+
+        return _truncate_json({
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "returned": len(summaries),
+            "outages": summaries,
+            "detail_hint": (
+                "These are compact summaries. Use get_outage(component_slug, "
+                "sub_component_slug, outage_id) for full outage details "
+                "including description, slack_threads, triage_notes, and links."
+            ),
+        })
 
     def list_components(self) -> dict[str, Any]:
         data = self.client.public_get("/components")
