@@ -1,9 +1,9 @@
-import { Box, Chip, styled, Typography } from '@mui/material'
+import { Box, Chip, styled, Tooltip, Typography } from '@mui/material'
 
 import type { SLOComponentBlock, SLOEvaluation } from '../../../types'
 
 import { formatAge, streamDomId } from './format'
-import { trtPayloadResult, worstMiss } from './trt/v1/result'
+import { groupStreamsByController, parseHours, trtPayloadResult, worstMiss } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
@@ -46,6 +46,26 @@ const ChipRow = styled(Box)(({ theme }) => ({
   gap: theme.spacing(1),
 }))
 
+const ControllerSection = styled(Box)(({ theme }) => ({
+  marginBottom: theme.spacing(1.5),
+}))
+
+const ControllerLabel = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1),
+  marginBottom: theme.spacing(0.75),
+}))
+
+const streamTooltip = (
+  stream: { last_accepted_at?: string; window?: string },
+  defaultWindow: string,
+) => {
+  const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
+  const windowHours = parseHours(stream.window || defaultWindow)
+  return `Last accepted ${age} ago; expected every ${windowHours}h`
+}
+
 interface TeamSLOStatusProps {
   team: string
   evaluations: SLOEvaluation[]
@@ -63,6 +83,8 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
         const streamEvals = result ? result.streams : []
         const metCount = streamEvals.filter((stream) => stream.met).length
         const miss = result ? worstMiss(result) : undefined
+        const controllerGroups = groupStreamsByController(streamEvals)
+        const multipleControllers = controllerGroups.length > 1
         return (
           <Box key={evaluation.name}>
             <Metrics>
@@ -97,19 +119,40 @@ const TeamSLOStatus = ({ team, evaluations, sloComponents }: TeamSLOStatusProps)
                 </Box>
               )}
             </Metrics>
-            <ChipRow>
-              {streamEvals.map((stream) => (
-                <Chip
-                  key={stream.key}
-                  size="small"
-                  label={`${stream.key}${stream.window ? ` (${stream.window})` : ''} · ${formatAge(stream.last_accepted_at)}`}
-                  color={stream.met ? 'success' : 'warning'}
-                  clickable
-                  component="a"
-                  href={`#${streamDomId(stream.key)}`}
-                />
-              ))}
-            </ChipRow>
+            {controllerGroups.map(({ controller, url, streams }) => (
+              <ControllerSection key={controller}>
+                {multipleControllers && (
+                  <ControllerLabel>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={controller}
+                      clickable={!!url}
+                      component={url ? 'a' : 'span'}
+                      {...(url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    />
+                  </ControllerLabel>
+                )}
+                <ChipRow>
+                  {streams.map((stream) => (
+                    <Tooltip
+                      key={stream.key}
+                      title={streamTooltip(stream, result?.window || '')}
+                      arrow
+                    >
+                      <Chip
+                        size="small"
+                        label={stream.key}
+                        color={stream.met ? 'success' : 'warning'}
+                        clickable
+                        component="a"
+                        href={`#${streamDomId(stream.key)}`}
+                      />
+                    </Tooltip>
+                  ))}
+                </ChipRow>
+              </ControllerSection>
+            ))}
           </Box>
         )
       })}

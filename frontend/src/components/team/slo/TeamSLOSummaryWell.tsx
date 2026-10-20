@@ -1,5 +1,5 @@
 import HistoryIcon from '@mui/icons-material/History'
-import { Box, Card, IconButton, styled, Typography } from '@mui/material'
+import { Box, Card, Chip, IconButton, styled, Tooltip, Typography } from '@mui/material'
 import type { KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -10,7 +10,7 @@ import { StatusChip } from '../../StatusColors'
 
 import { formatAge, streamDomId, subComponentPath } from './format'
 import SLOOutageCard from './SLOOutageCard'
-import { trtPayloadResult } from './trt/v1/result'
+import { groupStreamsByController, parseHours, trtPayloadResult } from './trt/v1/result'
 
 const Section = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(5),
@@ -193,28 +193,55 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
           />
         )}
       </HeaderBox>
-      {result && result.streams.length > 0 && (
-        <ChipRow>
-          {result.streams.map((stream) => (
-            <StatusChip
-              key={stream.key}
-              size="small"
-              status={stream.met ? 'Healthy' : 'Degraded'}
-              variant="filled"
-              label={`${stream.key}${stream.window ? ` (${stream.window})` : ''} · ${formatAge(stream.last_accepted_at)}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.stopPropagation()
-                }
-              }}
-            />
-          ))}
-        </ChipRow>
-      )}
+      {result &&
+        result.streams.length > 0 &&
+        (() => {
+          const controllerGroups = groupStreamsByController(result.streams)
+          const multipleControllers = controllerGroups.length > 1
+          return controllerGroups.map(({ controller, url, streams }) => (
+            <Box key={controller} sx={{ mb: 1 }}>
+              {multipleControllers && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={controller}
+                    clickable={!!url}
+                    component={url ? 'a' : 'span'}
+                    {...(url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    onClick={(event: React.MouseEvent) => event.stopPropagation()}
+                  />
+                </Box>
+              )}
+              <ChipRow>
+                {streams.map((stream) => {
+                  const age = stream.last_accepted_at ? formatAge(stream.last_accepted_at) : 'never'
+                  const windowHours = parseHours(stream.window || result.window)
+                  const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
+                  return (
+                    <Tooltip key={stream.key} title={tip} arrow>
+                      <StatusChip
+                        size="small"
+                        status={stream.met ? 'Healthy' : 'Degraded'}
+                        variant="filled"
+                        label={stream.key}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.stopPropagation()
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                  )
+                })}
+              </ChipRow>
+            </Box>
+          ))
+        })()}
       {components.length > 0 && (
         <Stack>
           {components.map((block) => (

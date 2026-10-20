@@ -1,7 +1,7 @@
 import CheckCircle from '@mui/icons-material/CheckCircle'
 import ExpandLess from '@mui/icons-material/ExpandLess'
 import ExpandMore from '@mui/icons-material/ExpandMore'
-import { Box, Button, Card, Chip, Link, styled, Typography } from '@mui/material'
+import { Box, Button, Card, Chip, Link, styled, Tooltip, Typography } from '@mui/material'
 import { useState } from 'react'
 
 import type {
@@ -17,7 +17,7 @@ import { getStatusTintStyles } from '../../../../../utils/styles'
 import MarkdownRenderer from '../../../../MarkdownRenderer'
 import { finishedLabel, formatAge, linkLabel, streamDomId } from '../../format'
 
-import { trtPayloadResult, trtPayloadSettings } from './result'
+import { parseHours, trtPayloadResult, trtPayloadSettings } from './result'
 import UpsertPayloadItemDialog from './UpsertPayloadItemDialog'
 
 const streamPayloads = (rows: SLOItem[], stream: string): SLOItem[] =>
@@ -543,15 +543,15 @@ const PayloadStreamsWorkspace = ({
       {controllerGroups.map(({ controller, url, streams: groupStreams }, groupIndex) => (
         <Box key={`${controller}-${groupIndex}`}>
           {multipleControllers && (
-            <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>
-              {url ? (
-                <Link href={url} target="_blank" rel="noopener noreferrer">
-                  {controller}
-                </Link>
-              ) : (
-                controller
-              )}
-            </Typography>
+            <Box sx={{ mt: 2, mb: 1 }}>
+              <Chip
+                label={controller}
+                variant="outlined"
+                clickable={!!url}
+                component={url ? 'a' : 'span'}
+                {...(url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {})}
+              />
+            </Box>
           )}
           {groupStreams.map((stream) => {
             const streamEval = streamEvals.find((item) => item.key === stream.name)
@@ -565,19 +565,23 @@ const PayloadStreamsWorkspace = ({
               >
                 <StreamHead>
                   <Typography fontWeight={600}>{stream.name}</Typography>
-                  {streamEval && (
-                    <Chip
-                      size="small"
-                      color={streamEval.met ? 'success' : 'warning'}
-                      label={`${streamEval.met ? 'SLO met' : 'SLO missed'}${
-                        streamEval.window ? ` (${streamEval.window})` : ''
-                      } · ${
-                        streamEval.last_accepted_at
-                          ? `last accepted ${formatAge(streamEval.last_accepted_at)} ago`
-                          : 'no accepted payload stored'
-                      }`}
-                    />
-                  )}
+                  {streamEval &&
+                    (() => {
+                      const age = streamEval.last_accepted_at
+                        ? formatAge(streamEval.last_accepted_at)
+                        : 'never'
+                      const windowHours = parseHours(streamEval.window || settings.window)
+                      const tip = `Last accepted ${age} ago; expected every ${windowHours}h`
+                      return (
+                        <Tooltip title={tip} arrow>
+                          <Chip
+                            size="small"
+                            color={streamEval.met ? 'success' : 'warning'}
+                            label={streamEval.met ? 'SLO met' : 'SLO missed'}
+                          />
+                        </Tooltip>
+                      )
+                    })()}
                 </StreamHead>
                 <PayloadList>
                   {rows.length === 0 && <Typography>No payloads stored</Typography>}

@@ -14,12 +14,14 @@ type Target struct {
 // StreamEval is one stream's met/miss result. Window and Target are set only
 // when the stream overrides the workspace defaults.
 type StreamEval struct {
-	Key            string     `json:"key"`
-	Accepted       int        `json:"accepted"`
-	Met            bool       `json:"met"`
-	LastAcceptedAt *time.Time `json:"last_accepted_at,omitempty"`
-	Window         string     `json:"window,omitempty"`
-	Target         *Target    `json:"target,omitempty"`
+	Key                  string     `json:"key"`
+	ReleaseController    string     `json:"release_controller"`
+	ReleaseControllerURL string     `json:"release_controller_url,omitempty"`
+	Accepted             int        `json:"accepted"`
+	Met                  bool       `json:"met"`
+	LastAcceptedAt       *time.Time `json:"last_accepted_at,omitempty"`
+	Window               string     `json:"window,omitempty"`
+	Target               *Target    `json:"target,omitempty"`
 }
 
 // Result is the payload_streams v1 evaluation.
@@ -44,7 +46,12 @@ func Evaluate(now time.Time, named types.NamedSLO, settings Settings, items []ty
 		streamMin := *stream.MinAccepted
 		cutoff := now.Add(-streamWindow)
 
-		se := StreamEval{Key: stream.Name, Met: false}
+		se := StreamEval{
+			Key:                  stream.Name,
+			ReleaseController:    stream.ReleaseController,
+			ReleaseControllerURL: stream.ReleaseControllerURL,
+			Met:                  false,
+		}
 		if streamWindow != defaultWindow {
 			se.Window = stream.Window
 		}

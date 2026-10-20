@@ -33,10 +33,12 @@ type e2eItem struct {
 }
 
 type e2eGroup struct {
-	Key            string     `json:"key"`
-	Accepted       int        `json:"accepted"`
-	Met            bool       `json:"met"`
-	LastAcceptedAt *time.Time `json:"last_accepted_at,omitempty"`
+	Key                  string     `json:"key"`
+	ReleaseController    string     `json:"release_controller"`
+	ReleaseControllerURL string     `json:"release_controller_url,omitempty"`
+	Accepted             int        `json:"accepted"`
+	Met                  bool       `json:"met"`
+	LastAcceptedAt       *time.Time `json:"last_accepted_at,omitempty"`
 }
 
 type e2eResult struct {
