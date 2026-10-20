@@ -57,6 +57,9 @@ export const groupStreamsByController = <T extends Controllered>(
       map.set(key, group)
       order.push(key)
     }
+    if (!group.url && stream.release_controller_url) {
+      group.url = stream.release_controller_url
+    }
     group.streams.push(stream)
   }
   return order.map((key) => map.get(key)!)

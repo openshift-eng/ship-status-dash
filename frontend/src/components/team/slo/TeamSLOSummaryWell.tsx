@@ -212,9 +212,11 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
                   component="a"
                   href={`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`}
                   onClick={(event) => {
-                    event.preventDefault()
                     event.stopPropagation()
-                    navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
+                    if (!event.metaKey && !event.ctrlKey && event.button === 0) {
+                      event.preventDefault()
+                      navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
+                    }
                   }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
