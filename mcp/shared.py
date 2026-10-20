@@ -22,6 +22,7 @@ DEFAULT_TIMEOUT = 10
 _MAX_OUTAGES_SLACK_ENRICH = 60
 _MAX_RESPONSE_CHARS = 28000
 _DEFAULT_LISTING_LIMIT = 100
+_MAX_LISTING_LIMIT = 100
 
 _SUMMARY_FIELDS = (
     "ID", "id", "component_name", "sub_component_name",
@@ -333,7 +334,7 @@ class ShipStatusAPI:
         resolved = [o for o in raw_list if not _outage_is_active(o)]
         total = len(raw_list)
 
-        limit = max(1, limit)
+        limit = max(1, min(limit, _MAX_LISTING_LIMIT))
         offset = max(0, offset)
         page = raw_list[offset : offset + limit]
         summaries = [_summarize_outage(o) for o in page]
@@ -416,7 +417,7 @@ class ShipStatusAPI:
 
         raw_list = [x for x in data if isinstance(x, dict)]
         total = len(raw_list)
-        limit = max(1, limit)
+        limit = max(1, min(limit, _MAX_LISTING_LIMIT))
         offset = max(0, offset)
         page = raw_list[offset : offset + limit]
         summaries = [_summarize_outage(o) for o in page]

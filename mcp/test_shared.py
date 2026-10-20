@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared import DashboardClient, ShipStatusAPI, _outage_is_active
+from shared import DashboardClient, ShipStatusAPI, _MAX_LISTING_LIMIT, _outage_is_active
 
 
 def _list_outage_no_slack(*, active: bool) -> dict:
@@ -481,6 +481,29 @@ def test_get_outages_during_pagination(api: ShipStatusAPI):
     assert result["limit"] == 25
     assert result["returned"] == 25
     assert result["outages"][0]["ID"] == 150
+
+
+def test_get_component_outages_caps_limit(api: ShipStatusAPI):
+    """Requesting a limit above _MAX_LISTING_LIMIT clamps it."""
+    outages = [_make_outage(i) for i in range(500)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_component_outages("build-farm", limit=9999)
+    assert "error" not in result
+    assert result["limit"] == _MAX_LISTING_LIMIT
+    assert result["returned"] == _MAX_LISTING_LIMIT
+
+
+def test_get_outages_during_caps_limit(api: ShipStatusAPI):
+    """Requesting a limit above _MAX_LISTING_LIMIT clamps it."""
+    outages = [_make_outage(i) for i in range(500)]
+    with patch.object(api.client, "public_get", return_value=outages):
+        result = api.get_outages_during(
+            start="2026-01-01T00:00:00Z",
+            limit=9999,
+        )
+    assert "error" not in result
+    assert result["limit"] == _MAX_LISTING_LIMIT
+    assert result["returned"] == _MAX_LISTING_LIMIT
 
 
 def test_get_outage_still_returns_full_detail(api: ShipStatusAPI):
