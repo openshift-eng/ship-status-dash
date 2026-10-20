@@ -47,7 +47,14 @@ def _register_read_tools(server: FastMCP, api: ShipStatusAPI) -> None:
         tag: str = "",
         team: str = "",
     ) -> dict:
-        """Outages overlapping a time instant or interval (RFC3339 UTC). At least one of start or end is required."""
+        """Outages overlapping a time instant or interval (RFC3339 UTC). At least one of start or end is required.
+
+        When provided, component_name must be an exact component slug (e.g. build-farm)
+        and sub_component_name must be an exact sub-component slug (e.g. build07),
+        not display names. After trimming surrounding whitespace, these values are
+        forwarded unchanged as componentName and subComponentName, respectively.
+        sub_component_name requires component_name.
+        """
         return api.get_outages_during(
             start=start,
             end=end,
