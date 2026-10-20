@@ -207,7 +207,10 @@ const TeamSummaryWell = ({ team, evaluation, components }: TeamSummaryWellProps)
                   label={stream.key}
                   aria-label={`${stream.key}: SLO ${stream.met ? 'met' : 'missed'}`}
                   clickable
+                  component="a"
+                  href={`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`}
                   onClick={(event) => {
+                    event.preventDefault()
                     event.stopPropagation()
                     navigate(`/team/${encodeURIComponent(team)}#${streamDomId(stream.key)}`)
                   }}
