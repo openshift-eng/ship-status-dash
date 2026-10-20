@@ -2,7 +2,7 @@ import { Box, Chip, Divider, styled, Tooltip, Typography } from '@mui/material'
 
 import type { SLOComponentBlock, SLOEvaluation } from '../../../types'
 
-import { controllerDomId, streamDomId } from './format'
+import { controllerDomId, formatAge, streamDomId } from './format'
 import {
   groupStreamsByController,
   streamTooltip,
