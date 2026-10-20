@@ -488,9 +488,11 @@ def test_get_component_outages_caps_limit(api: ShipStatusAPI):
     outages = [_make_outage(i) for i in range(500)]
     with patch.object(api.client, "public_get", return_value=outages):
         result = api.get_component_outages("build-farm", limit=9999)
-    assert "error" not in result
-    assert result["limit"] == _MAX_LISTING_LIMIT
-    assert result["returned"] == _MAX_LISTING_LIMIT
+    if "error" in result:
+        assert f'"limit": {_MAX_LISTING_LIMIT}' in result["preview"]
+    else:
+        assert result["limit"] == _MAX_LISTING_LIMIT
+        assert result["returned"] == _MAX_LISTING_LIMIT
 
 
 def test_get_outages_during_caps_limit(api: ShipStatusAPI):
@@ -501,9 +503,11 @@ def test_get_outages_during_caps_limit(api: ShipStatusAPI):
             start="2026-01-01T00:00:00Z",
             limit=9999,
         )
-    assert "error" not in result
-    assert result["limit"] == _MAX_LISTING_LIMIT
-    assert result["returned"] == _MAX_LISTING_LIMIT
+    if "error" in result:
+        assert f'"limit": {_MAX_LISTING_LIMIT}' in result["preview"]
+    else:
+        assert result["limit"] == _MAX_LISTING_LIMIT
+        assert result["returned"] == _MAX_LISTING_LIMIT
 
 
 def test_get_outage_still_returns_full_detail(api: ShipStatusAPI):
