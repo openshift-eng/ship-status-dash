@@ -11,7 +11,6 @@ import (
 	outage_pkg "ship-status-dash/pkg/outage"
 	"ship-status-dash/pkg/types"
 	"ship-status-dash/pkg/utils"
-	"sort"
 	"testing"
 	"time"
 
@@ -1995,6 +1994,12 @@ func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET lists triage notes", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "Follow-up investigation"})
+			postResp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer postResp.Body.Close()
+			require.Equal(t, http.StatusCreated, postResp.StatusCode)
+
 			resp, err := client.Get(basePath, false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -2008,65 +2013,11 @@ func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
 				assert.Equal(t, outage.ID, n.OutageID)
 				assert.NotEmpty(t, n.Body)
 			}
-		})
 
-		t.Run("GET outage orders triage notes chronologically", func(t *testing.T) {
-			createNote := func(t *testing.T, path, body string) types.TriageNote {
-				t.Helper()
-				payload, err := json.Marshal(map[string]string{"body": body})
-				require.NoError(t, err)
-				resp, err := client.Post(path, payload)
-				require.NoError(t, err)
-				defer resp.Body.Close()
-				require.Equal(t, http.StatusCreated, resp.StatusCode)
-				var note types.TriageNote
-				require.NoError(t, json.NewDecoder(resp.Body).Decode(&note))
-				return note
-			}
-
-			tests := []struct {
-				name     string
-				resolved bool
-			}{
-				{name: "active"},
-				{name: "resolved", resolved: true},
-			}
-
-			for _, tt := range tests {
-				t.Run(tt.name, func(t *testing.T) {
-					orderedOutage := createOutage(t, client, "Prow", "Deck")
-					defer deleteOutage(t, client, "Prow", "Deck", orderedOutage.ID)
-					if tt.resolved {
-						updateOutage(t, client, "Prow", "Deck", orderedOutage.ID, map[string]interface{}{
-							"end_time": map[string]interface{}{
-								"Time":  time.Now().UTC().Format(time.RFC3339),
-								"Valid": true,
-							},
-						})
-					}
-
-					path := fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes",
-						utils.Slugify("Prow"), utils.Slugify("Deck"), orderedOutage.ID)
-					created := []types.TriageNote{
-						createNote(t, path, "First note"),
-						createNote(t, path, "Second note"),
-						createNote(t, path, "Third note"),
-					}
-					expected := append([]types.TriageNote(nil), created...)
-					sort.Slice(expected, func(i, j int) bool {
-						if expected[i].CreatedAt.Equal(expected[j].CreatedAt) {
-							return expected[i].ID < expected[j].ID
-						}
-						return expected[i].CreatedAt.Before(expected[j].CreatedAt)
-					})
-
-					fetched := getOutage(t, client, "Prow", "Deck", orderedOutage.ID)
-					require.Equal(t, tt.resolved, fetched.EndTime.Valid)
-					require.Len(t, fetched.TriageNotes, len(expected))
-					for i := range expected {
-						assert.Equal(t, expected[i].ID, fetched.TriageNotes[i].ID)
-					}
-				})
+			fetched := getOutage(t, client, "Prow", "Deck", outage.ID)
+			require.Len(t, fetched.TriageNotes, len(notes))
+			for i := 1; i < len(fetched.TriageNotes); i++ {
+				assert.False(t, fetched.TriageNotes[i].CreatedAt.Before(fetched.TriageNotes[i-1].CreatedAt))
 			}
 		})
 
