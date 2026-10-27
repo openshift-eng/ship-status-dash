@@ -15,10 +15,12 @@ export OPENSHIFT_CI="${OPENSHIFT_CI:=true}"
 export ARTIFACT_DIR="${ARTIFACT_DIR:=/tmp/ship_status_artifacts}"
 mkdir -p "${ARTIFACT_DIR}"
 
-# Get the dashboard, mock-oauth-proxy, and mock-monitored-component service ports for port forwarding
+# Get service ports for port forwarding
 DASHBOARD_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc dashboard -o jsonpath='{.spec.ports[0].port}')
 PROXY_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc mock-oauth-proxy -o jsonpath='{.spec.ports[0].port}')
 MOCK_MONITORED_COMPONENT_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc mock-monitored-component -o jsonpath='{.spec.ports[0].port}')
+POSTGRES_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc postgres -o jsonpath='{.spec.ports[0].port}')
+POSTGRES_LOCAL_PORT=15432
 
 # Set up port forwarding to the dashboard
 echo "Setting up port forwarding to dashboard service..."
@@ -34,6 +36,11 @@ PROXY_PORT_FORWARD_PID=$!
 echo "Setting up port forwarding to mock-monitored-component service..."
 ${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/mock-monitored-component ${MOCK_MONITORED_COMPONENT_PORT}:${MOCK_MONITORED_COMPONENT_PORT} >"${ARTIFACT_DIR}/mock-monitored-component-port-forward.stdout.log" 2>"${ARTIFACT_DIR}/mock-monitored-component-port-forward.stderr.log" &
 MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID=$!
+
+# Set up port forwarding to the ephemeral test database for fixture setup
+echo "Setting up port forwarding to postgres service..."
+${KUBECTL_CMD} -n ${E2E_NS} port-forward svc/postgres ${POSTGRES_LOCAL_PORT}:${POSTGRES_PORT} >"${ARTIFACT_DIR}/postgres-port-forward.stdout.log" 2>"${ARTIFACT_DIR}/postgres-port-forward.stderr.log" &
+POSTGRES_PORT_FORWARD_PID=$!
 
 # Wait for port forwarding to establish
 sleep 5
@@ -56,6 +63,7 @@ echo "Mock-monitored-component HTTP status code: ${MOCK_COMPONENT_HTTP_STATUS}"
 export TEST_SERVER_URL="http://localhost:${DASHBOARD_PORT}"
 export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:${PROXY_PORT}"
 export TEST_MOCK_MONITORED_COMPONENT_URL="http://localhost:${MOCK_MONITORED_COMPONENT_PORT}"
+export TEST_DATABASE_DSN="postgres://postgres:testpass@localhost:${POSTGRES_LOCAL_PORT}/ship_status_test?sslmode=disable&client_encoding=UTF8"
 
 # Get Prometheus service port and set up port forwarding
 PROMETHEUS_PORT=$(${KUBECTL_CMD} -n ${E2E_NS} get svc prometheus -o jsonpath='{.spec.ports[0].port}')
@@ -87,6 +95,7 @@ for port_forward in \
   "dashboard:${DASHBOARD_PORT_FORWARD_PID}" \
   "mock-oauth-proxy:${PROXY_PORT_FORWARD_PID}" \
   "mock-monitored-component:${MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID}" \
+  "postgres:${POSTGRES_PORT_FORWARD_PID}" \
   "prometheus:${PROMETHEUS_PORT_FORWARD_PID}"; do
   port_forward_name="${port_forward%%:*}"
   port_forward_pid="${port_forward##*:}"
@@ -107,6 +116,7 @@ for port_forward in \
       dashboard) DASHBOARD_PORT_FORWARD_PID="" ;;
       mock-oauth-proxy) PROXY_PORT_FORWARD_PID="" ;;
       mock-monitored-component) MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID="" ;;
+      postgres) POSTGRES_PORT_FORWARD_PID="" ;;
       prometheus) PROMETHEUS_PORT_FORWARD_PID="" ;;
     esac
   fi
@@ -114,7 +124,7 @@ done
 
 # These status-only snapshots avoid pod specs and environment values.
 if ! timeout 10s ${KUBECTL_CMD} -n ${E2E_NS} get \
-  pod/dashboard pod/mock-oauth-proxy pod/mock-monitored-component pod/prometheus \
+  pod/dashboard pod/mock-oauth-proxy pod/mock-monitored-component pod/postgres pod/prometheus \
   -o 'custom-columns=NAME:.metadata.name,UID:.metadata.uid,PHASE:.status.phase,DELETION:.metadata.deletionTimestamp,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,WAITING_REASON:.status.containerStatuses[*].state.waiting.reason,TERMINATED_REASON:.status.containerStatuses[*].state.terminated.reason,EXIT_CODE:.status.containerStatuses[*].state.terminated.exitCode' \
   >"${ARTIFACT_DIR}/port-forward-target-pods.log" 2>/dev/null; then
   echo "Target pod status unavailable at end-of-test snapshot." >"${ARTIFACT_DIR}/port-forward-target-pods.log"
@@ -156,6 +166,10 @@ fi
 if [ ! -z "${MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID:-}" ]; then
   echo "Cleaning up mock-monitored-component port forwarding..."
   kill $MOCK_MONITORED_COMPONENT_PORT_FORWARD_PID 2>/dev/null || true
+fi
+if [ ! -z "${POSTGRES_PORT_FORWARD_PID:-}" ]; then
+  echo "Cleaning up postgres port forwarding..."
+  kill $POSTGRES_PORT_FORWARD_PID 2>/dev/null || true
 fi
 if [ ! -z "${PROMETHEUS_PORT_FORWARD_PID:-}" ]; then
   echo "Cleaning up Prometheus port forwarding..."

@@ -16,6 +16,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -2006,6 +2008,91 @@ func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
 			for _, n := range notes {
 				assert.Equal(t, outage.ID, n.OutageID)
 				assert.NotEmpty(t, n.Body)
+			}
+		})
+
+		t.Run("GET outage orders triage notes chronologically", func(t *testing.T) {
+			dsn := os.Getenv("TEST_DATABASE_DSN")
+			require.NotEmpty(t, dsn, "TEST_DATABASE_DSN must be set")
+			db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, sqlDB.Close())
+			})
+
+			createNote := func(t *testing.T, path, body string) types.TriageNote {
+				t.Helper()
+				payload, err := json.Marshal(map[string]string{"body": body})
+				require.NoError(t, err)
+				resp, err := client.Post(path, payload)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				require.Equal(t, http.StatusCreated, resp.StatusCode)
+				var note types.TriageNote
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&note))
+				return note
+			}
+
+			baseTime := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
+			tests := []struct {
+				name     string
+				resolved bool
+			}{
+				{name: "active"},
+				{name: "resolved", resolved: true},
+			}
+
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					orderedOutage := createOutage(t, client, "Prow", "Deck")
+					defer deleteOutage(t, client, "Prow", "Deck", orderedOutage.ID)
+					if tt.resolved {
+						updateOutage(t, client, "Prow", "Deck", orderedOutage.ID, map[string]interface{}{
+							"end_time": map[string]interface{}{
+								"Time":  time.Now().UTC().Format(time.RFC3339),
+								"Valid": true,
+							},
+						})
+					}
+
+					path := fmt.Sprintf("/api/components/%s/%s/outages/%d/triage-notes",
+						utils.Slugify("Prow"), utils.Slugify("Deck"), orderedOutage.ID)
+					notes := []types.TriageNote{
+						createNote(t, path, "Latest note"),
+						createNote(t, path, "First tied note"),
+						createNote(t, path, "Earliest note"),
+						createNote(t, path, "Second tied note"),
+					}
+					// Make timestamp order conflict with insertion order and give two notes the same timestamp.
+					createdAt := []time.Time{
+						baseTime.Add(3 * time.Hour),
+						baseTime.Add(2 * time.Hour),
+						baseTime.Add(time.Hour),
+						baseTime.Add(2 * time.Hour),
+					}
+					for i := range notes {
+						result := db.Exec("UPDATE triage_notes SET created_at = ? WHERE id = ? AND outage_id = ?",
+							createdAt[i], notes[i].ID, orderedOutage.ID)
+						require.NoError(t, result.Error)
+						require.Equal(t, int64(1), result.RowsAffected)
+					}
+
+					require.Less(t, notes[1].ID, notes[3].ID)
+					fetched := getOutage(t, client, "Prow", "Deck", orderedOutage.ID)
+					require.Equal(t, tt.resolved, fetched.EndTime.Valid)
+					require.Len(t, fetched.TriageNotes, 4)
+					assert.Equal(t,
+						[]uint{notes[2].ID, notes[1].ID, notes[3].ID, notes[0].ID},
+						[]uint{
+							fetched.TriageNotes[0].ID,
+							fetched.TriageNotes[1].ID,
+							fetched.TriageNotes[2].ID,
+							fetched.TriageNotes[3].ID,
+						},
+					)
+				})
 			}
 		})
 

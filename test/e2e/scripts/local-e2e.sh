@@ -416,6 +416,7 @@ export TEST_SERVER_URL="http://localhost:$DASHBOARD_PORT"
 export TEST_MOCK_OAUTH_PROXY_URL="http://localhost:$PROXY_PORT"
 export TEST_MOCK_MONITORED_COMPONENT_URL="http://localhost:$MOCK_MONITORED_COMPONENT_PORT"
 export TEST_PROMETHEUS_URL="http://localhost:$PROMETHEUS_PORT"
+export TEST_DATABASE_DSN="$DSN"
 
 # Create temporary config file with substituted values
 COMPONENT_MONITOR_CONFIG=$(mktemp)
