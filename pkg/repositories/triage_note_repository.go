@@ -29,7 +29,7 @@ func (r *gormTriageNoteRepository) AddTriageNote(note *types.TriageNote) error {
 
 func (r *gormTriageNoteRepository) ListTriageNotes(outageID uint) ([]types.TriageNote, error) {
 	var notes []types.TriageNote
-	if err := r.db.Where("outage_id = ?", outageID).Order("created_at ASC").Find(&notes).Error; err != nil {
+	if err := r.db.Where("outage_id = ?", outageID).Order("created_at ASC, id ASC").Find(&notes).Error; err != nil {
 		return nil, err
 	}
 	return notes, nil

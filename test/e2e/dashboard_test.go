@@ -1994,6 +1994,12 @@ func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
 		})
 
 		t.Run("GET lists triage notes", func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"body": "Follow-up investigation"})
+			postResp, err := client.Post(basePath, body)
+			require.NoError(t, err)
+			defer postResp.Body.Close()
+			require.Equal(t, http.StatusCreated, postResp.StatusCode)
+
 			resp, err := client.Get(basePath, false)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -2006,6 +2012,12 @@ func testTriageNotes(client *TestHTTPClient) func(*testing.T) {
 			for _, n := range notes {
 				assert.Equal(t, outage.ID, n.OutageID)
 				assert.NotEmpty(t, n.Body)
+			}
+
+			fetched := getOutage(t, client, "Prow", "Deck", outage.ID)
+			require.Len(t, fetched.TriageNotes, len(notes))
+			for i := 1; i < len(fetched.TriageNotes); i++ {
+				assert.False(t, fetched.TriageNotes[i].CreatedAt.Before(fetched.TriageNotes[i-1].CreatedAt))
 			}
 		})
 
