@@ -15,7 +15,7 @@ fi
 
 _venv_ok() {
     _py="$VENV_DIR/bin/python"
-    [ -x "$_py" ] && "$_py" -c "pass" >/dev/null 2>&1
+    [ -x "$_py" ] && "$_py" -c "import fastmcp" >/dev/null 2>&1
 }
 
 _needs_install() {
@@ -47,9 +47,7 @@ _remove_venv() {
     rm -rf "$stale" 2>/dev/null || true
 }
 
-# Cursor can spawn CreateClient concurrently; serialize venv setup.
-(
-    flock 9
+_setup_venv() {
     if _needs_install; then
         _remove_venv
         python3.12 -m venv "$VENV_DIR" 2>/dev/null || python3 -m venv "$VENV_DIR"
@@ -59,6 +57,17 @@ _remove_venv() {
             echo "$REQ_HASH" > "$HASH_FILE"
         fi
     fi
-) 9>"$LOCK_FILE"
+}
+
+# Cursor can spawn CreateClient concurrently; serialize venv setup when flock is
+# available. macOS does not provide flock.
+if command -v flock >/dev/null 2>&1; then
+    (
+        flock 9
+        _setup_venv
+    ) 9>"$LOCK_FILE"
+else
+    _setup_venv
+fi
 
 exec "$VENV_DIR/bin/python" "$SCRIPT_DIR/server.py"

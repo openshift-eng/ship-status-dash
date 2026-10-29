@@ -1,0 +1,3 @@
+[mcp_servers.ship-status-dev]
+command = "ship-status-dev/run.sh"
+args = []
