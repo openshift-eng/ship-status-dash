@@ -57,7 +57,7 @@ apm:
 	$(_uvx_env) uvx --from apm-cli@0.35.0 apm install
 	$(_uvx_env) uvx --from apm-cli@0.35.0 apm compile
 
-APM_GENERATED_FILES := .agents .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md
+APM_GENERATED_FILES := .agents .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md apm.lock.yaml frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md
 
 verify-apm: apm
 	@if [ -n "$$(git status --porcelain -- $(APM_GENERATED_FILES))" ]; then \
