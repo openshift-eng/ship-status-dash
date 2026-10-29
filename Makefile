@@ -1,4 +1,4 @@
-.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd codex-skills
+.PHONY: build e2e test mcp-venv mcp-test mcp-test-api mcp-test-dev local-dashboard-dev local-component-monitor-dev lint npm build-dashboard build-frontend build-component-monitor component-monitor-dry-run apm verify-apm bdd
 
 build: build-frontend build-dashboard
 
@@ -52,13 +52,10 @@ bdd: npm
 	@if [ -n "$$CI" ]; then cd frontend && npm run test:e2e; else cd frontend && env -u PLAYWRIGHT_BROWSERS_PATH npm run test:e2e; fi
 
 _uvx_env = $(if $(filter true,$(CI)),UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools)
-codex-skills:
-	@./hack/generate-codex-skills.sh
-
-apm: codex-skills
+apm:
 	@command -v uvx >/dev/null || (echo "uvx not found; install uv (see .devcontainer/Dockerfile)" >&2 && exit 1)
-	$(_uvx_env) uvx --from apm-cli@0.13.0 apm install
-	$(_uvx_env) uvx --from apm-cli@0.13.0 apm compile
+	$(_uvx_env) uvx --from apm-cli@0.35.0 apm install
+	$(_uvx_env) uvx --from apm-cli@0.35.0 apm compile
 
 APM_GENERATED_FILES := .agents .claude .cursor .gemini .opencode AGENTS.md CLAUDE.md GEMINI.md frontend/AGENTS.md frontend/CLAUDE.md mcp/AGENTS.md mcp/CLAUDE.md ship-status-dev/AGENTS.md ship-status-dev/CLAUDE.md
 

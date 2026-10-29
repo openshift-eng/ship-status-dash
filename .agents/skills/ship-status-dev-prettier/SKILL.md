@@ -3,4 +3,12 @@ name: ship-status-dev-prettier
 description: "Run eslint and prettier on the frontend"
 ---
 
-Read and follow `.apm/prompts/ship-status-dev-prettier.prompt.md`.
+# Ship Status dev — prettier
+
+Run eslint and prettier on the frontend directory:
+
+```bash
+cd frontend && npx eslint . --fix && npx prettier --write .
+```
+
+Save the result after running.

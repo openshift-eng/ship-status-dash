@@ -1,6 +1,6 @@
 ---
 description: Go backend coding standards for Ship Status Dashboard
-globs: "**/*.go"
+globs: **/*.go
 ---
 
 * Follow idiomatic Go practices.

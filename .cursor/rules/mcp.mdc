@@ -1,6 +1,6 @@
 ---
 description: MCP server (ship-status) for SHIP Dashboard REST API tools
-globs: "mcp/**"
+globs: mcp/**
 ---
 
 MCP server **`ship-status`** wraps the dashboard REST API for AI agents. Code lives in:

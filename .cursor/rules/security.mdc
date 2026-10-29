@@ -1,6 +1,6 @@
 ---
 description: Authentication, authorization, and credential handling rules for Ship Status Dashboard
-globs: "**"
+globs: **
 ---
 
 ### Authentication model
