@@ -9,7 +9,7 @@ Sources under **`.apm/`** (instructions, prompts, `apm.yml`, etc.) drive generat
 
 **Slash / agent commands:** content under **`.apm/prompts/*.prompt.md`** is the single source of truth. **`apm install`** (part of **`make apm`**) copies each prompt into editor command targets (e.g. **`.claude/commands/`**, **`.opencode/commands/`**, **`.gemini/commands/`**). Do not add those generated paths by hand or installs will skip them as unmanaged duplicates.
 
-**Codex repository skills:** `make apm` also generates **`.agents/skills/ship-status-dev-*`** from the same prompt sources. Do not edit those generated skills directly.
+**Codex repository skills:** `make apm` also generates thin **`.agents/skills/ship-status-dev-*`** wrappers that point to the same prompt sources. Do not edit those generated skills directly.
 
 ### Overview
 

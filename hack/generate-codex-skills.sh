@@ -30,7 +30,7 @@ for prompt in "${prompts[@]}"; do
         printf 'name: %s\n' "$name"
         printf 'description: "%s"\n' "$description"
         printf -- '---\n\n'
-        awk 'BEGIN { in_body = 0 } /^---$/ { if (in_body) { in_body = 0; body = 1; next } in_body = 1; next } body { print }' "$prompt" | sed 's/—/-/g'
+        printf 'Read and follow `.apm/prompts/%s.prompt.md`.\n' "$name"
     } > "$target/SKILL.md"
 done
 
