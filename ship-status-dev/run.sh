@@ -13,6 +13,15 @@ elif command -v sha256sum >/dev/null 2>&1; then
     REQ_HASH=$(sha256sum "$SCRIPT_DIR/requirements.txt" | cut -d' ' -f1)
 fi
 
+if command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_BIN=python3.12
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN=python3
+else
+    echo "python3.12 or python3 not found on PATH" >&2
+    exit 1
+fi
+
 _venv_ok() {
     _py="$VENV_DIR/bin/python"
     [ -x "$_py" ] && "$_py" -c "import fastmcp" >/dev/null 2>&1
@@ -65,7 +74,7 @@ if [ "${SHIP_STATUS_DEV_SETUP_ONLY:-}" = "1" ]; then
 fi
 
 # fcntl works on Unix systems, including macOS where flock is not installed.
-python3 - "$LOCK_FILE" "$0" <<'PY'
+"$PYTHON_BIN" - "$LOCK_FILE" "$0" <<'PY'
 import fcntl
 import os
 import subprocess

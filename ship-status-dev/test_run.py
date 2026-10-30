@@ -28,8 +28,7 @@ def test_concurrent_stale_venv_repair_serializes_without_flock(tmp_path: Path):
             os.symlink(source, bin_dir / command)
 
     real_python = shutil.which("python3")
-    if real_python is not None:
-        os.symlink(real_python, bin_dir / "python3")
+    assert real_python is not None
 
     python_stub = bin_dir / "python3.12"
     python_stub.write_text(
@@ -56,6 +55,9 @@ EOF
     chmod +x "$3/bin/pip"
     exit 0
 fi
+if [ "$1" = "-" ]; then
+    exec "$REAL_PYTHON" "$@"
+fi
 exit 1
 """,
         encoding="utf-8",
@@ -66,6 +68,7 @@ exit 1
         "PATH": str(bin_dir),
         "HOME": str(tmp_path),
         "STALE_MARKER": str(stale_marker),
+        "REAL_PYTHON": real_python,
     }
     processes = [
         subprocess.Popen(
