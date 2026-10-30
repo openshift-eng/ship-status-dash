@@ -1,6 +1,6 @@
 ---
 description: MCP server (ship-status-dev) for AI-callable dev tasks
-globs: "ship-status-dev/**"
+globs: ship-status-dev/**
 ---
 
 Shared MCP server for AI-callable dev tasks (migrate, serve, test, monitor). Configuration and tools are in `ship-status-dev/server.py`.

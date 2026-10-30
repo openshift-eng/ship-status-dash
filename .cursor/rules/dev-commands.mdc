@@ -1,6 +1,6 @@
 ---
 description: Common dev commands for database migration, linting, and testing
-globs: "**"
+globs: **
 ---
 
 ### Database migration

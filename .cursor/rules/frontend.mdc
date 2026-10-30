@@ -1,6 +1,6 @@
 ---
 description: React/Vite/Material-UI frontend guidelines for Ship Status Dashboard
-globs: "frontend/**"
+globs: frontend/**
 ---
 
 * After making changes, always run formatting and linting to maintain consistency:

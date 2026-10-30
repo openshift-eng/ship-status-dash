@@ -1,0 +1,3 @@
+[mcp_servers.ship-status-dev]
+command = "sh"
+args = ["-c", "exec \"$(git rev-parse --show-toplevel)/ship-status-dev/run.sh\""]

@@ -1,7 +1,910 @@
 lockfile_version: '1'
-generated_at: '2026-04-30T19:32:55.853038+00:00'
+generated_at: '2026-10-29T17:45:38.891292+00:00'
 dependencies: []
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-app.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-bdd.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-e2e.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-frontend.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-lint.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-migrate.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-prettier.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-serve.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-setup.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+- kind: project-relative
+  target: claude
+  value: .claude/commands/ship-status-dev-tests.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607
+- kind: project-relative
+  target: claude
+  value: .claude/rules/backend.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:123c0091da71dd1276db9f58052c1c1bc5fa677ea3e58f30a16cb2f97177eb17
+- kind: project-relative
+  target: claude
+  value: .claude/rules/dev-commands.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0b6080c22cb8535b33aa629badcdfab5dc8fe570a354bd1d5887bde20505bb7f
+- kind: project-relative
+  target: claude
+  value: .claude/rules/docs.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:7e48e5063c9f4add7671edccb4d6a35d6133b06adf254950d8d3e3db1cab2d24
+- kind: project-relative
+  target: claude
+  value: .claude/rules/frontend.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:f765c59683850bcbb7c9cddcf9e5f41b27b64d6512e907c08ab9328a9e760bce
+- kind: project-relative
+  target: claude
+  value: .claude/rules/general.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:6ac7cdeaa68f94cffd4fc2c3207e49180279dbc175de308e6600e9556122f7ac
+- kind: project-relative
+  target: claude
+  value: .claude/rules/mcp.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:02e5b28c553bb091d7d021f60787602fb57da4886e8ed91d78a6e2a345cf5204
+- kind: project-relative
+  target: claude
+  value: .claude/rules/security.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8541cd9864adae8626ce9f798dfc1ce532b3109b463565b86f05da5c4749f39b
+- kind: project-relative
+  target: claude
+  value: .claude/rules/ship-status-dev.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4ce34ab00601384e569b2bc032e64e59a55309c603a61254d45c1eb47a17c357
+- kind: project-relative
+  target: claude
+  value: .claude/rules/testing.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:53fb5c7bb3090305af7c8ee823bf3150dc93c1c7e8bfbd9f9f999ce61e4b46e7
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-app
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-app/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4905d2bcc87dbc2f9528ca1d180c2364e1b939e390b30e677c48711055663184
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-bdd
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-bdd/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1cc8ccf53503d6bad6ebc146a81125b58266d5a32772b5df694e33f70556fdb8
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-e2e
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-e2e/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b2f6a53fa9b7ef6b580e9d9b23fc2f6c2cfe67fe4e5cb60605940014fd78181e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-frontend
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-frontend/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:75e769c9d29dedc0c387551c6392cfa5ff5afcb7925b173580dff1218153e30e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-lint
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-lint/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:c98055cd78898c1dffbe7dc012c9d603551dae0a2f48ff6c1e1b34bccfeb1792
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-migrate
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-migrate/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:83a10a44e21f94028536ff4f856e6a624b8b767bdb964699be7a9ec1cef3c005
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-prettier
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-prettier/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0b3d1965959b98a17adf2c118c79444ad3ce7443b226b69367b1412f2d7ae154
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-serve
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-serve/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:fa04c0da6298c411878c3d88f7d589e66c8632959c3c79551c69fa178a8b3715
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-setup
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-setup/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87640b9d4e87f0b9c0ac3fa962912e9ddf115811a2c5325d464e96f58d2de196
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-tests
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/ship-status-dev-tests/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:715936dab00ce84753bc369a8dbe178d9a830e8c895317f6f0e8a24f97ffec03
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-app
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-app/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4905d2bcc87dbc2f9528ca1d180c2364e1b939e390b30e677c48711055663184
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-bdd
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-bdd/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1cc8ccf53503d6bad6ebc146a81125b58266d5a32772b5df694e33f70556fdb8
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-e2e
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-e2e/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b2f6a53fa9b7ef6b580e9d9b23fc2f6c2cfe67fe4e5cb60605940014fd78181e
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-frontend
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-frontend/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:75e769c9d29dedc0c387551c6392cfa5ff5afcb7925b173580dff1218153e30e
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-lint
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-lint/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:c98055cd78898c1dffbe7dc012c9d603551dae0a2f48ff6c1e1b34bccfeb1792
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-migrate
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-migrate/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:83a10a44e21f94028536ff4f856e6a624b8b767bdb964699be7a9ec1cef3c005
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-prettier
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-prettier/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0b3d1965959b98a17adf2c118c79444ad3ce7443b226b69367b1412f2d7ae154
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-serve
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-serve/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:fa04c0da6298c411878c3d88f7d589e66c8632959c3c79551c69fa178a8b3715
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-setup
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-setup/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87640b9d4e87f0b9c0ac3fa962912e9ddf115811a2c5325d464e96f58d2de196
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-tests
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/ship-status-dev-tests/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:715936dab00ce84753bc369a8dbe178d9a830e8c895317f6f0e8a24f97ffec03
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-app.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-bdd.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-e2e.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-frontend.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-lint.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-migrate.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-prettier.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-serve.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-setup.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+- kind: project-relative
+  target: cursor
+  value: .cursor/commands/ship-status-dev-tests.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/backend.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:15c9eb480e6e1fd27d98f19338a81f8021f94559817949212dc31fd5cf818e2b
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/dev-commands.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:e2163be9f6bb394e7e9e81af5374c4d173de1b89aad6c13613a4dc147f13d631
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/docs.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:c751071f8ef122e9724167811bf73fa3cb2f6339a76cee010a9be3217af04fcb
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/frontend.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8ead83675e721b2cd2d2bba26442defb5e45d93f9e065fc2912e0f56870be0ce
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/general.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:48af9bf919cdd5e0b4b503d0b5aedc971a0a609bbbe91974d781344d7f0232b9
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/mcp.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:e810f10bc67efe314df4996b5accb32e24d5311246da6ea50298667452ce1504
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/security.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:7c73c67f82e174581b6ded991d35d9dd680e50e08039f84e69ed5f3fc44d9c83
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/ship-status-dev.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8dacab9bea3e0efbd748fa3e1607f7d8e84fb62ffd38e3d1bc32a517bf691450
+- kind: project-relative
+  target: cursor
+  value: .cursor/rules/testing.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:89b424ee79adcf92a1d58833508a92affe2bae3eafa1a2b448c52bcddb16c923
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-app.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:d93753b56b1e28a5020494f25aea41d960c63abf4dabc88832c53d1b3ea949d3
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-bdd.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:61dea32648f8d487338629215813775192cb2b1d57f845e1fdb68f6453bd28e0
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-e2e.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b37f31ab0152f432bc23b9c5341b6f5f0e15c20537952667a452234e92087d4f
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-frontend.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:406d9acb1673ff1618c5de682ccbf1b464534be2fda3c961b061e34843a777a2
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-lint.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:c5581e2eccc83d9e7cb9820ec99cb5627fa3e3749c62efec3d0b5f886cdef40f
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-migrate.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1f93de9a603df3636ceef132a0c91f83aa4c2dc50b26402d2f843c747ed1f95a
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-prettier.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4ceec2f02c19b9fb5390bb5ce9f20b65c182c2bb15d5e83a247b2a1f73af2092
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-serve.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:30e8424bb918cf8eb4721c6fd3b843ccfdfda788428fc86cde80e50db90c9a04
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-setup.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:54ee817a3d607d785871cf649e619f7933ac4cec556ad30f7126e5c8432b297e
+- kind: project-relative
+  target: gemini
+  value: .gemini/commands/ship-status-dev-tests.toml
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:dd9a1ce475726f9163e8d0c9f87d1815028f4acf2bab0c821a9cb5fa9400b756
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-app.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-bdd.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-e2e.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-frontend.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-lint.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-migrate.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-prettier.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-serve.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-setup.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/ship-status-dev-tests.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607
 local_deployed_files:
+- .agents/skills/ship-status-dev-app
+- .agents/skills/ship-status-dev-app/SKILL.md
+- .agents/skills/ship-status-dev-bdd
+- .agents/skills/ship-status-dev-bdd/SKILL.md
+- .agents/skills/ship-status-dev-e2e
+- .agents/skills/ship-status-dev-e2e/SKILL.md
+- .agents/skills/ship-status-dev-frontend
+- .agents/skills/ship-status-dev-frontend/SKILL.md
+- .agents/skills/ship-status-dev-lint
+- .agents/skills/ship-status-dev-lint/SKILL.md
+- .agents/skills/ship-status-dev-migrate
+- .agents/skills/ship-status-dev-migrate/SKILL.md
+- .agents/skills/ship-status-dev-prettier
+- .agents/skills/ship-status-dev-prettier/SKILL.md
+- .agents/skills/ship-status-dev-serve
+- .agents/skills/ship-status-dev-serve/SKILL.md
+- .agents/skills/ship-status-dev-setup
+- .agents/skills/ship-status-dev-setup/SKILL.md
+- .agents/skills/ship-status-dev-tests
+- .agents/skills/ship-status-dev-tests/SKILL.md
 - .claude/commands/ship-status-dev-app.md
 - .claude/commands/ship-status-dev-bdd.md
 - .claude/commands/ship-status-dev-e2e.md
@@ -21,6 +924,26 @@ local_deployed_files:
 - .claude/rules/security.md
 - .claude/rules/ship-status-dev.md
 - .claude/rules/testing.md
+- .claude/skills/ship-status-dev-app
+- .claude/skills/ship-status-dev-app/SKILL.md
+- .claude/skills/ship-status-dev-bdd
+- .claude/skills/ship-status-dev-bdd/SKILL.md
+- .claude/skills/ship-status-dev-e2e
+- .claude/skills/ship-status-dev-e2e/SKILL.md
+- .claude/skills/ship-status-dev-frontend
+- .claude/skills/ship-status-dev-frontend/SKILL.md
+- .claude/skills/ship-status-dev-lint
+- .claude/skills/ship-status-dev-lint/SKILL.md
+- .claude/skills/ship-status-dev-migrate
+- .claude/skills/ship-status-dev-migrate/SKILL.md
+- .claude/skills/ship-status-dev-prettier
+- .claude/skills/ship-status-dev-prettier/SKILL.md
+- .claude/skills/ship-status-dev-serve
+- .claude/skills/ship-status-dev-serve/SKILL.md
+- .claude/skills/ship-status-dev-setup
+- .claude/skills/ship-status-dev-setup/SKILL.md
+- .claude/skills/ship-status-dev-tests
+- .claude/skills/ship-status-dev-tests/SKILL.md
 - .cursor/commands/ship-status-dev-app.md
 - .cursor/commands/ship-status-dev-bdd.md
 - .cursor/commands/ship-status-dev-e2e.md
@@ -61,61 +984,81 @@ local_deployed_files:
 - .opencode/commands/ship-status-dev-setup.md
 - .opencode/commands/ship-status-dev-tests.md
 local_deployed_file_hashes:
-  .claude/commands/ship-status-dev-app.md: sha256:399489e7f0c49d44a4e5be73ab27c948c0127c799c4c5d8e29699d30c0e4369e
-  .claude/commands/ship-status-dev-bdd.md: sha256:bc2300bae01412086d0486958dd90e3e898a11090fcfd40910029c969c8525e2
-  .claude/commands/ship-status-dev-e2e.md: sha256:78f1ad93a91934b5f9979e4919d26a3dab21a66a03ece542a7676e19c1b602a2
-  .claude/commands/ship-status-dev-frontend.md: sha256:83652d53a1ac6a00220476180d5b4360045cd4ef633a4cfaaa129b3fbf16f5cb
-  .claude/commands/ship-status-dev-lint.md: sha256:c808f3e457941b90e564553fda8435ad8f87bdbc87d4523a03d0b8ef189e40e7
-  .claude/commands/ship-status-dev-migrate.md: sha256:636507ec2efa52bcd48ba6c826dd78a4dc2bdeff479f5cea8e9ef07162010314
-  .claude/commands/ship-status-dev-prettier.md: sha256:e1be3c6c942a184385a52d932ee69d46b3ee7303ef1aede2f16068026a41719b
-  .claude/commands/ship-status-dev-serve.md: sha256:cf7e90e5ab487fb32ad9e7ca49ad4515a60f9622cc222f4bbecdc150ded8d77b
-  .claude/commands/ship-status-dev-setup.md: sha256:b71cfc161980d11cfebc8ac196b146673adf7eda0fc0dfd2ef6f7efec7463405
-  .claude/commands/ship-status-dev-tests.md: sha256:d7619ec8c1132a17140639c7bb1424feff9db1a671325d0575763e5ce85b4935
+  .agents/skills/ship-status-dev-app/SKILL.md: sha256:4905d2bcc87dbc2f9528ca1d180c2364e1b939e390b30e677c48711055663184
+  .agents/skills/ship-status-dev-bdd/SKILL.md: sha256:1cc8ccf53503d6bad6ebc146a81125b58266d5a32772b5df694e33f70556fdb8
+  .agents/skills/ship-status-dev-e2e/SKILL.md: sha256:b2f6a53fa9b7ef6b580e9d9b23fc2f6c2cfe67fe4e5cb60605940014fd78181e
+  .agents/skills/ship-status-dev-frontend/SKILL.md: sha256:75e769c9d29dedc0c387551c6392cfa5ff5afcb7925b173580dff1218153e30e
+  .agents/skills/ship-status-dev-lint/SKILL.md: sha256:c98055cd78898c1dffbe7dc012c9d603551dae0a2f48ff6c1e1b34bccfeb1792
+  .agents/skills/ship-status-dev-migrate/SKILL.md: sha256:83a10a44e21f94028536ff4f856e6a624b8b767bdb964699be7a9ec1cef3c005
+  .agents/skills/ship-status-dev-prettier/SKILL.md: sha256:0b3d1965959b98a17adf2c118c79444ad3ce7443b226b69367b1412f2d7ae154
+  .agents/skills/ship-status-dev-serve/SKILL.md: sha256:fa04c0da6298c411878c3d88f7d589e66c8632959c3c79551c69fa178a8b3715
+  .agents/skills/ship-status-dev-setup/SKILL.md: sha256:87640b9d4e87f0b9c0ac3fa962912e9ddf115811a2c5325d464e96f58d2de196
+  .agents/skills/ship-status-dev-tests/SKILL.md: sha256:715936dab00ce84753bc369a8dbe178d9a830e8c895317f6f0e8a24f97ffec03
+  .claude/commands/ship-status-dev-app.md: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+  .claude/commands/ship-status-dev-bdd.md: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+  .claude/commands/ship-status-dev-e2e.md: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+  .claude/commands/ship-status-dev-frontend.md: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+  .claude/commands/ship-status-dev-lint.md: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+  .claude/commands/ship-status-dev-migrate.md: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+  .claude/commands/ship-status-dev-prettier.md: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+  .claude/commands/ship-status-dev-serve.md: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+  .claude/commands/ship-status-dev-setup.md: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+  .claude/commands/ship-status-dev-tests.md: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607
   .claude/rules/backend.md: sha256:123c0091da71dd1276db9f58052c1c1bc5fa677ea3e58f30a16cb2f97177eb17
   .claude/rules/dev-commands.md: sha256:0b6080c22cb8535b33aa629badcdfab5dc8fe570a354bd1d5887bde20505bb7f
   .claude/rules/docs.md: sha256:7e48e5063c9f4add7671edccb4d6a35d6133b06adf254950d8d3e3db1cab2d24
   .claude/rules/frontend.md: sha256:f765c59683850bcbb7c9cddcf9e5f41b27b64d6512e907c08ab9328a9e760bce
-  .claude/rules/general.md: sha256:0a989e942aa4720d9991056c25f6c6f86f050175e862e6541a75b69d98d232ff
+  .claude/rules/general.md: sha256:6ac7cdeaa68f94cffd4fc2c3207e49180279dbc175de308e6600e9556122f7ac
   .claude/rules/mcp.md: sha256:02e5b28c553bb091d7d021f60787602fb57da4886e8ed91d78a6e2a345cf5204
   .claude/rules/security.md: sha256:8541cd9864adae8626ce9f798dfc1ce532b3109b463565b86f05da5c4749f39b
   .claude/rules/ship-status-dev.md: sha256:4ce34ab00601384e569b2bc032e64e59a55309c603a61254d45c1eb47a17c357
   .claude/rules/testing.md: sha256:53fb5c7bb3090305af7c8ee823bf3150dc93c1c7e8bfbd9f9f999ce61e4b46e7
-  .cursor/commands/ship-status-dev-app.md: sha256:399489e7f0c49d44a4e5be73ab27c948c0127c799c4c5d8e29699d30c0e4369e
-  .cursor/commands/ship-status-dev-bdd.md: sha256:bc2300bae01412086d0486958dd90e3e898a11090fcfd40910029c969c8525e2
-  .cursor/commands/ship-status-dev-e2e.md: sha256:78f1ad93a91934b5f9979e4919d26a3dab21a66a03ece542a7676e19c1b602a2
-  .cursor/commands/ship-status-dev-frontend.md: sha256:83652d53a1ac6a00220476180d5b4360045cd4ef633a4cfaaa129b3fbf16f5cb
-  .cursor/commands/ship-status-dev-lint.md: sha256:c808f3e457941b90e564553fda8435ad8f87bdbc87d4523a03d0b8ef189e40e7
-  .cursor/commands/ship-status-dev-migrate.md: sha256:636507ec2efa52bcd48ba6c826dd78a4dc2bdeff479f5cea8e9ef07162010314
-  .cursor/commands/ship-status-dev-prettier.md: sha256:e1be3c6c942a184385a52d932ee69d46b3ee7303ef1aede2f16068026a41719b
-  .cursor/commands/ship-status-dev-serve.md: sha256:cf7e90e5ab487fb32ad9e7ca49ad4515a60f9622cc222f4bbecdc150ded8d77b
-  .cursor/commands/ship-status-dev-setup.md: sha256:b71cfc161980d11cfebc8ac196b146673adf7eda0fc0dfd2ef6f7efec7463405
-  .cursor/commands/ship-status-dev-tests.md: sha256:d7619ec8c1132a17140639c7bb1424feff9db1a671325d0575763e5ce85b4935
-  .cursor/rules/backend.mdc: sha256:d2e80e954efcbd106fcb702125a611c19c5db1d7d7081df505e77f0bf190f3d5
-  .cursor/rules/dev-commands.mdc: sha256:14c22708d52597187adf7411054bc09c016bf68e3bcfa75858309b589e6e745a
-  .cursor/rules/docs.mdc: sha256:a3865dc06068a2e11b6765839b539e8a90fb1b94b6921c6af47896afe283fbee
-  .cursor/rules/frontend.mdc: sha256:599aca2a3ddb2887664eff069d92284ad1ee3c6326c14bd07821c0b9f213dcf9
-  .cursor/rules/general.mdc: sha256:92a1979bad49f1805051166911eddf1015c27be11cd930f36eaefa443080ac2a
-  .cursor/rules/mcp.mdc: sha256:40785f374f0e451757d89052ce69e66d794788b19dce69eaa1968c4855e20754
-  .cursor/rules/security.mdc: sha256:884490cfccddd945852388251761a35eaa3318aa25ff527197816c70d7f6bb6e
-  .cursor/rules/ship-status-dev.mdc: sha256:f30f3f9761fe72fc93f4b41788a47494f9adc481d8a829712fb543ddf37ad7fd
-  .cursor/rules/testing.mdc: sha256:aa780f044737b47e96ca00fbdd3dadcf062bf8e2d2a08f44e696a17a03ea18de
-  .gemini/commands/ship-status-dev-app.toml: sha256:9699fca0ca9b16dba0c9563ba4a65d4f04ce5ca07ca9b88bf1d7e0bb666184d7
-  .gemini/commands/ship-status-dev-bdd.toml: sha256:673922c7941aecbd2370032caad15bc8b16e5febed57f22f8101e0f4c0b99663
-  .gemini/commands/ship-status-dev-e2e.toml: sha256:b101d8a4b13b84cc140ff642f8442dc32a6728227271b5adaf49054389cddb00
-  .gemini/commands/ship-status-dev-frontend.toml: sha256:980274071317d1268694f3f20d7f5b67238898b79331e4c2bd37fa745814ee21
-  .gemini/commands/ship-status-dev-lint.toml: sha256:11b98a8799556c6a0d98aa492f672f680f170bf1c9fb7d0dffcb72ad139eff16
-  .gemini/commands/ship-status-dev-migrate.toml: sha256:1ee5aab78291727c1f113563fd18515c5e1734fe85a0877cd5906cdc0b96e2ab
-  .gemini/commands/ship-status-dev-prettier.toml: sha256:1b6ba798dbf8e0726375bacd904100d86b6c807a4e72876e9c4b2fc8f21ec615
-  .gemini/commands/ship-status-dev-serve.toml: sha256:744413a817fb79f1d4f516663ad3d5ff56cb97e14ad7a211d0295c62dcc35f94
-  .gemini/commands/ship-status-dev-setup.toml: sha256:9d11a6ba7639be3c280d71b44d7152eaa7b4a59137dd0e8d4b42ff2fbc264f15
-  .gemini/commands/ship-status-dev-tests.toml: sha256:0546d36ffb0fae79ed5fa78fe5ff9b796abeae46f6dae8d74f2ea1a7fc6c5679
-  .opencode/commands/ship-status-dev-app.md: sha256:399489e7f0c49d44a4e5be73ab27c948c0127c799c4c5d8e29699d30c0e4369e
-  .opencode/commands/ship-status-dev-bdd.md: sha256:bc2300bae01412086d0486958dd90e3e898a11090fcfd40910029c969c8525e2
-  .opencode/commands/ship-status-dev-e2e.md: sha256:78f1ad93a91934b5f9979e4919d26a3dab21a66a03ece542a7676e19c1b602a2
-  .opencode/commands/ship-status-dev-frontend.md: sha256:83652d53a1ac6a00220476180d5b4360045cd4ef633a4cfaaa129b3fbf16f5cb
-  .opencode/commands/ship-status-dev-lint.md: sha256:c808f3e457941b90e564553fda8435ad8f87bdbc87d4523a03d0b8ef189e40e7
-  .opencode/commands/ship-status-dev-migrate.md: sha256:636507ec2efa52bcd48ba6c826dd78a4dc2bdeff479f5cea8e9ef07162010314
-  .opencode/commands/ship-status-dev-prettier.md: sha256:e1be3c6c942a184385a52d932ee69d46b3ee7303ef1aede2f16068026a41719b
-  .opencode/commands/ship-status-dev-serve.md: sha256:cf7e90e5ab487fb32ad9e7ca49ad4515a60f9622cc222f4bbecdc150ded8d77b
-  .opencode/commands/ship-status-dev-setup.md: sha256:b71cfc161980d11cfebc8ac196b146673adf7eda0fc0dfd2ef6f7efec7463405
-  .opencode/commands/ship-status-dev-tests.md: sha256:d7619ec8c1132a17140639c7bb1424feff9db1a671325d0575763e5ce85b4935
+  .claude/skills/ship-status-dev-app/SKILL.md: sha256:4905d2bcc87dbc2f9528ca1d180c2364e1b939e390b30e677c48711055663184
+  .claude/skills/ship-status-dev-bdd/SKILL.md: sha256:1cc8ccf53503d6bad6ebc146a81125b58266d5a32772b5df694e33f70556fdb8
+  .claude/skills/ship-status-dev-e2e/SKILL.md: sha256:b2f6a53fa9b7ef6b580e9d9b23fc2f6c2cfe67fe4e5cb60605940014fd78181e
+  .claude/skills/ship-status-dev-frontend/SKILL.md: sha256:75e769c9d29dedc0c387551c6392cfa5ff5afcb7925b173580dff1218153e30e
+  .claude/skills/ship-status-dev-lint/SKILL.md: sha256:c98055cd78898c1dffbe7dc012c9d603551dae0a2f48ff6c1e1b34bccfeb1792
+  .claude/skills/ship-status-dev-migrate/SKILL.md: sha256:83a10a44e21f94028536ff4f856e6a624b8b767bdb964699be7a9ec1cef3c005
+  .claude/skills/ship-status-dev-prettier/SKILL.md: sha256:0b3d1965959b98a17adf2c118c79444ad3ce7443b226b69367b1412f2d7ae154
+  .claude/skills/ship-status-dev-serve/SKILL.md: sha256:fa04c0da6298c411878c3d88f7d589e66c8632959c3c79551c69fa178a8b3715
+  .claude/skills/ship-status-dev-setup/SKILL.md: sha256:87640b9d4e87f0b9c0ac3fa962912e9ddf115811a2c5325d464e96f58d2de196
+  .claude/skills/ship-status-dev-tests/SKILL.md: sha256:715936dab00ce84753bc369a8dbe178d9a830e8c895317f6f0e8a24f97ffec03
+  .cursor/commands/ship-status-dev-app.md: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+  .cursor/commands/ship-status-dev-bdd.md: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+  .cursor/commands/ship-status-dev-e2e.md: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+  .cursor/commands/ship-status-dev-frontend.md: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+  .cursor/commands/ship-status-dev-lint.md: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+  .cursor/commands/ship-status-dev-migrate.md: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+  .cursor/commands/ship-status-dev-prettier.md: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+  .cursor/commands/ship-status-dev-serve.md: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+  .cursor/commands/ship-status-dev-setup.md: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+  .cursor/commands/ship-status-dev-tests.md: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607
+  .cursor/rules/backend.mdc: sha256:15c9eb480e6e1fd27d98f19338a81f8021f94559817949212dc31fd5cf818e2b
+  .cursor/rules/dev-commands.mdc: sha256:e2163be9f6bb394e7e9e81af5374c4d173de1b89aad6c13613a4dc147f13d631
+  .cursor/rules/docs.mdc: sha256:c751071f8ef122e9724167811bf73fa3cb2f6339a76cee010a9be3217af04fcb
+  .cursor/rules/frontend.mdc: sha256:8ead83675e721b2cd2d2bba26442defb5e45d93f9e065fc2912e0f56870be0ce
+  .cursor/rules/general.mdc: sha256:48af9bf919cdd5e0b4b503d0b5aedc971a0a609bbbe91974d781344d7f0232b9
+  .cursor/rules/mcp.mdc: sha256:e810f10bc67efe314df4996b5accb32e24d5311246da6ea50298667452ce1504
+  .cursor/rules/security.mdc: sha256:7c73c67f82e174581b6ded991d35d9dd680e50e08039f84e69ed5f3fc44d9c83
+  .cursor/rules/ship-status-dev.mdc: sha256:8dacab9bea3e0efbd748fa3e1607f7d8e84fb62ffd38e3d1bc32a517bf691450
+  .cursor/rules/testing.mdc: sha256:89b424ee79adcf92a1d58833508a92affe2bae3eafa1a2b448c52bcddb16c923
+  .gemini/commands/ship-status-dev-app.toml: sha256:d93753b56b1e28a5020494f25aea41d960c63abf4dabc88832c53d1b3ea949d3
+  .gemini/commands/ship-status-dev-bdd.toml: sha256:61dea32648f8d487338629215813775192cb2b1d57f845e1fdb68f6453bd28e0
+  .gemini/commands/ship-status-dev-e2e.toml: sha256:b37f31ab0152f432bc23b9c5341b6f5f0e15c20537952667a452234e92087d4f
+  .gemini/commands/ship-status-dev-frontend.toml: sha256:406d9acb1673ff1618c5de682ccbf1b464534be2fda3c961b061e34843a777a2
+  .gemini/commands/ship-status-dev-lint.toml: sha256:c5581e2eccc83d9e7cb9820ec99cb5627fa3e3749c62efec3d0b5f886cdef40f
+  .gemini/commands/ship-status-dev-migrate.toml: sha256:1f93de9a603df3636ceef132a0c91f83aa4c2dc50b26402d2f843c747ed1f95a
+  .gemini/commands/ship-status-dev-prettier.toml: sha256:4ceec2f02c19b9fb5390bb5ce9f20b65c182c2bb15d5e83a247b2a1f73af2092
+  .gemini/commands/ship-status-dev-serve.toml: sha256:30e8424bb918cf8eb4721c6fd3b843ccfdfda788428fc86cde80e50db90c9a04
+  .gemini/commands/ship-status-dev-setup.toml: sha256:54ee817a3d607d785871cf649e619f7933ac4cec556ad30f7126e5c8432b297e
+  .gemini/commands/ship-status-dev-tests.toml: sha256:dd9a1ce475726f9163e8d0c9f87d1815028f4acf2bab0c821a9cb5fa9400b756
+  .opencode/commands/ship-status-dev-app.md: sha256:1b77b4eb14fbe65c0f47513d78c2368d21f18ee478fa188c7f10467767a73d6f
+  .opencode/commands/ship-status-dev-bdd.md: sha256:4229e7ee1d8edca352f232b758640ee323aca55fcf716119c5c1184ac22b3903
+  .opencode/commands/ship-status-dev-e2e.md: sha256:4f9e9debafd0e04dc1bf6f34c5b2b57e3ed8f2da4bb6721f878854f6121717e3
+  .opencode/commands/ship-status-dev-frontend.md: sha256:5f567d16541abcbc716af3f6573a0cc985445ff83c629a5d12ff464f62ed9443
+  .opencode/commands/ship-status-dev-lint.md: sha256:02f10cd2c3edb46881998410a6c1d800a841a31251742ed4b4985395a600f35f
+  .opencode/commands/ship-status-dev-migrate.md: sha256:33a6fa3c9b5e5ceef5bfd67dd71ef0f1d4823165b526ae9b6a5e46f0617fa545
+  .opencode/commands/ship-status-dev-prettier.md: sha256:8eb4123b8776bd49b32c5e5e38e559acad974721a6552e7d6f3809b386ae2fcd
+  .opencode/commands/ship-status-dev-serve.md: sha256:87b4aed4ab1211d196e12b8f7609dbd3558a4d3ad71f20fc4745f0df4c723392
+  .opencode/commands/ship-status-dev-setup.md: sha256:b3f1e28779bd58ae6ef1a214d0f1dbefbf5a2c3dc09222407f64daa92c35cc98
+  .opencode/commands/ship-status-dev-tests.md: sha256:7b8f414e61c8173733498e86a271d05f0e6e819be029cad2e23fec766a79c607

@@ -1,6 +1,6 @@
 ---
 description: Keep documentation up-to-date alongside code changes
-globs: "**"
+globs: **
 ---
 
 * When your change alters setup steps, usage instructions, or architecture,
