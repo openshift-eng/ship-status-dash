@@ -190,11 +190,12 @@ github.com/prometheus/procfs/internal/parsers
 # github.com/sirupsen/logrus v1.10.2
 ## explicit; go 1.23
 github.com/sirupsen/logrus
-# github.com/slack-go/slack v0.30.1
+# github.com/slack-go/slack v0.31.0
 ## explicit; go 1.26
 github.com/slack-go/slack
 github.com/slack-go/slack/internal/backoff
 github.com/slack-go/slack/internal/errorsx
+github.com/slack-go/slack/internal/redact
 github.com/slack-go/slack/internal/timex
 github.com/slack-go/slack/slackutilsx
 # github.com/spf13/pflag v1.0.10
