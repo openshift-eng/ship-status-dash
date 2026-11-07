@@ -59,7 +59,7 @@ func (e SlackResponseErrors) MarshalJSON() ([]byte, error) {
 	if e.Message != nil {
 		return json.Marshal(*e.Message)
 	}
-	return json.Marshal(nil)
+	return []byte("null"), nil
 }
 
 // UnmarshalJSON implements custom unmarshaling for SlackResponseErrors
@@ -117,6 +117,8 @@ type SlackResponse struct {
 	Warning          string                `json:"warning"`
 	Errors           []SlackResponseErrors `json:"errors,omitempty"`
 	ResponseMetadata ResponseMetadata      `json:"response_metadata"`
+	Needed           string                `json:"needed,omitempty"`
+	Provided         string                `json:"provided,omitempty"`
 }
 
 // Warn returns warning information from the API response, or nil if there
@@ -169,6 +171,8 @@ type KickUserFromConversationSlackResponse struct {
 	Warning          string                `json:"warning"`
 	Errors           []SlackResponseErrors `json:"-"`
 	ResponseMetadata ResponseMetadata      `json:"response_metadata"`
+	Needed           string                `json:"needed,omitempty"`
+	Provided         string                `json:"provided,omitempty"`
 }
 
 // UnmarshalJSON implements custom unmarshaling for KickUserFromConversationSlackResponse to handle
@@ -183,7 +187,7 @@ func (s *KickUserFromConversationSlackResponse) UnmarshalJSON(data []byte) error
 		Alias: (*Alias)(s),
 	}
 
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := json.Unmarshal(data, aux); err != nil {
 		return err
 	}
 
@@ -232,7 +236,7 @@ func (s KickUserFromConversationSlackResponse) Err() error {
 		return nil
 	}
 
-	return SlackErrorResponse{Err: s.Error, Errors: s.Errors, ResponseMetadata: s.ResponseMetadata}
+	return SlackErrorResponse{Err: s.Error, Errors: s.Errors, ResponseMetadata: s.ResponseMetadata, Needed: s.Needed, Provided: s.Provided}
 }
 
 func (t SlackResponse) Err() error {
@@ -247,7 +251,7 @@ func (t SlackResponse) Err() error {
 		return nil
 	}
 
-	return SlackErrorResponse{Err: t.Error, Errors: t.Errors, ResponseMetadata: t.ResponseMetadata}
+	return SlackErrorResponse{Err: t.Error, Errors: t.Errors, ResponseMetadata: t.ResponseMetadata, Needed: t.Needed, Provided: t.Provided}
 }
 
 // SlackErrorResponse brings along the metadata of errors returned by the Slack API.
@@ -255,6 +259,10 @@ type SlackErrorResponse struct {
 	Err              string
 	Errors           []SlackResponseErrors
 	ResponseMetadata ResponseMetadata
+	// Needed and Provided contain Slack's scope diagnostics, when supplied.
+	// Values are preserved verbatim without interpreting separators.
+	Needed   string
+	Provided string
 }
 
 func (r SlackErrorResponse) Error() string { return r.Err }
@@ -555,7 +563,7 @@ func okJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	response, _ := json.Marshal(SlackResponse{
 		Ok: true,
 	})
-	rw.Write(response)
+	_, _ = rw.Write(response)
 }
 
 func checkStatusCode(resp *http.Response, d Debug) error {
@@ -569,7 +577,7 @@ func checkStatusCode(resp *http.Response, d Debug) error {
 
 	// Slack seems to send an HTML body along with 5xx error codes. Don't parse it.
 	if resp.StatusCode != http.StatusOK {
-		logResponse(resp, d)
+		_ = logResponse(resp, d)
 		return StatusCodeError{Code: resp.StatusCode, Status: resp.Status}
 	}
 
