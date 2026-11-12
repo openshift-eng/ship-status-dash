@@ -22,6 +22,9 @@ const (
 	// OutageDescription is the sample TRT incident created with the workspace.
 	OutageDescription = "aws-ovn-upgrade blocking nightlies"
 
+	outcomeAccepted = "Accepted"
+	outcomeRejected = "Rejected"
+
 	upgradeJob = "e2e-aws-ovn-upgrade"
 	metalJob   = "e2e-metal-ipi-ovn-serial"
 
@@ -138,7 +141,7 @@ func buildSeed(now time.Time, team string, streams []payloadv1.Stream, recent in
 		}
 	}
 	if len(streams) > 0 {
-		item, err := itemFor(now, team, streams[0], payloadSpec{ago: PruneCandidateAgo, outcome: "Rejected"})
+		item, err := itemFor(now, team, streams[0], payloadSpec{ago: PruneCandidateAgo, outcome: outcomeRejected})
 		if err != nil {
 			return nil, err
 		}
@@ -166,13 +169,13 @@ func recentRejectSpecs(n int) []payloadSpec {
 	sharedUpgrade.LaterPass = &payloadv1.LaterPass{}
 	sharedMetal := failedJob(metalJob, "Serial suite timed out.", noteDisruptionID)
 	singleUpgrade := failedJob(upgradeJob, "7/7 children disrupted.", noteDisruptionID)
-	withPass := specWithJobs(2*time.Hour, "Rejected", true, sharedUpgrade, sharedMetal)
+	withPass := specWithJobs(2*time.Hour, outcomeRejected, true, sharedUpgrade, sharedMetal)
 	withPass.itemNote = "OVN disruption is blocking this payload. The metal failure looks related."
 	specs := []payloadSpec{
 		withPass,
 		{
 			ago:      4 * time.Hour,
-			outcome:  "Rejected",
+			outcome:  outcomeRejected,
 			analysis: true,
 			jobs: []payloadv1.PayloadJob{
 				failedJob(upgradeJob, "7/7 children disrupted."),
@@ -181,16 +184,16 @@ func recentRejectSpecs(n int) []payloadSpec {
 				failedJob("e2e-aws-ovn-serial", "Disruption above the allowed budget."),
 			},
 		},
-		{ago: 6 * time.Hour, outcome: "Accepted"},
-		specWithJobs(12*time.Hour, "Rejected", true, singleUpgrade),
-		{ago: 20 * time.Hour, outcome: "Accepted"},
+		{ago: 6 * time.Hour, outcome: outcomeAccepted},
+		specWithJobs(12*time.Hour, outcomeRejected, true, singleUpgrade),
+		{ago: 20 * time.Hour, outcome: outcomeAccepted},
 	}
 	// The leading rows are the demo rejects. recent_payloads is often 2, which
 	// would drop the accept that keeps this stream met. Keep that accept.
 	fitted := fitSpecs(specs, n, 2)
 	if !specsIncludeAccept(fitted) {
 		for _, spec := range specs {
-			if spec.outcome == "Accepted" {
+			if spec.outcome == outcomeAccepted {
 				fitted = append(fitted, spec)
 				break
 			}
@@ -201,7 +204,7 @@ func recentRejectSpecs(n int) []payloadSpec {
 
 func specsIncludeAccept(specs []payloadSpec) bool {
 	for _, spec := range specs {
-		if spec.outcome == "Accepted" {
+		if spec.outcome == outcomeAccepted {
 			return true
 		}
 	}
@@ -212,11 +215,11 @@ func metSpecs(n int, acceptAgo time.Duration) []payloadSpec {
 	upgrade := failedJob(upgradeJob, "Same disruption as TRT-4120. Not infra.")
 	metal := failedJob(metalJob, "Likely flake. Watching next payload.")
 	specs := []payloadSpec{
-		{ago: acceptAgo, outcome: "Accepted"},
-		{ago: acceptAgo + 6*time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade, metal}, analysis: true},
-		{ago: acceptAgo + 10*time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
-		{ago: acceptAgo + 14*time.Hour, outcome: "Accepted"},
-		{ago: acceptAgo + 16*time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{metal}, analysis: true},
+		{ago: acceptAgo, outcome: outcomeAccepted},
+		{ago: acceptAgo + 6*time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{upgrade, metal}, analysis: true},
+		{ago: acceptAgo + 10*time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
+		{ago: acceptAgo + 14*time.Hour, outcome: outcomeAccepted},
+		{ago: acceptAgo + 16*time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{metal}, analysis: true},
 	}
 	return applyStreaks(fitSpecs(specs, n, 1))
 }
@@ -228,22 +231,22 @@ func missSpecs(n int) []payloadSpec {
 	upgrade := failedJob(upgradeJob, "Backport candidate. Waiting on 5.1 fix.")
 	metal := failedJob(metalJob, "Likely flake. Watching next payload.")
 	rejects := []payloadSpec{
-		{ago: 3 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
-		{ago: 9 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
-		{ago: 15 * time.Hour, outcome: "Rejected"},
-		{ago: 21 * time.Hour, outcome: "Rejected", jobs: []payloadv1.PayloadJob{metal}, analysis: true},
+		{ago: 3 * time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
+		{ago: 9 * time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{upgrade}, analysis: true},
+		{ago: 15 * time.Hour, outcome: outcomeRejected},
+		{ago: 21 * time.Hour, outcome: outcomeRejected, jobs: []payloadv1.PayloadJob{metal}, analysis: true},
 	}
 	for len(rejects) < n-1 {
 		rejects = append(rejects, payloadSpec{
 			ago:     time.Duration(3+6*len(rejects)) * time.Hour,
-			outcome: "Rejected",
+			outcome: outcomeRejected,
 		})
 	}
 	if n == 1 {
-		return []payloadSpec{{ago: 32 * time.Hour, outcome: "Accepted"}}
+		return []payloadSpec{{ago: 32 * time.Hour, outcome: outcomeAccepted}}
 	}
 	out := append([]payloadSpec{}, rejects[:n-1]...)
-	out = append(out, payloadSpec{ago: 32 * time.Hour, outcome: "Accepted"})
+	out = append(out, payloadSpec{ago: 32 * time.Hour, outcome: outcomeAccepted})
 	return applyStreaks(out)
 }
 
@@ -256,7 +259,7 @@ func fitSpecs(specs []payloadSpec, n, keep int) []payloadSpec {
 	for len(specs) < n {
 		specs = append(specs, payloadSpec{
 			ago:     specs[len(specs)-1].ago + 4*time.Hour,
-			outcome: "Rejected",
+			outcome: outcomeRejected,
 		})
 	}
 	return specs[:n]
@@ -358,7 +361,7 @@ func newestRejected(seeded []seededItem, stream string) int {
 	found := -1
 	for i := range seeded {
 		item := seeded[i].item
-		if item.GroupKey != stream || item.Outcome != "Rejected" {
+		if item.GroupKey != stream || item.Outcome != outcomeRejected {
 			continue
 		}
 		if found < 0 || item.OccurredAt.After(seeded[found].item.OccurredAt) {
@@ -467,7 +470,7 @@ func applyStreaks(specs []payloadSpec) []payloadSpec {
 	if len(specs) == 0 {
 		return specs
 	}
-	if specs[0].outcome == "Accepted" {
+	if specs[0].outcome == outcomeAccepted {
 		for i := range specs {
 			for j := range specs[i].jobs {
 				specs[i].jobs[j].RecurringCount = nil
@@ -480,7 +483,7 @@ func applyStreaks(specs []payloadSpec) []payloadSpec {
 			name := specs[i].jobs[j].Name
 			count := 0
 			for k := i; k < len(specs); k++ {
-				if specs[k].outcome == "Accepted" || !jobFailed(specs[k], name) {
+				if specs[k].outcome == outcomeAccepted || !jobFailed(specs[k], name) {
 					break
 				}
 				count++

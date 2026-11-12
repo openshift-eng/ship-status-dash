@@ -1,6 +1,6 @@
 FROM registry.fedoraproject.org/fedora:44
 
-ARG GOLANGCI_LINT_VERSION=2.10.1
+ARG GOLANGCI_LINT_VERSION=2.15.0
 
 # Fedora 44 uses versioned Node.js and wget packages instead of module streams,
 # and its podman package does not pull in buildah or skopeo.
