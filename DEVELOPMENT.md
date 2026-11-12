@@ -16,6 +16,8 @@ The preferred way to develop is the [dev container](.devcontainer/README.md). It
 2. Copy [`.devcontainer/.env.example`](.devcontainer/.env.example) to `.devcontainer/.env` if you need to override defaults.
 3. On first create, `post-create.sh` installs dependencies and runs migrations against the bundled PostgreSQL service.
 
+**Go toolchain:** `go.mod` requires Go 1.27. Fedora's `golang` package defaults to `GOTOOLCHAIN=local`, so if the container's Go is older than the `go` directive, run `go env -w GOTOOLCHAIN=auto` once. Go then downloads the required toolchain from the Go module proxy. Check with `go version` from the repository root.
+
 **Services** (see the [dev container README](.devcontainer/README.md) for full detail):
 
 The devcontainer publishes 3030, 8180, 8443, and 9090 on the host loopback. Login and protected API calls open `http://localhost:8443` in the browser, so those ports are not left to editor port forwarding. Recreate the devcontainer after pulling a change to the published ports.

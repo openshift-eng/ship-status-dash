@@ -1,6 +1,6 @@
 module ship-status-dash
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/18F/hmacauth v0.0.0-20151013130326-9232a6386b73
