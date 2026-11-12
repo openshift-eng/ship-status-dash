@@ -63,6 +63,7 @@ RUN groupadd -g 1000 vscode && \
 RUN chgrp -R 0 /home/vscode && chmod -R g=u /home/vscode
 
 ENV GOPATH=/home/vscode/go
+ENV GOTOOLCHAIN=auto
 ENV PATH="/home/vscode/.local/bin:${GOPATH}/bin:/usr/local/go/bin:${PATH}"
 
 # uv/uvx for `make apm` — pinned copy from Astral image (no curl|sh installer)

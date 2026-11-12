@@ -56,7 +56,7 @@ devcontainer up --workspace-folder .
 
 Copy `.devcontainer/.env.example` to `.devcontainer/.env` and fill in any blank values.
 
-The image includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `make verify-apm` work without extra setup. MCP Python venvs for `mcp/` and `ship-status-dev/` are created in `post-create.sh`.
+The image sets `GOTOOLCHAIN=auto`, so Fedora's packaged Go automatically downloads the version required by `go.mod` when needed. It also includes **uv** / **uvx** and a pinned **apm-cli** so `make apm` and `make verify-apm` work without extra setup. MCP Python venvs for `mcp/` and `ship-status-dev/` are created in `post-create.sh`.
 
 ### Reusing the toolchain
 
