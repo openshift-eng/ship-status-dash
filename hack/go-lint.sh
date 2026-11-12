@@ -25,6 +25,6 @@ else
     $DOCKER run --rm \
         --volume "${PROJECT_ROOT}:/workspace${VOLUME_OPTION}" \
         --workdir /workspace \
-        quay.io/openshiftci/golangci-lint:v2.10.1 \
+        quay.io/openshiftci/golangci-lint:v2.15.0 \
         golangci-lint "${@}"
 fi
