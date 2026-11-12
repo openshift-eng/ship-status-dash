@@ -16,7 +16,7 @@ The preferred way to develop is the [dev container](.devcontainer/README.md). It
 2. Copy [`.devcontainer/.env.example`](.devcontainer/.env.example) to `.devcontainer/.env` if you need to override defaults.
 3. On first create, `post-create.sh` installs dependencies and runs migrations against the bundled PostgreSQL service.
 
-**Go toolchain:** `go.mod` requires Go 1.27. Fedora's `golang` package defaults to `GOTOOLCHAIN=local`, so if the container's Go is older than the `go` directive, run `go env -w GOTOOLCHAIN=auto` once. Go then downloads the required toolchain from the Go module proxy. Check with `go version` from the repository root.
+**Go toolchain:** `go.mod` requires Go 1.27. The devcontainer sets `GOTOOLCHAIN=auto`, so if Fedora's packaged Go is older than the `go` directive, Go downloads the required toolchain from the Go module proxy. Check with `go version` from the repository root. If an existing container predates this setting, rebuild it. As a temporary workaround before rebuilding, run `go env -w GOTOOLCHAIN=auto` once.
 
 **Services** (see the [dev container README](.devcontainer/README.md) for full detail):
 
