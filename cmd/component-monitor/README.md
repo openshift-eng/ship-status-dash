@@ -58,6 +58,8 @@ Reports include only probes that ran. If no probes are due, or every due result 
 
 Set the dashboard sub-component `monitoring.frequency` to the same resolved cadence so the absent-report checker (threshold 5x frequency) does not treat the gap between runs as a missing monitor.
 
+The absent-report checker only opens `absent-monitored-component-report` outages. It waits 5x its check interval after dashboard startup before its first check. The dashboard resolves those outages as soon as it receives the next report for that sub-component, healthy or not, when `monitoring.auto_resolve` is true. Service-health outages opened from report contents are managed separately.
+
 ## JUnit monitor (`junit_monitor`)
 
 Use this for Prow jobs that write a JUnit file into `test-platform-results-public` (or another GCS bucket), under `logs/<job>/`. Every monitor names its jobs and the artifact path. There is no default job list or artifact path.

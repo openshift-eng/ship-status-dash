@@ -179,6 +179,50 @@ func TestAbsentMonitoredComponentReportChecker_checkForAbsentReports(t *testing.
 			},
 		},
 		{
+			name: "does not resolve absent-report outage when ping is within threshold",
+			config: &types.DashboardConfig{
+				Components: []*types.Component{
+					{
+						Slug: "test-component",
+						Subcomponents: []types.SubComponent{
+							{
+								Slug: "test-subcomponent",
+								Monitoring: &types.Monitoring{
+									Frequency:        "5m",
+									AutoResolve:      true,
+									ComponentMonitor: "test-monitor",
+								},
+							},
+						},
+					},
+				},
+			},
+			setupPingRepo: func(repo *repositories.MockComponentPingRepository) {
+				recentPing := time.Now().Add(-1 * time.Minute)
+				repo.LastPingTimes = map[string]*time.Time{
+					"test-component/test-subcomponent": &recentPing,
+				}
+			},
+			setupOutageManager: func(m *outage.MockOutageManager) {
+				m.GetActiveOutagesDiscoveredFromFn = func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					return []types.Outage{
+						{
+							ComponentName:    componentSlug,
+							SubComponentName: subComponentSlug,
+							DiscoveredFrom:   AbsentReportSource,
+							CreatedBy:        AbsentReportCreator,
+							Severity:         types.SeverityDown,
+							StartTime:        time.Now().Add(-30 * time.Minute),
+						},
+					}, nil
+				}
+			},
+			verifyCreatedOutages: func(t *testing.T, m *outage.MockOutageManager) {
+				assert.Len(t, m.CreatedOutages, 0, "Expected no outages to be created")
+				assert.Len(t, m.UpdatedOutages, 0, "Recovery belongs to report processing, not the checker")
+			},
+		},
+		{
 			name: "does not create duplicate outage when active outage exists",
 			config: &types.DashboardConfig{
 				Components: []*types.Component{

@@ -18,7 +18,8 @@ const (
 	AbsentReportCreator = "dashboard"
 )
 
-// AbsentMonitoredComponentReportChecker handles outages for components where pings have not been received within the expected time.
+// AbsentMonitoredComponentReportChecker creates outages for components where pings have not been received within the expected time.
+// Those outages are resolved by ComponentMonitorReportProcessor when a report is next received.
 type AbsentMonitoredComponentReportChecker struct {
 	configManager *config.Manager[types.DashboardConfig]
 	outageManager outage.OutageManager
@@ -118,28 +119,15 @@ func (a *AbsentMonitoredComponentReportChecker) checkForAbsentReports() {
 				}
 			}
 
-			activeOutages, err := a.outageManager.GetActiveOutagesDiscoveredFrom(component.Slug, subComponent.Slug, AbsentReportSource)
-			if err != nil {
-				componentLogger.WithField("error", err).Error("Failed to check for existing outages")
+			// Recovery happens when a report arrives (ComponentMonitorReportProcessor) so it is not
+			// delayed by this checker's startup grace or interval.
+			if !componentInOutage {
 				continue
 			}
 
-			if !componentInOutage {
-				// Ping is healthy - resolve any existing outages if auto-resolve is enabled
-				if subComponent.Monitoring != nil && subComponent.Monitoring.AutoResolve && len(activeOutages) > 0 {
-					for i := range activeOutages {
-						activeOutages[i].EndTime = sql.NullTime{Time: now, Valid: true}
-						resolver := subComponent.Monitoring.ComponentMonitor
-						if err := a.outageManager.UpdateOutage(&activeOutages[i], resolver); err != nil {
-							componentLogger.WithFields(logrus.Fields{
-								"outage_id": activeOutages[i].ID,
-								"error":     err,
-							}).Error("Failed to auto-resolve absent-report outage")
-							continue
-						}
-						componentLogger.WithField("outage_id", activeOutages[i].ID).Info("Auto-resolved absent-report outage after receiving ping")
-					}
-				}
+			activeOutages, err := a.outageManager.GetActiveOutagesDiscoveredFrom(component.Slug, subComponent.Slug, AbsentReportSource)
+			if err != nil {
+				componentLogger.WithField("error", err).Error("Failed to check for existing outages")
 				continue
 			}
 
