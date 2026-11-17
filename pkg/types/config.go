@@ -130,8 +130,10 @@ type Monitoring struct {
 	// ComponentMonitor is the name of the component monitor that will be used to report the status of this sub-component
 	// It must match the component monitor name in the report request
 	ComponentMonitor string `json:"component_monitor" yaml:"component_monitor"`
-	// AutoResolve is a flag that indicates whether outages discovered by the component-monitor should be automatically resolved when
-	// the component-monitor reports the sub-component is healthy.
+	// AutoResolve controls two kinds of automatic outage resolution for this sub-component:
+	//   - Service-health outages opened from report contents are resolved when the component-monitor reports the sub-component is healthy.
+	//   - Absent-report outages opened by the dashboard's absent-report checker are resolved on the next report for this
+	//     sub-component, whether that report is healthy or not.
 	AutoResolve bool `json:"auto_resolve" yaml:"auto_resolve"`
 	// OutagePerReason, when true, treats each incoming probe Reason (Type+Check) as its own outage
 	// instead of one outage per sub-component. Extra active outages whose reasons left the set are
