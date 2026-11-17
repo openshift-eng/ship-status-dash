@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -1194,4 +1195,232 @@ func TestNewReasons(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+type resolvedOutage struct {
+	ID       uint
+	Resolver string
+}
+
+type discoveredFromQuery struct {
+	ComponentSlug    string
+	SubComponentSlug string
+	DiscoveredFrom   string
+}
+
+func absentReportOutage(id uint, createdBy string) types.Outage {
+	o := types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-subcomponent",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Now().Add(-30 * time.Minute),
+		DiscoveredFrom:   AbsentReportSource,
+		CreatedBy:        createdBy,
+	}
+	o.ID = id
+	return o
+}
+
+func serviceHealthOutage(id uint) types.Outage {
+	o := types.Outage{
+		ComponentName:    "test-component",
+		SubComponentName: "test-subcomponent",
+		Severity:         types.SeverityDown,
+		StartTime:        time.Now().Add(-10 * time.Minute),
+		DiscoveredFrom:   ComponentMonitor,
+		CreatedBy:        "test-monitor",
+	}
+	o.ID = id
+	return o
+}
+
+func singleStatusReport(status types.Status, reasons ...types.Reason) *types.ComponentMonitorReportRequest {
+	return &types.ComponentMonitorReportRequest{
+		ComponentMonitor: "test-monitor",
+		Statuses: []types.ComponentMonitorReportComponentStatus{
+			{
+				ComponentSlug:    "test-component",
+				SubComponentSlug: "test-subcomponent",
+				Status:           status,
+				Reasons:          reasons,
+			},
+		},
+	}
+}
+
+func TestComponentMonitorReportProcessor_ResolvesAbsentReportOutages(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+
+	downReason := types.Reason{Type: types.CheckTypePrometheus, Check: "query", Results: "error"}
+	matchingQuery := discoveredFromQuery{"test-component", "test-subcomponent", AbsentReportSource}
+
+	tests := []struct {
+		name              string
+		config            *types.DashboardConfig
+		request           *types.ComponentMonitorReportRequest
+		absentOutages     []types.Outage
+		absentQueryErr    error
+		serviceOutages    []types.Outage
+		wantResolved      []resolvedOutage
+		wantCreatedCount  int
+		wantAbsentQueries []discoveredFromQuery
+	}{
+		{
+			name:              "healthy report resolves absent-report outage",
+			config:            repositories.TestConfig(true, false),
+			request:           singleStatusReport(types.StatusHealthy, types.Reason{Type: types.CheckTypePrometheus}),
+			absentOutages:     []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			wantResolved:      []resolvedOutage{{ID: 10, Resolver: "test-monitor"}},
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:              "unhealthy report resolves absent-report outage and opens service-health outage",
+			config:            repositories.TestConfig(true, false),
+			request:           singleStatusReport(types.StatusDown, downReason),
+			absentOutages:     []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			wantResolved:      []resolvedOutage{{ID: 10, Resolver: "test-monitor"}},
+			wantCreatedCount:  1,
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:              "unhealthy report resolves absent-report outage and keeps existing service-health outage",
+			config:            repositories.TestConfig(true, false),
+			request:           singleStatusReport(types.StatusDown, downReason),
+			absentOutages:     []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			serviceOutages:    []types.Outage{serviceHealthOutage(20)},
+			wantResolved:      []resolvedOutage{{ID: 10, Resolver: "test-monitor"}},
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:           "healthy report resolves absent-report and service-health outages independently",
+			config:         repositories.TestConfig(true, false),
+			request:        singleStatusReport(types.StatusHealthy, types.Reason{Type: types.CheckTypePrometheus}),
+			absentOutages:  []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			serviceOutages: []types.Outage{serviceHealthOutage(20)},
+			wantResolved: []resolvedOutage{
+				{ID: 10, Resolver: "test-monitor"},
+				{ID: 20, Resolver: "test-monitor"},
+			},
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:          "auto-resolve disabled leaves absent-report outage active on healthy report",
+			config:        repositories.TestConfig(false, false),
+			request:       singleStatusReport(types.StatusHealthy, types.Reason{Type: types.CheckTypePrometheus}),
+			absentOutages: []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+		},
+		{
+			name:             "auto-resolve disabled leaves absent-report outage active on unhealthy report",
+			config:           repositories.TestConfig(false, false),
+			request:          singleStatusReport(types.StatusDown, downReason),
+			absentOutages:    []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			wantCreatedCount: 1,
+		},
+		{
+			name:    "only resolves absent-report outages created by the dashboard",
+			config:  repositories.TestConfig(true, false),
+			request: singleStatusReport(types.StatusHealthy, types.Reason{Type: types.CheckTypePrometheus}),
+			absentOutages: []types.Outage{
+				absentReportOutage(10, AbsentReportCreator),
+				absentReportOutage(11, "some-user"),
+			},
+			wantResolved:      []resolvedOutage{{ID: 10, Resolver: "test-monitor"}},
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:              "outage-per-reason report resolves absent-report outage",
+			config:            perReasonTestConfig(),
+			request:           singleStatusReport(types.StatusDown, jiraReason("TRT-1", "First incident")),
+			absentOutages:     []types.Outage{absentReportOutage(10, AbsentReportCreator)},
+			wantResolved:      []resolvedOutage{{ID: 10, Resolver: "test-monitor"}},
+			wantCreatedCount:  1,
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+		{
+			name:              "absent-report query failure does not block service-health processing",
+			config:            repositories.TestConfig(true, false),
+			request:           singleStatusReport(types.StatusDown, downReason),
+			absentQueryErr:    errors.New("db unavailable"),
+			wantCreatedCount:  1,
+			wantAbsentQueries: []discoveredFromQuery{matchingQuery},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pingRepo := &repositories.MockComponentPingRepository{}
+			var resolved []resolvedOutage
+			var absentQueries []discoveredFromQuery
+			m := &outage.MockOutageManager{
+				ActiveOutagesCreatedBy: tt.serviceOutages,
+				GetActiveOutagesDiscoveredFromFn: func(componentSlug, subComponentSlug, discoveredFrom string) ([]types.Outage, error) {
+					absentQueries = append(absentQueries, discoveredFromQuery{componentSlug, subComponentSlug, discoveredFrom})
+					if tt.absentQueryErr != nil {
+						return nil, tt.absentQueryErr
+					}
+					var matches []types.Outage
+					for _, o := range tt.absentOutages {
+						if o.ComponentName == componentSlug && o.SubComponentName == subComponentSlug && o.DiscoveredFrom == discoveredFrom {
+							matches = append(matches, o)
+						}
+					}
+					return matches, nil
+				},
+				UpdateOutageFn: func(o *types.Outage, user string) error {
+					if o.EndTime.Valid {
+						resolved = append(resolved, resolvedOutage{ID: o.ID, Resolver: user})
+					}
+					return nil
+				},
+			}
+
+			processor := NewComponentMonitorReportProcessor(m, pingRepo, config.CreateTestConfigManager(tt.config), logger)
+			require.NoError(t, processor.Process(tt.request))
+
+			if diff := cmp.Diff(tt.wantResolved, resolved); diff != "" {
+				t.Errorf("resolved outages mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantAbsentQueries, absentQueries); diff != "" {
+				t.Errorf("absent-report queries mismatch (-want +got):\n%s", diff)
+			}
+			assert.Len(t, m.CreatedOutages, tt.wantCreatedCount)
+			assert.Len(t, pingRepo.UpsertedPings, 1)
+		})
+	}
+}
+
+// Reproduces TRT-3104: reports that resume while the absent-report checker is still in its
+// startup delay must clear the absence outage without waiting for the checker.
+func TestComponentMonitorReportProcessor_ResolvesAbsentReportOutageDuringCheckerStartupDelay(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+
+	configManager := config.CreateTestConfigManager(repositories.TestConfig(true, false))
+	pingRepo := &repositories.MockComponentPingRepository{}
+	absent := absentReportOutage(10, AbsentReportCreator)
+	m := &outage.MockOutageManager{
+		GetActiveOutagesDiscoveredFromFn: func(_, _, _ string) ([]types.Outage, error) {
+			return []types.Outage{absent}, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	checkerDone := make(chan struct{})
+	checker := NewAbsentMonitoredComponentReportChecker(configManager, m, pingRepo, time.Hour, logger)
+	go func() {
+		defer close(checkerDone)
+		checker.Start(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-checkerDone
+	})
+
+	processor := NewComponentMonitorReportProcessor(m, pingRepo, configManager, logger)
+	require.NoError(t, processor.Process(singleStatusReport(types.StatusHealthy, types.Reason{Type: types.CheckTypePrometheus})))
+
+	require.Len(t, m.UpdatedOutages, 1)
+	assert.Equal(t, uint(10), m.UpdatedOutages[0].ID)
+	assert.True(t, m.UpdatedOutages[0].EndTime.Valid, "absent-report outage should be resolved by the report itself")
 }

@@ -117,6 +117,9 @@ func (p *ComponentMonitorReportProcessor) Process(req *types.ComponentMonitorRep
 			return err
 		}
 
+		// Any report, healthy or not, proves the monitor is reporting again.
+		p.resolveAbsentReportOutages(status, req.ComponentMonitor, subComponent, now, statusLogger)
+
 		var err error
 		if subComponent.Monitoring.OutagePerReason {
 			err = p.processPerReason(status, req.ComponentMonitor, subComponent, now, statusLogger)
@@ -258,6 +261,25 @@ func (p *ComponentMonitorReportProcessor) activeMonitorOutages(componentSlug, su
 		return nil, err
 	}
 	return activeOutages, nil
+}
+
+// resolveAbsentReportOutages ends absence outages opened by the absent-report checker for this sub-component.
+// Failures are logged rather than returned so service-health processing still runs; the next report retries.
+func (p *ComponentMonitorReportProcessor) resolveAbsentReportOutages(status types.ComponentMonitorReportComponentStatus, monitorName string, subComponent *types.SubComponent, now time.Time, logger *logrus.Entry) {
+	if !subComponent.Monitoring.AutoResolve {
+		return
+	}
+	absentOutages, err := p.outageManager.GetActiveOutagesDiscoveredFrom(status.ComponentSlug, status.SubComponentSlug, AbsentReportSource)
+	if err != nil {
+		logger.WithField("error", err).Error("Failed to query active absent-report outages")
+		return
+	}
+	for i := range absentOutages {
+		if absentOutages[i].CreatedBy != AbsentReportCreator {
+			continue
+		}
+		p.resolveOutage(&absentOutages[i], now, monitorName, logger.WithField("discovered_from", AbsentReportSource))
+	}
 }
 
 func (p *ComponentMonitorReportProcessor) resolveOutage(o *types.Outage, now time.Time, monitorName string, logger *logrus.Entry) {

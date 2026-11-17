@@ -1541,7 +1541,7 @@ func testUser(client *TestHTTPClient) func(*testing.T) {
 
 func testAbsentReport(client *TestHTTPClient) func(*testing.T) {
 	return func(t *testing.T) {
-		t.Run("Absent report checker creates outage when no ping exists, and resolves when ping is received", func(t *testing.T) {
+		t.Run("Absent report checker creates outage when no ping exists, and the next report resolves it", func(t *testing.T) {
 			var outage *types.Outage
 			ctx := context.Background()
 			err := wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true, func(ctx context.Context) (bool, error) {
@@ -1595,24 +1595,15 @@ func testAbsentReport(client *TestHTTPClient) func(*testing.T) {
 			defer resp.Body.Close()
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-			// Wait for the absent report checker to run and auto-resolve the outage
-			// The checker runs every 15s in e2e tests, so wait up to 20s
+			// The report itself resolves the absent-report outage, without waiting for the checker
 			var resolvedOutage *types.Outage
-			err = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 20*time.Second, true, func(ctx context.Context) (bool, error) {
-				updatedOutages := getOutages(t, client, "Downstream CI", "Retester")
-				for i := range updatedOutages {
-					if updatedOutages[i].ID == outageID {
-						resolvedOutage = &updatedOutages[i]
-						if resolvedOutage.EndTime.Valid {
-							return true, nil
-						}
-						break
-					}
+			for _, o := range getOutages(t, client, "Downstream CI", "Retester") {
+				if o.ID == outageID {
+					resolvedOutage = &o
+					break
 				}
-				return false, nil
-			})
+			}
 
-			require.NoError(t, err, "Outage should be resolved within 20 seconds")
 			require.NotNil(t, resolvedOutage, "Outage should still exist after resolution")
 			assert.True(t, resolvedOutage.EndTime.Valid, "Outage should be resolved")
 
