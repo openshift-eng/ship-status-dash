@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +63,8 @@ func (e SlackResponseErrors) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
-// UnmarshalJSON implements custom unmarshaling for SlackResponseErrors
+// UnmarshalJSON replaces e with the decoded error variant on success. JSON null
+// leaves e unchanged. After a decoding error, callers must not rely on its contents.
 func (e *SlackResponseErrors) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(data, []byte("null")) {
 		return nil
@@ -77,7 +79,7 @@ func (e *SlackResponseErrors) UnmarshalJSON(data []byte) error {
 		// https://github.com/slack-go/slack/issues/1446.
 		var stringError string
 		if stringErr := json.Unmarshal(data, &stringError); stringErr == nil {
-			e.Message = &stringError
+			*e = SlackResponseErrors{Message: &stringError}
 			return nil
 		}
 		return err
@@ -89,7 +91,7 @@ func (e *SlackResponseErrors) UnmarshalJSON(data []byte) error {
 			if err := json.Unmarshal(data, &amc); err != nil {
 				return err
 			}
-			e.AppsManifestCreateResponseError = &amc
+			*e = SlackResponseErrors{AppsManifestCreateResponseError: &amc}
 			return nil
 		}
 	}
@@ -101,7 +103,7 @@ func (e *SlackResponseErrors) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(data, &ci); err != nil {
 					return err
 				}
-				e.ConversationsInviteResponseError = &ci
+				*e = SlackResponseErrors{ConversationsInviteResponseError: &ci}
 				return nil
 			}
 		}
@@ -214,29 +216,12 @@ func (s *KickUserFromConversationSlackResponse) UnmarshalJSON(data []byte) error
 // Warn returns warning information from the API response, or nil if there
 // are no warnings.
 func (s KickUserFromConversationSlackResponse) Warn() *Warning {
-	if s.Warning == "" && len(s.ResponseMetadata.Warnings) == 0 {
-		return nil
-	}
-	return &Warning{
-		Codes:    strings.Split(s.Warning, ","),
-		Warnings: s.ResponseMetadata.Warnings,
-	}
+	return SlackResponse(s).Warn()
 }
 
 // Err returns any API error present in the response.
 func (s KickUserFromConversationSlackResponse) Err() error {
-	if s.Ok {
-		return nil
-	}
-
-	// handle pure text based responses like chat.post
-	// which while they have a slack response in their data structure
-	// it doesn't actually get set during parsing.
-	if strings.TrimSpace(s.Error) == "" {
-		return nil
-	}
-
-	return SlackErrorResponse{Err: s.Error, Errors: s.Errors, ResponseMetadata: s.ResponseMetadata, Needed: s.Needed, Provided: s.Provided}
+	return SlackResponse(s).Err()
 }
 
 func (t SlackResponse) Err() error {
@@ -317,12 +302,9 @@ func isHTTPSSlackURL(u *url.URL) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	for _, domain := range slackDomains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(slackDomains, func(domain string) bool {
+		return host == domain || strings.HasSuffix(host, "."+domain)
+	})
 }
 
 // isAPIEndpointURL reports whether u has the scheme and host of the API endpoint set
